@@ -21,3 +21,8 @@ async def health_check():
 
 from auth.router import router as auth_router
 app.include_router(auth_router)
+
+from businesses.router import router as businesses_router
+from integrations.oauth import router as oauth_router
+app.include_router(businesses_router)
+app.include_router(oauth_router)
