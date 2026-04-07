@@ -3,7 +3,8 @@ from database.models import AgentAction, PlatformIntegration
 from database.session import AsyncSessionLocal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime
+from datetime import datetime, timedelta
+from auth.utils import generate_secure_token
 import uuid
 
 class AgentExecutor:
@@ -13,12 +14,13 @@ class AgentExecutor:
     """
 
     async def execute_action(
-        self,
-        action: dict,
-        business_id: str,
-        monthly_budget: float,
-        db: AsyncSession
-    ) -> dict:
+    self,
+    action: dict,
+    business_id: str,
+    monthly_budget: float,
+    db: AsyncSession,
+    override_approval: bool = False
+) -> dict:
         action_type = action.get("type")
         platform = action.get("platform", "")
         params = action.get("parameters", {})
@@ -50,19 +52,63 @@ class AgentExecutor:
             return {"status": "blocked", "reason": check["reason"]}
 
         # ---- Step 3: Needs approval ----
-        if check.get("requires_approval") or action.get("requires_approval"):
-            action_id = await self._log(db, business_id, action, "pending_approval", check["reason"])
+        if not override_approval and (check.get("requires_approval") or action.get("requires_approval")):
+            action_with_tokens = await self.create_pending_action_with_tokens(
+                action, business_id, db
+            )
             return {
                 "status": "pending_approval",
-                "action_id": str(action_id),
+                "action_id": action_with_tokens["action_id"],
+                "approval_token": action_with_tokens["approval_token"],
+                "decline_token": action_with_tokens["decline_token"],
                 "reason": check["reason"],
-                "message": "This action needs your approval in your Marlo dashboard."
+                "message": "This action needs your approval via email."
             }
 
         # ---- Step 4: Execute ----
         result = await self._execute(action, business_id, db)
         await self._log(db, business_id, action, "executed", outcome=result)
         return {"status": "executed", "result": result}
+
+    async def create_pending_action_with_tokens(
+        self,
+        action: dict,
+        business_id: str,
+        db: AsyncSession
+    ) -> dict:
+        """
+        Save a pending action to the database with one-click approval tokens.
+        Returns the action dict enriched with tokens ready for email embedding.
+        """
+        approval_token = generate_secure_token()
+        decline_token = generate_secure_token()
+        expires_at = datetime.utcnow() + timedelta(hours=48)
+
+        log = AgentAction(
+            id=uuid.uuid4(),
+            business_id=business_id,
+            action_type=action.get("type"),
+            status="pending_approval",
+            input_context=action,
+            agent_reasoning=action.get("reasoning", ""),
+            action_parameters=action.get("parameters", {}),
+            requires_approval=True,
+            approval_token=approval_token,
+            decline_token=decline_token,
+            token_expires_at=expires_at,
+            created_at=datetime.utcnow()
+        )
+        db.add(log)
+        await db.commit()
+
+        return {
+            **action,
+            "action_id": str(log.id),
+            "approval_token": approval_token,
+            "decline_token": decline_token,
+            "title": action.get("type", "").replace("_", " ").title(),
+            "description": action.get("reasoning", "")[:250]
+        }
 
     async def _execute(self, action: dict, business_id: str, db: AsyncSession) -> dict:
         action_type = action.get("type")

@@ -26,3 +26,6 @@ from businesses.router import router as businesses_router
 from integrations.oauth import router as oauth_router
 app.include_router(businesses_router)
 app.include_router(oauth_router)
+
+from agent.approval_router import router as approval_router
+app.include_router(approval_router)
