@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-import httpx, secrets, os, uuid
+import httpx, secrets, os, uuid, asyncio
 from datetime import datetime
 from database.session import get_db
-from database.models import PlatformIntegration, Business
+from database.models import PlatformIntegration, Business, User
 from auth.router import get_current_user
 from dotenv import load_dotenv
 load_dotenv(dotenv_path="../../.env")
@@ -84,6 +84,26 @@ async def google_callback(code: str, state: str, db: AsyncSession = Depends(get_
     )
     await db.commit()
 
+    # Trigger onboarding email 2 in the background
+    biz_result = await db.execute(select(Business).where(Business.id == state_data["business_id"]))
+    biz = biz_result.scalar_one_or_none()
+    if biz:
+        user_result = await db.execute(select(User).where(User.id == biz.owner_id))
+        usr = user_result.scalar_one_or_none()
+        if usr:
+            first_name = (usr.full_name or "").split()[0] or "there"
+            from email_system.sender import email_sender
+            asyncio.create_task(
+                email_sender.send_onboarding_step(
+                    step=2,
+                    business_id=state_data["business_id"],
+                    user_email=usr.email,
+                    first_name=first_name,
+                    business_name=biz.name,
+                    db=db
+                )
+            )
+
     # Show a friendly success page — the user is on their phone/browser
     return HTMLResponse("""
     <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
@@ -136,13 +156,34 @@ async def meta_callback(code: str, state: str, db: AsyncSession = Depends(get_db
         is_active=True, created_at=datetime.utcnow()
     )
     db.add(integration)
-    from sqlalchemy import update
+
+    from sqlalchemy import select, update
     await db.execute(
         update(Business)
         .where(Business.id == state_data["business_id"])
         .values(onboarding_step=3)
     )
     await db.commit()
+
+    # Trigger onboarding email 3 in the background
+    biz_result = await db.execute(select(Business).where(Business.id == state_data["business_id"]))
+    biz = biz_result.scalar_one_or_none()
+    if biz:
+        user_result = await db.execute(select(User).where(User.id == biz.owner_id))
+        usr = user_result.scalar_one_or_none()
+        if usr:
+            first_name = (usr.full_name or "").split()[0] or "there"
+            from email_system.sender import email_sender
+            asyncio.create_task(
+                email_sender.send_onboarding_step(
+                    step=3,
+                    business_id=state_data["business_id"],
+                    user_email=usr.email,
+                    first_name=first_name,
+                    business_name=biz.name,
+                    db=db
+                )
+            )
 
     return HTMLResponse("""
     <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">

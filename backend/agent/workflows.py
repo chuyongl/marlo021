@@ -42,22 +42,76 @@ async def notify_owner_activity(business_id: str, message: str, notification_typ
     print(f"[NOTIFY] {notification_type} for {business_id}: {message[:120]}")
     return True
 
+@activity.defn
+async def create_pending_actions_activity(business_id: str, actions: list) -> list:
+    from agent.executor import executor
+    from database.session import AsyncSessionLocal
+    results = []
+    async with AsyncSessionLocal() as db:
+        for action in actions:
+            enriched = await executor.create_pending_action_with_tokens(action, business_id, db)
+            results.append(enriched)
+    return results
+
+@activity.defn
+async def send_morning_email_activity(business_id: str, plan: dict, pending_actions: list) -> bool:
+    from email_system.sender import email_sender
+    from database.session import AsyncSessionLocal
+    from database.models import Business, User
+    from sqlalchemy import select
+
+    async with AsyncSessionLocal() as db:
+        biz_result = await db.execute(select(Business).where(Business.id == business_id))
+        business = biz_result.scalar_one_or_none()
+        if not business:
+            return False
+
+        user_result = await db.execute(select(User).where(User.id == business.owner_id))
+        user = user_result.scalar_one_or_none()
+        if not user:
+            return False
+
+        first_name = (user.full_name or user.email.split("@")[0]).split()[0]
+
+        # Build yesterday metrics from plan insights
+        yesterday_metrics = {
+            "highlights": [
+                {"label": insight.split(":")[0] if ":" in insight else "Update",
+                 "value": insight.split(":")[1].strip() if ":" in insight else insight,
+                 "positive": True}
+                for insight in plan.get("insights", [])[:4]
+            ]
+        }
+
+        await email_sender.send_morning_briefing(
+            business=business,
+            user_email=user.email,
+            user_first_name=first_name,
+            yesterday_metrics=yesterday_metrics,
+            pending_actions=pending_actions,
+            db=db
+        )
+    return True
+
 @workflow.defn
 class MorningCheckWorkflow:
     @workflow.run
     async def run(self, input: WorkflowInput) -> dict:
+        # 1. Fetch all platform data
         context = await workflow.execute_activity(
-            fetch_context_activity,
-            input.business_id,
+            fetch_context_activity, input.business_id,
             start_to_close_timeout=timedelta(minutes=2)
         )
 
+        # 2. Run agent reasoning
         message = """Good morning. Please:
-1. Review overnight performance across all platforms
-2. Identify the 1-2 most important things to do today
-3. Flag any campaigns with unusual spend or low performance
-4. Suggest the best content to post today based on recent engagement data
-5. Note anything urgent"""
+1. Summarize yesterday's performance — what worked, what didn't
+2. Identify the 2-3 most important actions for today
+3. Flag any campaigns needing attention (high spend, low performance, unusual patterns)
+4. Suggest the best content to post today
+5. Note anything urgent
+
+Keep your summary conversational — this will be read in a morning email."""
 
         plan = await workflow.execute_activity(
             run_agent_activity,
@@ -65,20 +119,32 @@ class MorningCheckWorkflow:
             start_to_close_timeout=timedelta(minutes=3)
         )
 
+        # 3. Execute zero-risk actions automatically (report generation, analytics)
+        # Queue everything else with approval tokens
         monthly_budget = context.get("business", {}).get("monthly_budget", 300)
-        safe_actions = [a for a in plan.get("actions", []) if a.get("risk_level") == "low"]
 
-        if safe_actions:
+        auto_execute = [a for a in plan.get("actions", []) if a.get("risk_level") == "low" and not a.get("requires_approval")]
+        need_approval = [a for a in plan.get("actions", []) if a.get("risk_level") in ("medium", "high") or a.get("requires_approval")]
+
+        if auto_execute:
             await workflow.execute_activity(
                 execute_actions_activity,
-                args=[input.business_id, safe_actions, monthly_budget],
-                start_to_close_timeout=timedelta(minutes=5)
+                args=[input.business_id, auto_execute, monthly_budget],
+                start_to_close_timeout=timedelta(minutes=3)
             )
 
+        # 4. Create approval tokens for actions needing review
+        pending_with_tokens = await workflow.execute_activity(
+            create_pending_actions_activity,
+            args=[input.business_id, need_approval],
+            start_to_close_timeout=timedelta(minutes=1)
+        )
+
+        # 5. Send morning email
         await workflow.execute_activity(
-            notify_owner_activity,
-            args=[input.business_id, plan.get("summary", "Morning check complete."), "morning_briefing"],
-            start_to_close_timeout=timedelta(seconds=30)
+            send_morning_email_activity,
+            args=[input.business_id, plan, pending_with_tokens],
+            start_to_close_timeout=timedelta(minutes=2)
         )
 
         return plan
@@ -125,7 +191,9 @@ async def run_worker():
             fetch_context_activity,
             run_agent_activity,
             execute_actions_activity,
-            notify_owner_activity
+            notify_owner_activity,
+            create_pending_actions_activity,
+            send_morning_email_activity,
         ]
     )
     print("Temporal worker running. Press Ctrl+C to stop.")

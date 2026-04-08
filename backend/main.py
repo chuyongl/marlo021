@@ -29,3 +29,6 @@ app.include_router(oauth_router)
 
 from agent.approval_router import router as approval_router
 app.include_router(approval_router)
+
+from email_system.inbound import router as inbound_router
+app.include_router(inbound_router)

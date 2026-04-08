@@ -7,6 +7,7 @@ from database.session import get_db
 from database.models import Business, User
 from auth.router import get_current_user
 import uuid
+import asyncio
 
 router = APIRouter(prefix="/businesses", tags=["businesses"])
 
@@ -30,8 +31,24 @@ async def create_business(
     await db.commit()
     await db.refresh(business)
 
-    # Trigger onboarding email sequence (Day 16 will implement the actual sending)
-    # For now just return the business ID
+    # Get user details for onboarding email
+    user_result = await db.execute(select(User).where(User.id == current_user.id))
+    user = user_result.scalar_one_or_none()
+    first_name = (user.full_name or user.email.split("@")[0]).split()[0]
+
+    # Send onboarding email 1 in the background
+    from email_system.sender import email_sender
+    asyncio.create_task(
+        email_sender.send_onboarding_step(
+            step=1,
+            business_id=str(business.id),
+            user_email=user.email,
+            first_name=first_name,
+            business_name=business.name,
+            db=db
+        )
+    )
+
     return {"business_id": str(business.id), "name": business.name}
 
 @router.get("/")
