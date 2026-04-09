@@ -32,3 +32,6 @@ app.include_router(approval_router)
 
 from email_system.inbound import router as inbound_router
 app.include_router(inbound_router)
+
+from agent.router import router as agent_router
+app.include_router(agent_router)

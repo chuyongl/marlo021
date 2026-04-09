@@ -38,7 +38,6 @@ async def execute_actions_activity(business_id: str, actions: list, monthly_budg
 
 @activity.defn
 async def notify_owner_activity(business_id: str, message: str, notification_type: str) -> bool:
-    # TODO Day 19: plug in real push notifications (Firebase or email)
     print(f"[NOTIFY] {notification_type} for {business_id}: {message[:120]}")
     return True
 
@@ -73,7 +72,6 @@ async def send_morning_email_activity(business_id: str, plan: dict, pending_acti
 
         first_name = (user.full_name or user.email.split("@")[0]).split()[0]
 
-        # Build yesterday metrics from plan insights
         yesterday_metrics = {
             "highlights": [
                 {"label": insight.split(":")[0] if ":" in insight else "Update",
@@ -92,6 +90,11 @@ async def send_morning_email_activity(business_id: str, plan: dict, pending_acti
             db=db
         )
     return True
+
+@activity.defn
+async def run_weekly_optimization_activity(business_id: str) -> dict:
+    from agent.optimization import optimization_loop
+    return await optimization_loop.run_weekly_optimization(business_id)
 
 @workflow.defn
 class MorningCheckWorkflow:
@@ -119,7 +122,7 @@ Keep your summary conversational — this will be read in a morning email."""
             start_to_close_timeout=timedelta(minutes=3)
         )
 
-        # 3. Execute zero-risk actions automatically (report generation, analytics)
+        # 3. Execute zero-risk actions automatically
         # Queue everything else with approval tokens
         monthly_budget = context.get("business", {}).get("monthly_budget", 300)
 
@@ -181,12 +184,36 @@ class WeeklyReportWorkflow:
 
         return report
 
+@workflow.defn
+class WeeklyOptimizationWorkflow:
+    @workflow.run
+    async def run(self, input: WorkflowInput) -> dict:
+        """
+        Runs every Monday alongside the weekly report.
+        Reviews performance, checks competitor ads, recommends and executes optimizations.
+        """
+        result = await workflow.execute_activity(
+            run_weekly_optimization_activity,
+            input.business_id,
+            start_to_close_timeout=timedelta(minutes=10)
+        )
+
+        # Notify owner of optimization summary
+        summary = result.get("recommendations", {}).get("summary", "Weekly optimization complete.")
+        await workflow.execute_activity(
+            notify_owner_activity,
+            args=[input.business_id, summary, "weekly_optimization"],
+            start_to_close_timeout=timedelta(seconds=30)
+        )
+
+        return result
+
 async def run_worker():
     client = await Client.connect("localhost:7233")
     worker = Worker(
         client,
         task_queue="marlo-marketing",
-        workflows=[MorningCheckWorkflow, WeeklyReportWorkflow],
+        workflows=[MorningCheckWorkflow, WeeklyReportWorkflow, WeeklyOptimizationWorkflow],
         activities=[
             fetch_context_activity,
             run_agent_activity,
@@ -194,6 +221,7 @@ async def run_worker():
             notify_owner_activity,
             create_pending_actions_activity,
             send_morning_email_activity,
+            run_weekly_optimization_activity,
         ]
     )
     print("Temporal worker running. Press Ctrl+C to stop.")
