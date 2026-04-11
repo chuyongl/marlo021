@@ -107,6 +107,12 @@ async def handle_text_reply(business, user, message: str, db: AsyncSession):
     from agent.executor import executor
     from email_system.sender import email_sender
 
+    # Route onboarding step 4 replies to the onboarding handler
+    if business.onboarding_step == 4:
+        from email_system.onboarding_handler import process_onboarding_reply
+        await process_onboarding_reply(str(business.id), message, db)
+        return
+
     context = await context_builder.build_full_context(str(business.id), db)
     result = await brain.think(
         user_message=message,

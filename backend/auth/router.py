@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from pydantic import BaseModel, EmailStr
 from database.session import get_db
-from database.models import User
+from database.models import User, Business, PlatformIntegration, AgentAction, Campaign
 from auth.utils import hash_password, verify_password, create_access_token, decode_token
 import uuid
 
@@ -39,6 +39,31 @@ async def login(form: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = 
         raise HTTPException(status_code=401, detail="Incorrect email or password")
     token = create_access_token({"sub": str(user.id), "email": user.email})
     return {"access_token": token, "token_type": "bearer"}
+
+@router.delete("/me")
+async def delete_account(
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Permanently delete account and all data. Required by GDPR."""
+    # Get all business IDs for this user
+    user_businesses = await db.execute(
+        select(Business.id).where(Business.owner_id == current_user.id)
+    )
+    business_ids = [r[0] for r in user_businesses.all()]
+
+    # Delete all related data for each business
+    for bid in business_ids:
+        await db.execute(delete(PlatformIntegration).where(PlatformIntegration.business_id == bid))
+        await db.execute(delete(AgentAction).where(AgentAction.business_id == bid))
+        await db.execute(delete(Campaign).where(Campaign.business_id == bid))
+
+    # Delete businesses and user
+    await db.execute(delete(Business).where(Business.owner_id == current_user.id))
+    await db.execute(delete(User).where(User.id == current_user.id))
+    await db.commit()
+
+    return {"message": "Account and all data permanently deleted"}
 
 async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
     try:

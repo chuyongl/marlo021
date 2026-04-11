@@ -63,12 +63,13 @@ async def google_callback(code: str, state: str, db: AsyncSession = Depends(get_
     if "error" in tokens:
         raise HTTPException(status_code=400, detail=f"OAuth error: {tokens['error']}")
 
+    from security.encryption import encrypt_token
     integration = PlatformIntegration(
         id=uuid.uuid4(),
         business_id=state_data["business_id"],
         platform="google_ads",
-        access_token=tokens["access_token"],
-        refresh_token=tokens.get("refresh_token"),
+        access_token=encrypt_token(tokens["access_token"]),
+        refresh_token=encrypt_token(tokens.get("refresh_token", "")),
         scopes=GOOGLE_SCOPES.split(),
         is_active=True,
         created_at=datetime.utcnow()
@@ -147,11 +148,12 @@ async def meta_callback(code: str, state: str, db: AsyncSession = Depends(get_db
         )
         tokens = response.json()
 
+    from security.encryption import encrypt_token
     integration = PlatformIntegration(
         id=uuid.uuid4(),
         business_id=state_data["business_id"],
         platform="meta",
-        access_token=tokens["access_token"],
+        access_token=encrypt_token(tokens["access_token"]),
         scopes=META_SCOPES.split(","),
         is_active=True, created_at=datetime.utcnow()
     )

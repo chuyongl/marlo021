@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from datetime import datetime
 from database.session import get_db
 from database.models import AgentAction, Business, User
@@ -31,6 +31,14 @@ padding:60px 20px;background:#FFF7ED;">
 <h2 style="color:#C2410C;margin:0 0 8px 0;">This link has expired.</h2>
 <p style="color:#6B7280;">Approval links are valid for 48 hours.<br>
 Reply to your morning email to ask Marlo to resend it.</p>
+</body></html>"""
+
+UNSUBSCRIBE_PAGE = """<html><body style="font-family:-apple-system,sans-serif;text-align:center;
+padding:60px 20px;background:#F9FAFB;">
+<div style="font-size:56px;margin-bottom:16px;">👋</div>
+<h2 style="color:#374151;margin:0 0 8px 0;">Unsubscribed.</h2>
+<p style="color:#6B7280;">You won't receive any more emails from Marlo.</p>
+<p style="color:#9CA3AF;font-size:13px;">You can close this tab.</p>
 </body></html>"""
 
 @router.get("/approve")
@@ -66,7 +74,7 @@ async def approve_action(token: str, db: AsyncSession = Depends(get_db)):
         str(action.business_id),
         monthly_budget,
         db,
-        override_approval=True  # Skip the approval check since user approved via email
+        override_approval=True
     )
 
     action.status = "executed"
@@ -96,3 +104,23 @@ async def decline_action(token: str, db: AsyncSession = Depends(get_db)):
     action.approved_at = datetime.utcnow()
     await db.commit()
     return HTMLResponse(DECLINED_PAGE)
+
+@router.get("/unsubscribe")
+async def unsubscribe(token: str, db: AsyncSession = Depends(get_db)):
+    """
+    One-click unsubscribe — required by CAN-SPAM law.
+    Token is the business_id encoded in base64.
+    """
+    import base64
+    try:
+        business_id = base64.urlsafe_b64decode(token.encode()).decode()
+    except Exception:
+        return HTMLResponse(UNSUBSCRIBE_PAGE)
+
+    await db.execute(
+        update(Business)
+        .where(Business.id == business_id)
+        .values(email_notifications=False)
+    )
+    await db.commit()
+    return HTMLResponse(UNSUBSCRIBE_PAGE)
