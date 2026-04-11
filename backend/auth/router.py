@@ -40,31 +40,6 @@ async def login(form: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = 
     token = create_access_token({"sub": str(user.id), "email": user.email})
     return {"access_token": token, "token_type": "bearer"}
 
-@router.delete("/me")
-async def delete_account(
-    current_user=Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Permanently delete account and all data. Required by GDPR."""
-    # Get all business IDs for this user
-    user_businesses = await db.execute(
-        select(Business.id).where(Business.owner_id == current_user.id)
-    )
-    business_ids = [r[0] for r in user_businesses.all()]
-
-    # Delete all related data for each business
-    for bid in business_ids:
-        await db.execute(delete(PlatformIntegration).where(PlatformIntegration.business_id == bid))
-        await db.execute(delete(AgentAction).where(AgentAction.business_id == bid))
-        await db.execute(delete(Campaign).where(Campaign.business_id == bid))
-
-    # Delete businesses and user
-    await db.execute(delete(Business).where(Business.owner_id == current_user.id))
-    await db.execute(delete(User).where(User.id == current_user.id))
-    await db.commit()
-
-    return {"message": "Account and all data permanently deleted"}
-
 async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
     try:
         payload = decode_token(token)
@@ -76,3 +51,25 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+@router.delete("/me")
+async def delete_account(
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Permanently delete account and all data. Required by GDPR."""
+    user_businesses = await db.execute(
+        select(Business.id).where(Business.owner_id == current_user.id)
+    )
+    business_ids = [r[0] for r in user_businesses.all()]
+
+    for bid in business_ids:
+        await db.execute(delete(PlatformIntegration).where(PlatformIntegration.business_id == bid))
+        await db.execute(delete(AgentAction).where(AgentAction.business_id == bid))
+        await db.execute(delete(Campaign).where(Campaign.business_id == bid))
+
+    await db.execute(delete(Business).where(Business.owner_id == current_user.id))
+    await db.execute(delete(User).where(User.id == current_user.id))
+    await db.commit()
+
+    return {"message": "Account and all data permanently deleted"}
