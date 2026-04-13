@@ -29,7 +29,6 @@ oauth_states: dict = {}  # Use Redis in production (Day 38)
 
 @router.get("/connect/google")
 async def connect_google(business_id: str):
-    # No login required — link comes from onboarding email
     state = secrets.token_urlsafe(32)
     oauth_states[state] = {"business_id": business_id, "platform": "google"}
     auth_url = (
@@ -76,7 +75,6 @@ async def google_callback(code: str, state: str, db: AsyncSession = Depends(get_
     )
     db.add(integration)
 
-    # Update onboarding step
     from sqlalchemy import select, update
     await db.execute(
         update(Business)
@@ -85,27 +83,29 @@ async def google_callback(code: str, state: str, db: AsyncSession = Depends(get_
     )
     await db.commit()
 
-    # Trigger onboarding email 2 in the background
-    biz_result = await db.execute(select(Business).where(Business.id == state_data["business_id"]))
-    biz = biz_result.scalar_one_or_none()
-    if biz:
-        user_result = await db.execute(select(User).where(User.id == biz.owner_id))
-        usr = user_result.scalar_one_or_none()
-        if usr:
-            first_name = (usr.full_name or "").split()[0] or "there"
-            from email_system.sender import email_sender
-            asyncio.create_task(
-                email_sender.send_onboarding_step(
-                    step=2,
-                    business_id=state_data["business_id"],
-                    user_email=usr.email,
-                    first_name=first_name,
-                    business_name=biz.name,
-                    db=db
-                )
-            )
+    # Trigger onboarding email 2 in background with its own db session
+    business_id_copy = state_data["business_id"]
+    async def send_email_2():
+        from database.session import AsyncSessionLocal
+        from email_system.sender import email_sender
+        async with AsyncSessionLocal() as new_db:
+            biz_result = await new_db.execute(select(Business).where(Business.id == business_id_copy))
+            biz = biz_result.scalar_one_or_none()
+            if biz:
+                user_result = await new_db.execute(select(User).where(User.id == biz.owner_id))
+                usr = user_result.scalar_one_or_none()
+                if usr:
+                    first_name = (usr.full_name or "").split()[0] or "there"
+                    await email_sender.send_onboarding_step(
+                        step=2,
+                        business_id=business_id_copy,
+                        user_email=usr.email,
+                        first_name=first_name,
+                        business_name=biz.name,
+                        db=new_db
+                    )
+    asyncio.create_task(send_email_2())
 
-    # Show a friendly success page — the user is on their phone/browser
     return HTMLResponse("""
     <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
     <div style="font-size:48px">✅</div>
@@ -167,25 +167,28 @@ async def meta_callback(code: str, state: str, db: AsyncSession = Depends(get_db
     )
     await db.commit()
 
-    # Trigger onboarding email 3 in the background
-    biz_result = await db.execute(select(Business).where(Business.id == state_data["business_id"]))
-    biz = biz_result.scalar_one_or_none()
-    if biz:
-        user_result = await db.execute(select(User).where(User.id == biz.owner_id))
-        usr = user_result.scalar_one_or_none()
-        if usr:
-            first_name = (usr.full_name or "").split()[0] or "there"
-            from email_system.sender import email_sender
-            asyncio.create_task(
-                email_sender.send_onboarding_step(
-                    step=3,
-                    business_id=state_data["business_id"],
-                    user_email=usr.email,
-                    first_name=first_name,
-                    business_name=biz.name,
-                    db=db
-                )
-            )
+    # Trigger onboarding email 3 in background with its own db session
+    business_id_copy = state_data["business_id"]
+    async def send_email_3():
+        from database.session import AsyncSessionLocal
+        from email_system.sender import email_sender
+        async with AsyncSessionLocal() as new_db:
+            biz_result = await new_db.execute(select(Business).where(Business.id == business_id_copy))
+            biz = biz_result.scalar_one_or_none()
+            if biz:
+                user_result = await new_db.execute(select(User).where(User.id == biz.owner_id))
+                usr = user_result.scalar_one_or_none()
+                if usr:
+                    first_name = (usr.full_name or "").split()[0] or "there"
+                    await email_sender.send_onboarding_step(
+                        step=3,
+                        business_id=business_id_copy,
+                        user_email=usr.email,
+                        first_name=first_name,
+                        business_name=biz.name,
+                        db=new_db
+                    )
+    asyncio.create_task(send_email_3())
 
     return HTMLResponse("""
     <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
