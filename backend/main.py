@@ -4,9 +4,18 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from dotenv import load_dotenv
+from datetime import datetime
 import os
+import sentry_sdk
 
 load_dotenv(dotenv_path="../.env")
+
+# Sentry must be initialized before app
+sentry_sdk.init(
+    dsn=os.getenv("SENTRY_DSN", ""),
+    traces_sample_rate=0.1,
+    environment=os.getenv("ENVIRONMENT", "development")
+)
 
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -28,6 +37,30 @@ app.add_middleware(
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "version": "0.1.0"}
+
+@app.get("/health/detailed")
+async def detailed_health():
+    import redis.asyncio as aioredis
+    import asyncpg
+
+    health = {"api": "ok", "timestamp": datetime.utcnow().isoformat()}
+
+    try:
+        r = await aioredis.from_url(os.getenv("REDIS_URL"))
+        await r.ping()
+        health["redis"] = "ok"
+    except Exception as e:
+        health["redis"] = f"error: {str(e)}"
+
+    try:
+        conn = await asyncpg.connect(os.getenv("DATABASE_URL").replace("+asyncpg", ""))
+        await conn.fetchval("SELECT 1")
+        await conn.close()
+        health["database"] = "ok"
+    except Exception as e:
+        health["database"] = f"error: {str(e)}"
+
+    return health
 
 from auth.router import router as auth_router
 app.include_router(auth_router)
