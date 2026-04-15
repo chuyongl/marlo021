@@ -96,7 +96,7 @@ class EmailSender:
             email_type="morning_briefing",
             business_id=str(business.id),
             db=db,
-            reply_to=f"reply+{business.id}@{inbound.split('@')[1]}" if inbound else None
+            reply_to=f"reply+{business.id}@reply.marlo021.ai"
         )
 
     async def send_onboarding_step(
@@ -143,7 +143,8 @@ class EmailSender:
             html_body=html,
             email_type=f"onboarding_{step}",
             business_id=business_id,
-            db=db
+            db=db,
+            reply_to=f"reply+{business_id}@reply.marlo021.ai"
         )
 
 email_sender = EmailSender()
