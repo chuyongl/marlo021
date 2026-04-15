@@ -107,7 +107,7 @@ clean composition optimized for {platform.replace('_', ' ')} format.
         """
         from agent.brain import brain
 
-        temp_dir = os.environ.get("TEMP", "C:\\Temp")
+        temp_dir = os.environ.get("TEMP", "/tmp")
 
         # Download the enhanced image
         async with httpx.AsyncClient() as client:
