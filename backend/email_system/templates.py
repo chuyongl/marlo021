@@ -193,10 +193,16 @@ def onboarding_email_2(first_name: str, business_id: str, base_url: str) -> str:
       <p style="font-size:14px;color:{TEXT_COLOR};margin:0 0 8px 0;line-height:1.6;">
         This lets me post to Instagram, run Facebook ads, and read your audience data.
       </p>
-      <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 16px 0;">
-        ⚠️ Make sure your Instagram is set as a <strong>Business account</strong> first.
-        On your phone: Instagram → Settings → Account → Switch to Professional Account → Business.
-        Already done? You're all set.
+      <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 8px 0;">
+        ⚠️ Make sure your Instagram is set as a <strong>Business account</strong> first:
+      </p>
+      <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 8px 0;line-height:1.6;">
+        On your phone: Instagram → Settings → <strong>Account type and tools</strong> → <strong>Switch to professional account</strong> → Business
+      </p>
+      <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 16px 0;line-height:1.6;">
+        You'll also need a <strong>Facebook Page</strong> connected to your Instagram.
+        <a href="https://www.facebook.com/pages/creation/" style="color:{BRAND_COLOR};">Create a free Facebook Page here</a> if you don't have one,
+        then connect it in Instagram → Settings → Account → Linked Accounts.
       </p>
       {approve_button("🟣 Connect Facebook & Instagram →", connect_url, "#7C3AED")}
     </div>
@@ -333,11 +339,16 @@ def photo_response_template(first_name: str, original_caption: str,
     """Sent back to user after they email a product photo."""
     previews_html = ""
     for p in platform_previews:
+        image_html = ""
+        if p.get("image_url"):
+            image_html = f"""<img src="{p['image_url']}" alt="{p['platform_label']}"
+                style="width:100%;max-width:400px;border-radius:8px;margin-bottom:10px;display:block;" />"""
         previews_html += f"""
-        <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid {BORDER_COLOR};">
-          <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 6px 0;">
+        <div style="margin-bottom:24px;padding-bottom:24px;border-bottom:1px solid {BORDER_COLOR};">
+          <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 8px 0;">
             📱 {p['platform_label']}
           </p>
+          {image_html}
           <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 10px 0;font-style:italic;">
             Caption: "{p['caption'][:120]}..."
           </p>
