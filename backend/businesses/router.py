@@ -39,17 +39,17 @@ async def create_business(
     # Send onboarding email 1 in the background
     from email_system.sender import email_sender
     async def send_email_background():
-    from database.session import AsyncSessionLocal
-    async with AsyncSessionLocal() as new_db:
-        await email_sender.send_onboarding_step(
-            step=1,
-            business_id=str(business.id),
-            user_email=user.email,
-            first_name=first_name,
-            business_name=business.name,
-            db=new_db
-        )
-asyncio.create_task(send_email_background())
+        from database.session import AsyncSessionLocal
+        async with AsyncSessionLocal() as new_db:
+            await email_sender.send_onboarding_step(
+                step=1,
+                business_id=str(business.id),
+                user_email=user.email,
+                first_name=first_name,
+                business_name=business.name,
+                db=new_db
+            )
+    asyncio.create_task(send_email_background())
 
     return {"business_id": str(business.id), "name": business.name}
 
