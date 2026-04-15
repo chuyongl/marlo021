@@ -195,7 +195,7 @@ async def handle_photo_upload(business, user, attachments: list, message_text: s
 
     # Save to temp file (Windows temp dir)
     import tempfile, aiofiles
-    temp_dir = os.environ.get("TEMP", "C:\\Temp")
+    temp_dir = os.environ.get("TEMP", "/tmp")
     temp_path = os.path.join(temp_dir, f"marlo_upload_{uuid.uuid4().hex}.jpg")
 
     img = Image.open(io.BytesIO(image_data))
