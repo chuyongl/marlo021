@@ -23,7 +23,7 @@ GOOGLE_SCOPES = " ".join([
     "https://www.googleapis.com/auth/webmasters.readonly",
     "openid", "email"
 ])
-META_SCOPES = "ads_management,ads_read,instagram_basic,instagram_content_publish,pages_read_engagement"
+META_SCOPES = "pages_show_list,pages_read_engagement,instagram_basic,instagram_content_publish"
 
 oauth_states: dict = {}  # Use Redis in production (Day 38)
 
@@ -129,7 +129,28 @@ async def connect_meta(business_id: str):
     return RedirectResponse(auth_url)
 
 @router.get("/callback/meta")
-async def meta_callback(code: str, state: str, db: AsyncSession = Depends(get_db)):
+async def meta_callback(
+    code: str = None,
+    state: str = None,
+    error: str = None,
+    error_code: str = None,
+    error_message: str = None,
+    db: AsyncSession = Depends(get_db)
+):
+    # Handle Meta returning an error (e.g. invalid scopes, user denied)
+    if error or error_code:
+        return HTMLResponse(f"""
+        <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
+        <div style="font-size:48px">❌</div>
+        <h2 style="color:#cc0000">Connection failed</h2>
+        <p style="color:#666">{error_message or error or 'Unknown error'}</p>
+        <p style="color:#999;font-size:14px">Please close this tab and try again.</p>
+        </body></html>
+        """)
+
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
     state_data = oauth_states.pop(state, None)
     if not state_data:
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
@@ -147,6 +168,16 @@ async def meta_callback(code: str, state: str, db: AsyncSession = Depends(get_db
             }
         )
         tokens = response.json()
+
+    if "error" in tokens:
+        return HTMLResponse(f"""
+        <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
+        <div style="font-size:48px">❌</div>
+        <h2 style="color:#cc0000">Connection failed</h2>
+        <p style="color:#666">{tokens['error'].get('message', 'Token exchange failed')}</p>
+        <p style="color:#999;font-size:14px">Please close this tab and try again.</p>
+        </body></html>
+        """)
 
     from security.encryption import encrypt_token
     integration = PlatformIntegration(
