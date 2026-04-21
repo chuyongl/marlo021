@@ -195,7 +195,7 @@ export function Landing() {
 
       {/* NAV */}
       <nav>
-        <a className="logo" href="#">marlo<span>.</span></a>
+        <a className="logo" href="/">marlo<span>.</span></a>
         <div className="nav-links">
           <a className="nav-link" href="#how">How it works</a>
           <a className="nav-link" href="#features">Features</a>
@@ -376,10 +376,10 @@ export function Landing() {
 
       {/* FOOTER */}
       <footer>
-        <a className="logo" href="#">marlo<span>.</span></a>
+        <a className="logo" href="/">marlo<span>.</span></a>
         <div className="footer-links">
-          <a href="#">Privacy</a>
-          <a href="#">Terms</a>
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
           <a href="mailto:hello@marlo021.ai">Contact</a>
         </div>
         <p style={{fontSize:'13px',color:'var(--muted)'}}>© 2026 Marlo. All rights reserved.</p>
