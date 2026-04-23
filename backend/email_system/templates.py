@@ -246,16 +246,17 @@ def onboarding_email_2(first_name: str, business_id: str, base_url: str, fronten
             <strong>Step A — Switch to Business account:</strong><br>
             Instagram → ☰ → Settings → <strong>Account type and tools</strong> →
             <strong>Switch to Professional Account</strong> → Business.<br><br>
-            <strong>Step B — Link your Facebook account &amp; Page:</strong><br>
-            Instagram → ☰ → Settings → <strong>Accounts Center</strong> →
+            <strong>Step B — Link your Instagram to Facebook (easiest on desktop):</strong><br>
+            Go to <a href="https://accountscenter.facebook.com" style="color:#7C3AED;font-weight:600;">accountscenter.facebook.com</a>
+            while logged into your Facebook account →
             <strong>Profiles and personal details</strong> → <strong>Add accounts</strong> →
-            add the Facebook account you used to create your Facebook Page.
+            add your Instagram account.
           </p>
           <div style="background:#FEF9C3;border-radius:6px;padding:10px 12px;margin-top:6px;margin-bottom:6px;">
             <p style="font-size:12px;color:#854D0E;margin:0;line-height:1.5;">
-              ⚠️ Use the <strong>same Facebook account</strong> that owns your Facebook Page.
-              Instagram, your Facebook account, and your Facebook Page all need to be
-              in the same Accounts Center.
+              ⚠️ Log into Facebook with the account that owns your Facebook Page.
+              Once your Instagram is added to that Accounts Center,
+              the Facebook Page link happens automatically.
             </p>
           </div>
           <p style="font-size:12px;color:#16A34A;margin:0 0 4px 0;line-height:1.5;font-weight:600;">

@@ -6,13 +6,13 @@ const FAQS = [
     id: 'why-facebook-page',
     category: 'Facebook & Instagram',
     q: 'Why do I need a Facebook Page just for Instagram?',
-    a: `Meta's system requires Instagram Business accounts to be linked to a Facebook Page before the Instagram API works. Think of the Facebook Page as the "business license" that unlocks Instagram's business features — ad accounts, permissions, and API access all flow through it.\n\nThe Page doesn't need to be active or have any posts. It just needs to exist and be connected to your Instagram. Creating one takes about 2 minutes at facebook.com/pages/creation.`,
+    a: `Meta's system requires Instagram Business accounts to be linked to a Facebook Page before the Instagram API works. Think of the Facebook Page as the "business license" that unlocks Instagram's business features — ad accounts, permissions, and API access all flow through it.\n\nThe Page doesn't need to be active or have any posts. It just needs to exist and be connected to your Instagram. Creating one takes about 2 minutes at facebook.com/pages/create.`,
   },
   {
     id: 'why-business-account',
     category: 'Facebook & Instagram',
     q: "Why can't Marlo post to my personal Instagram?",
-    a: `Instagram only allows third-party tools to post to Business or Creator accounts. Personal accounts don't have API access — this is a rule set by Instagram, not Marlo.\n\nSwitching is free and takes 30 seconds. Go to Instagram → ☰ → Settings → Account type and tools → Switch to Professional Account → Business. Your existing posts, followers, and username all stay exactly the same.`,
+    a: `Instagram only allows third-party tools to post to Business or Creator accounts. Personal accounts don't have API access — this is a rule set by Instagram, not Marlo.\n\nSwitching is free and takes about 2 minutes:\n\nStep A — Switch to Business account:\nInstagram → ☰ → Settings → Account type and tools → Switch to Professional Account → Business.\n\nStep B — Link your Instagram to Facebook (easiest on desktop):\nGo to accountscenter.facebook.com while logged into the Facebook account that owns your Facebook Page → Profiles and personal details → Add accounts → add your Instagram account.\n\n⚠️ Make sure you're logged into the Facebook account that owns your Facebook Page. Once your Instagram is in that Accounts Center, the Page link happens automatically.\n\nYour existing posts, followers, and username all stay exactly the same.`,
   },
   {
     id: 'meta-permissions',
@@ -114,7 +114,7 @@ export function Help() {
         .faq-chevron { color:#444; font-size:20px; transition:transform 0.25s, color 0.2s; flex-shrink:0; line-height:1; }
         .faq-item.open .faq-chevron { transform:rotate(45deg); color:#c8f060; }
         .faq-answer { font-size:14px; color:#888; line-height:1.8; max-height:0; overflow:hidden; transition:max-height 0.35s ease, padding 0.35s ease; white-space:pre-line; }
-        .faq-item.open .faq-answer { max-height:600px; padding-bottom:20px; }
+        .faq-item.open .faq-answer { max-height:800px; padding-bottom:20px; }
         .help-cta { background:#141414; border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:36px; text-align:center; margin-top:48px; }
         .help-cta h3 { font-family:'Instrument Serif',serif; font-size:26px; color:#ffffff; margin-bottom:10px; letter-spacing:-0.5px; }
         .help-cta p { font-size:14px; color:#666; margin-bottom:20px; line-height:1.6; }
