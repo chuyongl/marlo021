@@ -378,6 +378,7 @@ export function Landing() {
       <footer>
         <a className="logo" href="/">marlo<span>.</span></a>
         <div className="footer-links">
+          <a href="/help">Help & FAQ</a>
           <a href="/privacy">Privacy</a>
           <a href="/terms">Terms</a>
           <a href="mailto:hello@marlo021.ai">Contact</a>
