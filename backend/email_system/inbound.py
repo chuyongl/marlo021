@@ -115,10 +115,22 @@ async def handle_text_reply(business, user, message: str, db: AsyncSession):
 
     # Step 5+: fully onboarded — use the full agent brain
     from agent.brain import brain
-    from agent.context_builder import context_builder
     from agent.executor import executor
 
-    context = await context_builder.build_full_context(str(business.id), db)
+    # Try to build full context, fall back to basic context if module missing
+    try:
+        from agent.context_builder import context_builder
+        context = await context_builder.build_full_context(str(business.id), db)
+    except (ImportError, Exception):
+        context = {
+            "business_name": business.name,
+            "industry": business.industry,
+            "description": business.description or "",
+            "target_audience": business.target_audience or "",
+            "tone_of_voice": business.tone_of_voice or "",
+            "monthly_ad_budget": str(business.monthly_ad_budget or 300),
+        }
+
     result = await brain.think(
         user_message=message,
         context=context,
