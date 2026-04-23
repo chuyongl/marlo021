@@ -13,6 +13,8 @@ router = APIRouter(prefix="/integrations", tags=["integrations"])
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+MAILCHIMP_CLIENT_ID = os.getenv("MAILCHIMP_CLIENT_ID")
+MAILCHIMP_CLIENT_SECRET = os.getenv("MAILCHIMP_CLIENT_SECRET")
 APP_BASE = os.getenv("APP_BASE_URL", "http://localhost:8000")
 FRONTEND = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
@@ -83,7 +85,6 @@ async def google_callback(code: str, state: str, db: AsyncSession = Depends(get_
     )
     await db.commit()
 
-    # Trigger onboarding email 2 in background with its own db session
     business_id_copy = state_data["business_id"]
     async def send_email_2():
         from database.session import AsyncSessionLocal
@@ -137,7 +138,6 @@ async def meta_callback(
     error_message: str = None,
     db: AsyncSession = Depends(get_db)
 ):
-    # Handle Meta returning an error (e.g. invalid scopes, user denied)
     if error or error_code:
         return HTMLResponse(f"""
         <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
@@ -198,7 +198,6 @@ async def meta_callback(
     )
     await db.commit()
 
-    # Trigger onboarding email 3 in background with its own db session
     business_id_copy = state_data["business_id"]
     async def send_email_3():
         from database.session import AsyncSessionLocal
@@ -226,6 +225,136 @@ async def meta_callback(
     <div style="font-size:48px">✅</div>
     <h2>Facebook & Instagram connected!</h2>
     <p style="color:#666">Check your email — Marlo is sending the next step.</p>
+    <p style="color:#999;font-size:14px">You can close this tab.</p>
+    </body></html>
+    """)
+
+@router.get("/connect/mailchimp")
+async def connect_mailchimp(business_id: str):
+    """Start Mailchimp OAuth — if no credentials configured, skip to step 4."""
+    if not MAILCHIMP_CLIENT_ID:
+        return await _advance_to_step_4(business_id, skipped=True)
+
+    state = secrets.token_urlsafe(32)
+    oauth_states[state] = {"business_id": business_id, "platform": "mailchimp"}
+    auth_url = (
+        f"https://login.mailchimp.com/oauth2/authorize"
+        f"?response_type=code"
+        f"&client_id={MAILCHIMP_CLIENT_ID}"
+        f"&redirect_uri={APP_BASE}/integrations/callback/mailchimp"
+        f"&state={state}"
+    )
+    return RedirectResponse(auth_url)
+
+@router.get("/callback/mailchimp")
+async def mailchimp_callback(
+    code: str = None,
+    state: str = None,
+    error: str = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Handle Mailchimp OAuth callback."""
+    if error or not code or not state:
+        return HTMLResponse(f"""
+        <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
+        <div style="font-size:48px">❌</div>
+        <h2 style="color:#cc0000">Mailchimp connection failed</h2>
+        <p style="color:#666">{error or 'Something went wrong.'}</p>
+        <p style="color:#999;font-size:14px">Please close this tab and try again, or skip this step.</p>
+        </body></html>
+        """)
+
+    state_data = oauth_states.pop(state, None)
+    if not state_data:
+        raise HTTPException(status_code=400, detail="Invalid OAuth state")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://login.mailchimp.com/oauth2/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": MAILCHIMP_CLIENT_ID,
+                "client_secret": MAILCHIMP_CLIENT_SECRET,
+                "redirect_uri": f"{APP_BASE}/integrations/callback/mailchimp",
+                "code": code
+            }
+        )
+        tokens = response.json()
+
+    if "error" in tokens or "access_token" not in tokens:
+        return HTMLResponse(f"""
+        <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
+        <div style="font-size:48px">❌</div>
+        <h2 style="color:#cc0000">Mailchimp connection failed</h2>
+        <p style="color:#666">{tokens.get('error', 'Token exchange failed')}</p>
+        <p style="color:#999;font-size:14px">Please close this tab and try again.</p>
+        </body></html>
+        """)
+
+    from security.encryption import encrypt_token
+    integration = PlatformIntegration(
+        id=uuid.uuid4(),
+        business_id=state_data["business_id"],
+        platform="mailchimp",
+        access_token=encrypt_token(tokens["access_token"]),
+        scopes=["mailchimp"],
+        is_active=True,
+        created_at=datetime.utcnow()
+    )
+    db.add(integration)
+    await db.commit()
+
+    return await _advance_to_step_4(state_data["business_id"], connected=True)
+
+@router.get("/onboarding/skip-email")
+async def skip_mailchimp(business_id: str):
+    """User chose to skip Mailchimp — advance to step 4."""
+    return await _advance_to_step_4(business_id, skipped=True)
+
+async def _advance_to_step_4(business_id: str, connected: bool = False, skipped: bool = False):
+    """Update onboarding step to 4 and send email 4."""
+    async def send_email_4():
+        from database.session import AsyncSessionLocal
+        from email_system.sender import email_sender
+        from sqlalchemy import select, update as sql_update
+        async with AsyncSessionLocal() as new_db:
+            await new_db.execute(
+                sql_update(Business)
+                .where(Business.id == business_id)
+                .values(onboarding_step=4)
+            )
+            await new_db.commit()
+
+            biz_result = await new_db.execute(select(Business).where(Business.id == business_id))
+            biz = biz_result.scalar_one_or_none()
+            if biz:
+                user_result = await new_db.execute(select(User).where(User.id == biz.owner_id))
+                usr = user_result.scalar_one_or_none()
+                if usr:
+                    first_name = (usr.full_name or "").split()[0] or "there"
+                    await email_sender.send_onboarding_step(
+                        step=4,
+                        business_id=business_id,
+                        user_email=usr.email,
+                        first_name=first_name,
+                        business_name=biz.name,
+                        db=new_db
+                    )
+
+    asyncio.create_task(send_email_4())
+
+    if skipped:
+        message = "No problem!"
+        sub = "Marlo will work with Google and Facebook for now. You can connect Mailchimp anytime by replying to any Marlo email."
+    else:
+        message = "Mailchimp connected!"
+        sub = "Check your email — Marlo is sending the next step."
+
+    return HTMLResponse(f"""
+    <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
+    <div style="font-size:48px">✅</div>
+    <h2 style="color:#1a1a1a">{message}</h2>
+    <p style="color:#666">{sub}</p>
     <p style="color:#999;font-size:14px">You can close this tab.</p>
     </body></html>
     """)
