@@ -133,6 +133,7 @@ def morning_briefing_template(
 
 def onboarding_email_1(business_name: str, first_name: str, business_id: str, base_url: str) -> str:
     connect_url = f"{base_url}/integrations/connect/google?business_id={business_id}"
+    skip_url = f"{base_url}/integrations/skip-google?business_id={business_id}"
     content = f"""
     <p style="font-size:16px;font-weight:600;color:{TEXT_COLOR};margin:0 0 8px 0;">
       👋 Welcome {first_name}! I'm Marlo.
@@ -141,26 +142,63 @@ def onboarding_email_1(business_name: str, first_name: str, business_id: str, ba
       I'm your AI marketing assistant for {business_name}. Setting me up takes about 20 minutes
       across 4 quick emails. Let's start with Google.
     </p>
+
     <div style="background:#F0F9FF;border-radius:8px;padding:20px;margin-bottom:24px;">
       <p style="font-size:13px;font-weight:600;color:#0369A1;margin:0 0 12px 0;">
         STEP 1 OF 4 — Connect Google Ads &amp; Analytics
       </p>
-      <p style="font-size:14px;color:{TEXT_COLOR};margin:0 0 16px 0;line-height:1.6;">
+      <p style="font-size:14px;color:{TEXT_COLOR};margin:0 0 12px 0;line-height:1.6;">
         This lets me manage your Google Ads campaigns and see your website traffic.
         It takes about 2 minutes — you'll sign into Google and click Allow.
       </p>
+
+      <!-- Value prop -->
+      <p style="font-size:13px;color:{TEXT_COLOR};font-weight:600;margin:0 0 8px 0;">
+        Why Google Ads is worth connecting:
+      </p>
+      <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 12px 0;line-height:1.7;">
+        ✓ Show up at the top of Google when people search for what you sell<br>
+        ✓ Only pay when someone actually clicks your ad<br>
+        ✓ Marlo optimizes your budget daily so every dollar works harder<br>
+        ✓ See exactly what you spent and what you got in your morning email
+      </p>
+
+      <!-- Safety reassurance -->
+      <div style="background:#EFF6FF;border-radius:6px;padding:10px 14px;margin-bottom:16px;">
+        <p style="font-size:13px;color:#1D4ED8;margin:0;line-height:1.6;">
+          🛡️ <strong>You're always in control.</strong> Marlo will never spend a dollar
+          without your approval. If you don't tap Approve in your morning email,
+          nothing runs — and nothing gets charged.
+        </p>
+      </div>
+
       <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 16px 0;">
         <strong>What I can do:</strong> ✓ Manage Google Ads · ✓ Read Analytics · ✓ View Business Profile<br>
         <strong>What I cannot do:</strong> ✗ See your billing info · ✗ Access Gmail · ✗ Share your data
       </p>
+
       {approve_button("🔵 Connect Google →", connect_url, BRAND_COLOR)}
     </div>
+
+    <!-- Don't have Google Ads yet -->
+    <div style="background:#F9FAFB;border:1px solid {BORDER_COLOR};border-radius:8px;padding:16px;margin-bottom:20px;">
+      <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 6px 0;">
+        Don't have Google Ads yet?
+      </p>
+      <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 10px 0;line-height:1.5;">
+        Just click the button above and sign in with your Google account.
+        Google will walk you through creating a free account in about 3 minutes.<br><br>
+        When asked, choose <strong>"Switch to Expert Mode"</strong> then
+        <strong>"Create account without a campaign"</strong> — Marlo will set up
+        your first campaign for you.
+      </p>
+    </div>
+
+    <!-- Skip option -->
     <p style="font-size:13px;color:{MUTED_COLOR};margin:0;line-height:1.6;">
-      <strong>Don't have Google Ads yet?</strong> That's fine — just click the button above,
-      sign in with your Google account, and Google will walk you through creating a free account
-      in about 3 minutes. When asked, choose "Switch to Expert Mode" and then
-      "Create account without a campaign" — Marlo will set up your first campaign for you.<br><br>
-      Need help? Just reply to this email with any questions.
+      Want to start with just Instagram?
+      <a href="{skip_url}" style="color:{MUTED_COLOR};font-weight:600;">Skip Google for now →</a><br>
+      <span style="font-size:12px;">You can connect Google Ads anytime later by replying to any Marlo email.</span>
     </p>"""
     return base_template(content, preheader="Step 1 of 4 — Connect Google (2 minutes)")
 
