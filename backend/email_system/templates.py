@@ -167,7 +167,7 @@ def onboarding_email_2(first_name: str, business_id: str, base_url: str, fronten
     """Step 2: Connect Meta/Instagram — sent automatically after Google connects."""
     connect_url = f"{base_url}/integrations/connect/meta?business_id={business_id}"
     retry_url = f"{base_url}/integrations/connect/meta?business_id={business_id}&retry=true"
-    skip_url = f"{base_url}/onboarding/skip-meta?business_id={business_id}"
+    skip_url = f"{base_url}/integrations/skip-meta?business_id={business_id}"
 
     # FAQ links point to frontend /help page with anchors
     faq_base = frontend_url or "https://marlo021.ai"
@@ -345,7 +345,7 @@ def onboarding_email_3(first_name: str, business_id: str, base_url: str) -> str:
         and track open rates and clicks.
       </p>
       <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 16px 0;">
-        Don't use Mailchimp? <a href="{base_url}/onboarding/skip-email?business_id={business_id}"
+        Don't use Mailchimp? <a href="{base_url}/integrations/skip-mailchimp?business_id={business_id}"
         style="color:{BRAND_COLOR};">Skip this step</a> — you can connect it later.
       </p>
       {approve_button("🟡 Connect Mailchimp →", connect_url, "#D97706")}
