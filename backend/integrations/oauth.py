@@ -306,7 +306,7 @@ async def mailchimp_callback(
 
     return await _advance_to_step_4(state_data["business_id"], connected=True)
 
-@router.get("/onboarding/skip-email")
+@router.get("/skip-mailchimp")
 async def skip_mailchimp(business_id: str):
     """User chose to skip Mailchimp — advance to step 4."""
     return await _advance_to_step_4(business_id, skipped=True)

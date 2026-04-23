@@ -334,7 +334,7 @@ def onboarding_email_3(first_name: str, business_id: str, base_url: str) -> str:
         and track open rates and clicks.
       </p>
       <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 16px 0;">
-        Don't use Mailchimp? <a href="{base_url}/onboarding/skip-email?business_id={business_id}"
+        Don't use Mailchimp? <a href="{base_url}/integrations/skip-mailchimp?business_id={business_id}"
         style="color:{BRAND_COLOR};">Skip this step</a> — you can connect it later.
       </p>
       {approve_button("🟡 Connect Mailchimp →", connect_url, "#D97706")}
