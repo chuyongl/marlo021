@@ -70,7 +70,7 @@ const FAQS = [
   },
 ]
 
-const CATEGORIES = [...new Set(FAQS.map(f => f.category))]
+const CATEGORIES = Array.from(new Set(FAQS.map(f => f.category)))
 
 export function Help() {
   const location = useLocation()
