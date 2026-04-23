@@ -31,14 +31,12 @@ class EmailSender:
                 "subject": subject,
                 "html": html_body,
             }
-            # reply_to lets users reply directly to the inbound parsing address
             if reply_to:
                 params["reply_to"] = reply_to
 
             result = resend.Emails.send(params)
             message_id = result.get("id", "")
 
-            # Log the email
             if db and business_id:
                 log = EmailLog(
                     id=uuid.uuid4(),
@@ -68,9 +66,7 @@ class EmailSender:
     ):
         from email_system.templates import morning_briefing_template
         base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
-        inbound = os.getenv("POSTMARK_INBOUND_ADDRESS", "")
 
-        # Build action list with approval tokens already in the database
         actions_for_email = []
         for action in pending_actions:
             actions_for_email.append({
@@ -111,13 +107,14 @@ class EmailSender:
     ):
         from email_system import templates
         base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
         extra = extra_data or {}
 
         if step == 1:
             html = templates.onboarding_email_1(business_name, first_name, business_id, base_url)
             subject = f"👋 Welcome {first_name}! Let's set up Marlo (Step 1 of 4)"
         elif step == 2:
-            html = templates.onboarding_email_2(first_name, business_id, base_url)
+            html = templates.onboarding_email_2(first_name, business_id, base_url, frontend_url)
             subject = "✅ Google connected! Now let's do Instagram (Step 2 of 4)"
         elif step == 3:
             html = templates.onboarding_email_3(first_name, business_id, base_url)
