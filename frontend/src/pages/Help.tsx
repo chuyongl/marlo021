@@ -40,9 +40,51 @@ const FAQS = [
   },
   {
     id: 'no-google-ads',
-    category: 'Google',
+    category: 'Google Ads',
     q: "I don't have a Google Ads account yet. Can I still sign up?",
     a: `Yes. When you click "Connect Google" in your onboarding email, just sign in with your Google account. If you don't have Google Ads yet, Google will walk you through creating a free account in about 3 minutes.\n\nWhen prompted, choose "Switch to Expert Mode" and then "Create account without a campaign." Marlo will set up your first campaign for you once you're connected.`,
+  },
+  {
+    id: 'what-is-google-ads',
+    category: 'Google Ads',
+    q: 'What is Google Ads and what does Marlo do with it?',
+    a: `Google Ads lets your business show up at the top of Google search results when people search for what you sell. For example, if you run a bakery in Seattle, your ad can appear when someone searches "bakery near me" or "fresh pastries Seattle."\n\nMarlo manages your Google Ads by:\n• Creating and optimizing search campaigns\n• Choosing the right keywords for your business\n• Adjusting bids to get the most clicks for your budget\n• Reporting on clicks, costs, and results every morning\n\nYou set the monthly budget. Marlo never spends more than that.`,
+  },
+  {
+    id: 'google-ads-cost',
+    category: 'Google Ads',
+    q: 'How much does Google Ads cost?',
+    a: `You set your own budget during Marlo signup — minimum $50/month, and you can change it anytime.\n\nYou pay Google directly for clicks on your ads (this is separate from Marlo's $99/month fee). A typical small business spends $150–$500/month on Google Ads. Marlo helps you spend that budget as efficiently as possible.\n\nYou only pay when someone actually clicks your ad — not just for showing it.`,
+  },
+  {
+    id: 'what-is-facebook-ads',
+    category: 'Facebook & Instagram Ads',
+    q: 'What is Facebook/Instagram Ads and what does Marlo do with it?',
+    a: `Facebook and Instagram Ads let you show your business to people based on their interests, location, and behavior — even if they've never searched for you. It's great for building awareness and driving foot traffic or online sales.\n\nMarlo manages your Meta ads by:\n• Creating and running ad campaigns on Facebook and Instagram\n• Designing ad copy and selecting images\n• Targeting the right audience for your business\n• Optimizing spend based on what's performing\n• Posting organic content to your Instagram automatically after your approval`,
+  },
+  {
+    id: 'facebook-ads-cost',
+    category: 'Facebook & Instagram Ads',
+    q: 'How much does Facebook/Instagram Ads cost?',
+    a: `Like Google Ads, you set your own budget and pay Meta directly for ad spend. This is separate from Marlo's $99/month fee.\n\nA typical small business spends $100–$400/month on Meta ads. You can start small and increase as you see results.\n\nMarlo's budget guardrails ensure you never exceed your set monthly limit.`,
+  },
+  {
+    id: 'what-is-mailchimp',
+    category: 'Mailchimp (Email Marketing)',
+    q: 'What is Mailchimp and what does Marlo do with it?',
+    a: `Mailchimp is an email marketing platform. If you have a list of customer emails, Marlo can use Mailchimp to send them newsletters, promotions, seasonal offers, and updates — automatically.\n\nMarlo manages your Mailchimp by:\n• Writing and sending email campaigns to your subscribers\n• Timing emails around your promotions and events\n• Tracking open rates and clicks\n• Including results in your weekly report\n\nMailchimp is optional — Marlo works great with just Google Ads and Instagram if you don't have an email list yet.`,
+  },
+  {
+    id: 'mailchimp-cost',
+    category: 'Mailchimp (Email Marketing)',
+    q: 'How much does Mailchimp cost?',
+    a: `Mailchimp has its own pricing that you pay directly to them (separate from Marlo's $99/month):\n\n• 0–500 subscribers: Free\n• 500–1,500 subscribers: ~$13/month\n• 1,500–5,000 subscribers: ~$20/month\n• Larger lists: scales up from there\n\nIf you're just starting out, Mailchimp's free plan is enough. You only need to upgrade when your list grows.\n\nDon't have a Mailchimp account? You can skip it during setup and connect it later anytime by replying to any Marlo email.`,
+  },
+  {
+    id: 'mailchimp-setup',
+    category: 'Mailchimp (Email Marketing)',
+    q: 'How do I connect Mailchimp to Marlo?',
+    a: `During onboarding (Step 3), you'll see a "Connect Mailchimp" button. Click it to authorize Marlo to access your Mailchimp account.\n\nIf you skipped it during setup, just reply to any Marlo email: "Connect my Mailchimp" and Marlo will send you the connection link.\n\nNote: Mailchimp OAuth credentials are required on Marlo's end to enable this. If the button doesn't work, reply to any Marlo email and we'll help you connect manually.`,
   },
   {
     id: 'data-security',
