@@ -339,19 +339,42 @@ def onboarding_email_3(first_name: str, business_id: str, base_url: str) -> str:
     </p>
     <div style="background:#FEFCE8;border-radius:8px;padding:20px;margin-bottom:24px;">
       <p style="font-size:13px;font-weight:600;color:#A16207;margin:0 0 12px 0;">
-        STEP 3 OF 4 — Connect Email Marketing
+        STEP 3 OF 4 — Connect Email Marketing (Optional)
       </p>
-      <p style="font-size:14px;color:{TEXT_COLOR};margin:0 0 16px 0;line-height:1.6;">
-        Connect Mailchimp so I can send email campaigns to your subscribers
+      <p style="font-size:14px;color:{TEXT_COLOR};margin:0 0 12px 0;line-height:1.6;">
+        Connect Mailchimp so Marlo can send email campaigns to your subscribers
         and track open rates and clicks.
       </p>
-      <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 16px 0;">
-        Don't use Mailchimp? <a href="{base_url}/integrations/skip-mailchimp?business_id={business_id}"
-        style="color:{BRAND_COLOR};">Skip this step</a> — you can connect it later.
+
+      <!-- Free tier callout -->
+      <div style="background:#F0FDF4;border-radius:6px;padding:10px 14px;margin-bottom:16px;">
+        <p style="font-size:13px;color:#15803D;margin:0;line-height:1.5;">
+          💚 <strong>Mailchimp is free for your first 500 subscribers.</strong>
+          No credit card needed to get started.
+        </p>
+      </div>
+
+      <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 16px 0;line-height:1.6;">
+        Don't have a Mailchimp account yet?
+        <a href="https://mailchimp.com/signup/" style="color:#D97706;font-weight:600;">
+          Create a free account here</a> — it takes 2 minutes.
+        Then come back to this email and click the button below.
       </p>
+
+      <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 16px 0;">
+        Already have Mailchimp? Just click below to connect it.
+      </p>
+
       {approve_button("🟡 Connect Mailchimp →", connect_url, "#D97706")}
+
+      <p style="font-size:12px;color:{MUTED_COLOR};margin:16px 0 0 0;">
+        Don't use email marketing yet?
+        <a href="{base_url}/integrations/skip-mailchimp?business_id={business_id}"
+           style="color:{MUTED_COLOR};font-weight:600;">Skip this step</a> —
+        you can connect Mailchimp anytime later by replying to any Marlo email.
+      </p>
     </div>"""
-    return base_template(content, preheader="Step 3 of 4 — Connect email (2 minutes)")
+    return base_template(content, preheader="Step 3 of 4 — Connect email marketing (free for 500 subscribers)")
 
 def onboarding_email_4(first_name: str, business_id: str, base_url: str) -> str:
     content = f"""
