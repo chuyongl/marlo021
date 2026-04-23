@@ -242,12 +242,22 @@ def onboarding_email_2(first_name: str, business_id: str, base_url: str, fronten
           <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 2px 0;">
             Instagram set to Business account
           </p>
-          <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 4px 0;line-height:1.5;">
-            On your phone: Instagram → ☰ → Settings →
-            <strong>Account type and tools</strong> →
-            <strong>Switch to Professional Account</strong> → Business →
-            connect your Facebook Page when prompted.
+          <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 4px 0;line-height:1.6;">
+            <strong>Step A — Switch to Business account:</strong><br>
+            Instagram → ☰ → Settings → <strong>Account type and tools</strong> →
+            <strong>Switch to Professional Account</strong> → Business.<br><br>
+            <strong>Step B — Link your Facebook account &amp; Page:</strong><br>
+            Instagram → ☰ → Settings → <strong>Accounts Center</strong> →
+            <strong>Profiles and personal details</strong> → <strong>Add accounts</strong> →
+            add the Facebook account you used to create your Facebook Page.
           </p>
+          <div style="background:#FEF9C3;border-radius:6px;padding:10px 12px;margin-top:6px;margin-bottom:6px;">
+            <p style="font-size:12px;color:#854D0E;margin:0;line-height:1.5;">
+              ⚠️ Use the <strong>same Facebook account</strong> that owns your Facebook Page.
+              Instagram, your Facebook account, and your Facebook Page all need to be
+              in the same Accounts Center.
+            </p>
+          </div>
           <p style="font-size:12px;color:#16A34A;margin:0 0 4px 0;line-height:1.5;font-weight:600;">
             ✓ Your existing account upgrades in place — no new account, all posts and followers stay.
           </p>
@@ -334,7 +344,7 @@ def onboarding_email_3(first_name: str, business_id: str, base_url: str) -> str:
         and track open rates and clicks.
       </p>
       <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 16px 0;">
-        Don't use Mailchimp? <a href="{base_url}/integrations/skip-mailchimp?business_id={business_id}"
+        Don't use Mailchimp? <a href="{base_url}/onboarding/skip-email?business_id={business_id}"
         style="color:{BRAND_COLOR};">Skip this step</a> — you can connect it later.
       </p>
       {approve_button("🟡 Connect Mailchimp →", connect_url, "#D97706")}
