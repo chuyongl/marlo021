@@ -11,7 +11,7 @@ class User(Base):
     __tablename__ = "users"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String, unique=True, nullable=False, index=True)
-    hashed_password = Column(String, nullable=True)  # nullable: email-only users don't need a password
+    hashed_password = Column(String, nullable=True)
     full_name = Column(String)
     is_active = Column(Boolean, default=True)
     stripe_customer_id = Column(String)
@@ -32,11 +32,10 @@ class Business(Base):
     logo_url = Column(String)
     website_url = Column(String)
     monthly_ad_budget = Column(Numeric(10, 2))
-    # Email preferences
-    briefing_time = Column(String, default="08:00")   # local time for morning email
+    briefing_time = Column(String, default="08:00")
     timezone = Column(String, default="America/New_York")
     email_notifications = Column(Boolean, default=True)
-    onboarding_step = Column(Integer, default=0)      # 0-5, tracks where they are in setup
+    onboarding_step = Column(Integer, default=0)
     onboarding_completed = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     owner = relationship("User", back_populates="businesses")
@@ -48,8 +47,8 @@ class PlatformIntegration(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     business_id = Column(UUID(as_uuid=True), ForeignKey("businesses.id"))
     platform = Column(String, nullable=False)
-    access_token = Column(Text)        # encrypted at rest
-    refresh_token = Column(Text)       # encrypted at rest
+    access_token = Column(Text)
+    refresh_token = Column(Text)
     token_expires_at = Column(DateTime)
     platform_account_id = Column(String)
     is_active = Column(Boolean, default=True)
@@ -101,10 +100,9 @@ class AgentAction(Base):
     action_parameters = Column(JSON)
     outcome = Column(JSON)
     requires_approval = Column(Boolean, default=False)
-    # Email approval tokens — the key new field
-    approval_token = Column(String, unique=True, index=True)  # one-click approve link token
-    decline_token = Column(String, unique=True, index=True)   # one-click decline link token
-    token_expires_at = Column(DateTime)                        # tokens expire after 48 hours
+    approval_token = Column(String, unique=True, index=True)
+    decline_token = Column(String, unique=True, index=True)
+    token_expires_at = Column(DateTime)
     approved_by = Column(UUID(as_uuid=True))
     approved_at = Column(DateTime)
     executed_at = Column(DateTime)
@@ -113,10 +111,9 @@ class AgentAction(Base):
 
 class EmailLog(Base):
     __tablename__ = "email_logs"
-    # Track every email sent to every user — for debugging deliverability
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     business_id = Column(UUID(as_uuid=True), ForeignKey("businesses.id"))
-    email_type = Column(String)       # morning_briefing | weekly_report | approval_needed | onboarding_1 etc.
+    email_type = Column(String)
     subject = Column(String)
     resend_message_id = Column(String)
     sent_at = Column(DateTime, default=datetime.utcnow)
@@ -126,16 +123,28 @@ class EmailLog(Base):
 
 class UserPhoto(Base):
     __tablename__ = "user_photos"
-    # Photos sent by users via email attachment
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     business_id = Column(UUID(as_uuid=True), ForeignKey("businesses.id"))
-    original_url = Column(String)     # raw image from email
-    enhanced_url = Column(String)     # after fal.ai enhancement
-    instagram_url = Column(String)    # 1080×1080
-    story_url = Column(String)        # 1080×1920
-    facebook_url = Column(String)     # 1200×628
-    google_display_url = Column(String)  # 1200×628 landscape
+    original_url = Column(String)
+    enhanced_url = Column(String)
+    instagram_url = Column(String)
+    story_url = Column(String)
+    facebook_url = Column(String)
+    google_display_url = Column(String)
     caption_instagram = Column(Text)
     caption_facebook = Column(Text)
-    status = Column(String, default="pending")  # pending | approved | posted
+    status = Column(String, default="pending")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class ContentFeedback(Base):
+    """Records every user approve/decline decision for learning."""
+    __tablename__ = "content_feedback"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    business_id = Column(UUID(as_uuid=True), ForeignKey("businesses.id"), index=True)
+    action_id = Column(UUID(as_uuid=True), ForeignKey("agent_actions.id"), nullable=True)
+    decision = Column(String, nullable=False)   # "approved" | "declined"
+    reason = Column(String, nullable=True)       # optional decline reason
+    content_type = Column(String, nullable=True) # "post" | "campaign" | "email"
+    platform = Column(String, nullable=True)     # "instagram" | "facebook" etc
+    qa_score = Column(Integer, nullable=True)    # QA score at time of generation
     created_at = Column(DateTime, default=datetime.utcnow)
