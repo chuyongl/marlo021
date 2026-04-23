@@ -116,6 +116,45 @@ async def google_callback(code: str, state: str, db: AsyncSession = Depends(get_
     </body></html>
     """)
 
+@router.get("/skip-google")
+async def skip_google(business_id: str):
+    """User chose to skip Google Ads — advance to step 2 and send email 2."""
+    async def send_email_2():
+        from database.session import AsyncSessionLocal
+        from email_system.sender import email_sender
+        from sqlalchemy import select, update as sql_update
+        async with AsyncSessionLocal() as new_db:
+            await new_db.execute(
+                sql_update(Business)
+                .where(Business.id == business_id)
+                .values(onboarding_step=2)
+            )
+            await new_db.commit()
+            biz_result = await new_db.execute(select(Business).where(Business.id == business_id))
+            biz = biz_result.scalar_one_or_none()
+            if biz:
+                user_result = await new_db.execute(select(User).where(User.id == biz.owner_id))
+                usr = user_result.scalar_one_or_none()
+                if usr:
+                    first_name = (usr.full_name or "").split()[0] or "there"
+                    await email_sender.send_onboarding_step(
+                        step=2,
+                        business_id=business_id,
+                        user_email=usr.email,
+                        first_name=first_name,
+                        business_name=biz.name,
+                        db=new_db
+                    )
+    asyncio.create_task(send_email_2())
+    return HTMLResponse("""
+    <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
+    <div style="font-size:48px">✅</div>
+    <h2 style="color:#1a1a1a">No problem!</h2>
+    <p style="color:#666">Marlo will start with Instagram. You can connect Google Ads anytime<br>by replying to any Marlo email.</p>
+    <p style="color:#999;font-size:14px">You can close this tab.</p>
+    </body></html>
+    """)
+
 @router.get("/connect/meta")
 async def connect_meta(business_id: str):
     state = secrets.token_urlsafe(32)
