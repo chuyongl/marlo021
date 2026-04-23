@@ -82,7 +82,6 @@ def morning_briefing_template(
     The daily morning briefing email.
     actions is a list of dicts with keys: title, description, approve_token, decline_token, risk_level, type
     """
-    # Yesterday's results section
     metrics_rows = ""
     for m in yesterday_metrics.get("highlights", []):
         metrics_rows += metric_row(
@@ -104,7 +103,6 @@ def morning_briefing_template(
     </table>
     """
 
-    # Actions needing approval
     actions_section = ""
     if actions:
         actions_section += section_divider()
@@ -178,40 +176,146 @@ def onboarding_email_1(business_name: str, first_name: str, business_id: str, ba
 def onboarding_email_2(first_name: str, business_id: str, base_url: str) -> str:
     """Step 2: Connect Meta/Instagram — sent automatically after Google connects."""
     connect_url = f"{base_url}/integrations/connect/meta?business_id={business_id}"
+    retry_url = f"{base_url}/integrations/connect/meta?business_id={business_id}&retry=true"
+    skip_url = f"{base_url}/onboarding/skip-meta?business_id={business_id}"
+
     content = f"""
-    <p style="font-size:16px;font-weight:600;color:#16A34A;margin:0 0 8px 0;">
+    <p style="font-size:16px;font-weight:600;color:#16A34A;margin:0 0 4px 0;">
       ✅ Google is connected!
     </p>
-    <p style="font-size:14px;color:{MUTED_COLOR};margin:0 0 24px 0;">
-      Great work {first_name}. Now let's connect Facebook and Instagram.
+    <p style="font-size:14px;color:{MUTED_COLOR};margin:0 0 28px 0;line-height:1.6;">
+      Great work {first_name}. One more connection and Marlo can start posting for you.
     </p>
 
+    <!-- MAIN CARD -->
     <div style="background:#F5F3FF;border-radius:8px;padding:20px;margin-bottom:24px;">
-      <p style="font-size:13px;font-weight:600;color:#7C3AED;margin:0 0 12px 0;">
+      <p style="font-size:13px;font-weight:600;color:#7C3AED;margin:0 0 16px 0;
+         text-transform:uppercase;letter-spacing:0.05em;">
         STEP 2 OF 4 — Connect Facebook &amp; Instagram
       </p>
-      <p style="font-size:14px;color:{TEXT_COLOR};margin:0 0 8px 0;line-height:1.6;">
-        This lets me post to Instagram, run Facebook ads, and read your audience data.
+
+      <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 14px 0;">
+        Before clicking connect, make sure you have these 3 things:
       </p>
-      <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 8px 0;">
-        ⚠️ Make sure your Instagram is set as a <strong>Business account</strong> first:
-      </p>
-      <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 8px 0;line-height:1.6;">
-        On your phone: Instagram → Settings → <strong>Account type and tools</strong> → <strong>Switch to professional account</strong> → Business
-      </p>
-      <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 16px 0;line-height:1.6;">
-        You'll also need a <strong>Facebook Page</strong> connected to your Instagram.
-        <a href="https://www.facebook.com/pages/creation/" style="color:{BRAND_COLOR};">Create a free Facebook Page here</a> if you don't have one,
-        then connect it in Instagram → Settings → Account → Linked Accounts.
-      </p>
+
+      <!-- Item 1 -->
+      <div style="display:flex;align-items:flex-start;margin-bottom:14px;">
+        <div style="min-width:22px;height:22px;background:#7C3AED;border-radius:50%;
+             color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:22px;
+             margin-right:12px;flex-shrink:0;">1</div>
+        <div>
+          <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 2px 0;">
+            A Facebook account
+          </p>
+          <p style="font-size:13px;color:{MUTED_COLOR};margin:0;line-height:1.5;">
+            Your personal Facebook account is fine. You'll use it to log in.
+          </p>
+        </div>
+      </div>
+
+      <!-- Item 2 -->
+      <div style="display:flex;align-items:flex-start;margin-bottom:14px;">
+        <div style="min-width:22px;height:22px;background:#7C3AED;border-radius:50%;
+             color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:22px;
+             margin-right:12px;flex-shrink:0;">2</div>
+        <div>
+          <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 2px 0;">
+            A Facebook Page for your business
+          </p>
+          <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 4px 0;line-height:1.5;">
+            Don't have one yet?
+            <a href="https://www.facebook.com/pages/creation/" style="color:#7C3AED;font-weight:600;">
+              Create a free Page here</a> — just give it your business name (2 min).
+          </p>
+          <p style="font-size:12px;color:{MUTED_COLOR};margin:0;line-height:1.5;font-style:italic;">
+            Not sure why you need this?
+            <a href="{base_url}/help/why-facebook-page" style="color:#7C3AED;">See explanation →</a>
+          </p>
+        </div>
+      </div>
+
+      <!-- Item 3 -->
+      <div style="display:flex;align-items:flex-start;margin-bottom:20px;">
+        <div style="min-width:22px;height:22px;background:#7C3AED;border-radius:50%;
+             color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:22px;
+             margin-right:12px;flex-shrink:0;">3</div>
+        <div>
+          <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 2px 0;">
+            Instagram set to Business account
+          </p>
+          <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 4px 0;line-height:1.5;">
+            On your phone: Instagram → ☰ → Settings →
+            <strong>Account type and tools</strong> →
+            <strong>Switch to Professional Account</strong> → Business →
+            connect your Facebook Page when prompted.
+          </p>
+          <p style="font-size:12px;color:#16A34A;margin:0 0 4px 0;line-height:1.5;font-weight:600;">
+            ✓ Your existing account upgrades in place — no new account, all posts and followers stay.
+          </p>
+          <p style="font-size:12px;color:{MUTED_COLOR};margin:0;line-height:1.5;font-style:italic;">
+            Can't find the option?
+            <a href="mailto:hello@marlo021.ai?subject=Help with Instagram Business account"
+               style="color:#7C3AED;">Reply and I'll walk you through it.</a>
+          </p>
+        </div>
+      </div>
+
+      <!-- PRE-BUTTON NOTE -->
+      <div style="background:#EDE9FE;border-radius:6px;padding:12px 14px;margin-bottom:16px;">
+        <p style="font-size:13px;color:#5B21B6;margin:0;line-height:1.6;">
+          <strong>What happens when you click:</strong> You'll go to Facebook's official
+          login page. You'll see a list of permissions — this is normal and expected.
+          Select your Business Page and click <strong>Allow</strong> to finish.
+          Marlo never sees your password or personal messages.
+        </p>
+      </div>
+
       {approve_button("🟣 Connect Facebook & Instagram →", connect_url, "#7C3AED")}
     </div>
 
-    <p style="font-size:13px;color:{MUTED_COLOR};margin:0;line-height:1.6;">
-      While you do this step, I'm already reading your Google Ads history
+    <!-- NO INSTAGRAM ESCAPE HATCH -->
+    <div style="background:#F9FAFB;border:1px solid {BORDER_COLOR};border-radius:8px;
+         padding:16px;margin-bottom:24px;">
+      <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 6px 0;">
+        Don't have Instagram yet?
+      </p>
+      <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 10px 0;line-height:1.5;">
+        No problem — Marlo can start with just Facebook Ads and Google while you set up Instagram.
+        You can connect Instagram anytime later by replying to any Marlo email.
+      </p>
+      <a href="{skip_url}"
+         style="font-size:13px;color:{MUTED_COLOR};font-weight:600;text-decoration:none;">
+        Skip Instagram for now →
+      </a>
+    </div>
+
+    <!-- RETRY LINK -->
+    <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 24px 0;line-height:1.6;">
+      Already tried connecting but something went wrong?
+      <a href="{retry_url}" style="color:#7C3AED;font-weight:600;">Try connecting again →</a>
+    </p>
+
+    <!-- FAQ LINKS -->
+    <div style="border-top:1px solid {BORDER_COLOR};padding-top:16px;">
+      <p style="font-size:12px;font-weight:600;color:{MUTED_COLOR};margin:0 0 10px 0;
+         text-transform:uppercase;letter-spacing:0.05em;">Common questions</p>
+      <p style="font-size:13px;color:{MUTED_COLOR};margin:0;line-height:2.2;">
+        <a href="{base_url}/help/why-facebook-page" style="color:#7C3AED;">
+          → Why do I need a Facebook Page just for Instagram?</a><br>
+        <a href="{base_url}/help/why-business-account" style="color:#7C3AED;">
+          → Why can't Marlo post to my personal Instagram?</a><br>
+        <a href="{base_url}/help/meta-permissions" style="color:#7C3AED;">
+          → What permissions is Marlo asking for, and why?</a><br>
+        <a href="mailto:hello@marlo021.ai?subject=Help with Step 2" style="color:#7C3AED;">
+          → I'm stuck — get help</a>
+      </p>
+    </div>
+
+    <p style="font-size:13px;color:{MUTED_COLOR};margin:24px 0 0 0;line-height:1.6;">
+      While you set this up, I'm already reading your Google Ads history
       and researching the best keywords for your business. ⚙️
     </p>"""
-    return base_template(content, preheader="Step 2 of 4 — Connect Instagram (2 minutes)")
+    return base_template(content, preheader=f"{first_name}, Google is connected — one more step for Instagram")
 
 def onboarding_email_3(first_name: str, business_id: str, base_url: str) -> str:
     """Step 3: Connect Mailchimp."""
