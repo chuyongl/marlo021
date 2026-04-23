@@ -253,7 +253,7 @@ def onboarding_email_2(first_name: str, business_id: str, base_url: str, fronten
           </p>
           <p style="font-size:12px;color:{MUTED_COLOR};margin:0;line-height:1.5;font-style:italic;">
             Can't find the option?
-            <a href="mailto:hello@marlo021.ai?subject=Help with Instagram Business account"
+            <a href="mailto:reply+{business_id}@reply.marlo021.ai?subject=Help with Instagram Business account"
                style="color:#7C3AED;">Reply and I'll walk you through it.</a>
           </p>
         </div>
@@ -305,7 +305,7 @@ def onboarding_email_2(first_name: str, business_id: str, base_url: str, fronten
           → Why can't Marlo post to my personal Instagram?</a><br>
         <a href="{faq_permissions}" style="color:#7C3AED;">
           → What permissions is Marlo asking for, and why?</a><br>
-        <a href="mailto:hello@marlo021.ai?subject=Help with Step 2" style="color:#7C3AED;">
+        <a href="mailto:reply+{business_id}@reply.marlo021.ai?subject=Help with Step 2" style="color:#7C3AED;">
           → I'm stuck — get help</a>
       </p>
     </div>
