@@ -39,6 +39,7 @@ def base_template(content: str, preheader: str = "") -> str:
       <tr><td style="padding:20px 28px;border-top:1px solid {BORDER_COLOR};background:#F9FAFB;">
         <p style="margin:0;font-size:12px;color:{MUTED_COLOR};line-height:1.5;">
           Reply to this email anytime to talk to Marlo.<br>
+          <a href="https://marlo021.ai/help" style="color:{MUTED_COLOR};">Help & FAQ</a> · 
           <a href="{{unsubscribe_url}}" style="color:{MUTED_COLOR};">Unsubscribe</a> · 
           <a href="{{preferences_url}}" style="color:{MUTED_COLOR};">Preferences</a>
         </p>
