@@ -85,7 +85,7 @@ Reply text: {reply_text}""",
                 action, business_id, db
             )
             posts_for_email.append({
-                "day": post.get("scheduled_day", "This week"),
+                "day": post.get("scheduled_day") or post.get("title") or "This week",
                 "caption_preview": post.get("caption", "")[:120],
                 "image_url": post.get("image_url"),
                 "approve_url": f"{base_url}/actions/approve?token={enriched['approval_token']}",

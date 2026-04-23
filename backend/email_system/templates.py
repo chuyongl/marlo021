@@ -465,11 +465,16 @@ def onboarding_email_5_ready(first_name: str, campaigns: list, posts: list,
 
     posts_html = ""
     for p in posts[:3]:
+        image_html = ""
+        if p.get("image_url"):
+            image_html = f"""<img src="{p['image_url']}" alt="Post image"
+                style="width:100%;max-width:400px;border-radius:8px;margin-bottom:10px;display:block;" />"""
         posts_html += f"""
-        <div style="margin-bottom:20px;">
-          <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 4px 0;">
-            📸 {p.get('day', 'Monday')} — Instagram
+        <div style="margin-bottom:24px;padding-bottom:24px;border-bottom:1px solid {BORDER_COLOR};">
+          <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 8px 0;">
+            📸 {p.get('day', 'This week')} — Instagram
           </p>
+          {image_html}
           <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 8px 0;font-style:italic;">
             "{p.get('caption_preview', '')[:100]}..."
           </p>
