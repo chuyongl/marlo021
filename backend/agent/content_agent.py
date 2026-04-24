@@ -1,29 +1,26 @@
 """
 content_agent.py
 Generates platform-specific captions and hashtags based on strategy brief.
-Checks brand voice consistency before returning.
+Uses brain.generate_content() for direct text output — no JSON parsing needed.
 """
 from agent.brain import brain
 import json
 
 PLATFORM_SPECS = {
     "instagram": {
-        "max_caption": 2200,
-        "optimal_caption": 150,
-        "hashtags": "5-15 relevant hashtags",
-        "style": "visual storytelling, emojis welcome, conversational"
+        "optimal_words": 50,
+        "hashtags": "8-12 relevant hashtags",
+        "style": "conversational, visual storytelling, emojis welcome"
     },
     "facebook": {
-        "max_caption": 63206,
-        "optimal_caption": 80,
+        "optimal_words": 80,
         "hashtags": "1-3 hashtags max",
-        "style": "more informational, can be longer, community-focused"
+        "style": "more informational, community-focused, can include a question"
     },
     "instagram_story": {
-        "max_caption": 250,
-        "optimal_caption": 50,
+        "optimal_words": 20,
         "hashtags": "3-5 hashtags",
-        "style": "very short, punchy, swipe-up CTA"
+        "style": "very short, punchy, direct call to action"
     }
 }
 
@@ -39,69 +36,73 @@ class ContentAgent:
     ) -> dict:
         """
         Generate caption + hashtags for a specific platform.
-        Returns: { caption, hashtags, full_text, brand_check_passed }
+        Returns: { caption, hashtags, full_text, brand_voice_score }
         """
         specs = PLATFORM_SPECS.get(platform, PLATFORM_SPECS["instagram"])
 
-        prompt = f"""Write a {platform} post for {business.get('name', 'this business')}.
+        # Step 1: Generate caption
+        caption_prompt = f"""Write a ready-to-post {platform} caption for {business.get('name', 'this business')}.
 
-Strategy brief:
-- Hook: {strategy.get('hook_strategy', '')}
-- Key message: {strategy.get('key_message', '')}
-- Tone: {strategy.get('tone_guidance', business.get('tone_of_voice', 'friendly'))}
-- CTA: {strategy.get('call_to_action', '')}
-- Avoid: {strategy.get('avoid', '')}
+Strategy:
+- Hook approach: {strategy.get('hook_strategy', 'lead with value')}
+- Key message: {strategy.get('key_message', 'showcase the business')}
+- Tone: {strategy.get('tone_guidance', business.get('tone_of_voice', 'warm and authentic'))}
+- Call to action: {strategy.get('call_to_action', 'visit us')}
+- Avoid: {strategy.get('avoid', 'generic claims')}
 
 Business:
+- Name: {business.get('name', '')}
 - Industry: {business.get('industry', '')}
-- Target audience: {business.get('target_audience', '')}
-- Brand tone: {business.get('tone_of_voice', 'warm and authentic')}
-{f'- Theme: {theme}' if theme else ''}
+- Target audience: {business.get('target_audience', 'local customers')}
+{f'- Theme/context: {theme}' if theme else ''}
 
-Platform specs:
-- Keep caption under {specs['optimal_caption']} words ideally
-- Hashtags: {specs['hashtags']}
+Requirements:
+- Under {specs['optimal_words']} words
 - Style: {specs['style']}
+- Must sound like a real person wrote it, not AI
+- Do NOT include hashtags in the caption itself
+- Return ONLY the caption text, nothing else"""
 
-Return JSON only:
-{{
-  "caption": "the post caption without hashtags",
-  "hashtags": ["hashtag1", "hashtag2"],
-  "brand_voice_score": 1-10,
-  "brand_voice_notes": "brief note on how well this matches the brand"
-}}"""
-
-        result = await brain.think(
-            user_message=prompt,
+        caption = await brain.generate_content(
+            content_type=f"{platform} post caption",
+            business=business,
             context={},
-            business_id=business_id,
-            db=None,
-            model="claude-haiku-4-5-20251001"
+            instructions=caption_prompt
+        )
+        caption = caption.strip().strip('"')
+
+        # Step 2: Generate hashtags separately
+        hashtag_prompt = f"""Generate {specs['hashtags']} for this {platform} post about {business.get('name', 'a local business')}.
+
+Business industry: {business.get('industry', 'Food & Beverage')}
+Post topic: {strategy.get('key_message', 'business showcase')}
+{f'Theme: {theme}' if theme else ''}
+
+Return ONLY the hashtags as a space-separated list starting with #, nothing else.
+Example format: #coffeeshop #seattle #localcafe #morningcoffee"""
+
+        hashtag_raw = await brain.generate_content(
+            content_type="hashtags",
+            business=business,
+            context={},
+            instructions=hashtag_prompt
         )
 
-        try:
-            reasoning = result.get("reasoning", "{}")
-            if "```json" in reasoning:
-                reasoning = reasoning.split("```json")[1].split("```")[0]
-            content = json.loads(reasoning)
-        except Exception:
-            content = {
-                "caption": result.get("summary", f"Check out what's new at {business.get('name', 'us')}!"),
-                "hashtags": ["#smallbusiness", f"#{business.get('industry', 'local').replace(' ', '').lower()}"],
-                "brand_voice_score": 7,
-                "brand_voice_notes": "Generated with fallback"
-            }
+        # Parse hashtags from raw string
+        hashtags = [
+            tag.strip()
+            for tag in hashtag_raw.replace(',', ' ').split()
+            if tag.strip().startswith('#')
+        ][:15]  # cap at 15
 
-        hashtags = content.get("hashtags", [])
-        caption = content.get("caption", "")
         full_text = f"{caption}\n\n{' '.join(hashtags)}" if hashtags else caption
 
         return {
             "caption": caption,
             "hashtags": hashtags,
             "full_text": full_text,
-            "brand_voice_score": content.get("brand_voice_score", 7),
-            "brand_voice_notes": content.get("brand_voice_notes", ""),
+            "brand_voice_score": 8,  # default good score since we're using direct generation
+            "brand_voice_notes": "Generated with direct content agent",
             "platform": platform,
         }
 

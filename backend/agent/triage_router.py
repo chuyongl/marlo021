@@ -3,6 +3,7 @@ triage_router.py
 Classifies incoming content requests and routes to the right agent pipeline.
 """
 from agent.brain import brain
+import json
 
 CONTENT_TYPES = {
     "promotional": "Time-sensitive offer, sale, discount, or event promotion",
@@ -19,47 +20,43 @@ class TriageRouter:
     async def classify(self, request: str, context: dict) -> dict:
         """
         Classify a content request and return routing decision.
-        Returns: { type, priority, platforms, reasoning }
+        Returns: { type, priority, platforms, needs_image, reasoning }
         """
         business_name = context.get("business", {}).get("name", "this business")
-        connected = context.get("connected_platforms", [])
+        connected = context.get("connected_platforms", ["instagram"])
 
         prompt = f"""Classify this content request for {business_name}.
 
 Request: "{request}"
 Connected platforms: {connected}
 
-Choose the best content type from:
+Choose the best content type:
 {chr(10).join(f'- {k}: {v}' for k, v in CONTENT_TYPES.items())}
 
-Also determine:
-- priority: "high" (time-sensitive, user explicitly asked) or "normal"
-- platforms: list of relevant platforms from {connected}
-- needs_image: true/false
-
-Return JSON only:
+Return ONLY valid JSON, no explanation:
 {{
-  "type": "content_type",
-  "priority": "high|normal",
-  "platforms": ["platform1"],
+  "type": "evergreen",
+  "priority": "normal",
+  "platforms": ["instagram"],
   "needs_image": true,
   "reasoning": "one sentence why"
 }}"""
 
-        result = await brain.think(
-            user_message=prompt,
+        raw = await brain.generate_content(
+            content_type="content classification JSON",
+            business=context.get("business", {}),
             context={},
-            business_id=context.get("business_id", ""),
-            db=None,
-            model="claude-haiku-4-5-20251001"
+            instructions=prompt
         )
 
-        import json
         try:
-            reasoning = result.get("reasoning", "{}")
-            if "```json" in reasoning:
-                reasoning = reasoning.split("```json")[1].split("```")[0]
-            classification = json.loads(reasoning)
+            # Strip markdown code fences if present
+            clean = raw.strip()
+            if "```" in clean:
+                clean = clean.split("```")[1]
+                if clean.startswith("json"):
+                    clean = clean[4:]
+            classification = json.loads(clean.strip())
         except Exception:
             classification = {
                 "type": "evergreen",
