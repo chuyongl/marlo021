@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from database.models import (
     Business, PlatformIntegration, AgentAction,
-    CampaignMetrics, Campaign, EmailLog
+    CampaignMetric, Campaign, EmailLog
 )
 from datetime import datetime, timedelta
 import os
@@ -60,11 +60,11 @@ class ContextBuilder:
         try:
             seven_days_ago = datetime.utcnow() - timedelta(days=7)
             metrics_result = await db.execute(
-                select(CampaignMetrics)
-                .join(Campaign, CampaignMetrics.campaign_id == Campaign.id)
+                select(CampaignMetric)
+                .join(Campaign, CampaignMetric.campaign_id == Campaign.id)
                 .where(Campaign.business_id == business_id)
-                .where(CampaignMetrics.date >= seven_days_ago)
-                .order_by(desc(CampaignMetrics.date))
+                .where(CampaignMetric.date >= seven_days_ago)
+                .order_by(desc(CampaignMetric.date))
                 .limit(20)
             )
             metrics = metrics_result.scalars().all()
