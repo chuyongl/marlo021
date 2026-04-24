@@ -114,6 +114,22 @@ async def handle_text_reply(business, user, message: str, db: AsyncSession):
         return
 
     # Step 5+: fully onboarded — use the full agent brain
+    # Check if this is a post revision instruction first
+    lower_msg = message.lower()
+    revision_days = ["monday", "wednesday", "friday", "tuesday", "thursday", "saturday", "sunday"]
+    is_revision = any(
+        f"change {day}" in lower_msg or f"edit {day}" in lower_msg or f"rewrite {day}" in lower_msg
+        for day in revision_days
+    )
+
+    if is_revision:
+        await handle_post_revision(
+            business=business,
+            user=user,
+            message=message,
+            db=db
+        )
+        return
     from agent.brain import brain
     from agent.executor import executor
 
@@ -234,6 +250,120 @@ Always end with a clear next action for them to take."""
         subject="Re: your Marlo setup question",
         html_body=html,
         email_type="onboarding_reply",
+        business_id=str(business.id),
+        db=db,
+        reply_to=f"reply+{business.id}@reply.marlo021.ai"
+    )
+
+
+async def handle_post_revision(business, user, message: str, db: AsyncSession):
+    """Handle 'Change Monday post: make it funnier' style revision requests."""
+    from agent.brain import brain
+    from email_system.sender import email_sender
+    from email_system.templates import base_template, approve_button, decline_button
+    import os
+
+    frontend_url = os.getenv("FRONTEND_URL", "https://marlo021.ai")
+    base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
+    first_name = (user.full_name or "there").split()[0]
+
+    business_dict = {
+        "name": business.name,
+        "industry": business.industry or "",
+        "tone_of_voice": business.tone_of_voice or "warm and authentic",
+        "target_audience": business.target_audience or "local customers",
+        "description": business.description or "",
+    }
+
+    # Generate revised post
+    revision_prompt = f"""A business owner wants to revise an Instagram post.
+
+Business: {business.name}
+Industry: {business_dict['industry']}
+Brand tone: {business_dict['tone_of_voice']}
+Target audience: {business_dict['target_audience']}
+
+Their revision request: "{message}"
+
+Write a revised ready-to-post Instagram caption that addresses their feedback.
+Then write 8-10 relevant hashtags separately.
+
+Return ONLY this format:
+CAPTION:
+[the caption here]
+
+HASHTAGS:
+[hashtags here]"""
+
+    raw = await brain.generate_content(
+        content_type="revised Instagram post",
+        business=business_dict,
+        context={},
+        instructions=revision_prompt
+    )
+
+    # Parse caption and hashtags
+    caption = raw.strip()
+    hashtags_text = ""
+    if "HASHTAGS:" in raw.upper():
+        parts = raw.upper().split("HASHTAGS:")
+        caption_part = raw[:raw.upper().find("HASHTAGS:")].strip()
+        if "CAPTION:" in caption_part.upper():
+            caption = caption_part[caption_part.upper().find("CAPTION:") + 8:].strip()
+        else:
+            caption = caption_part.strip()
+        hashtags_text = raw[raw.upper().find("HASHTAGS:") + 9:].strip()
+    elif "CAPTION:" in raw.upper():
+        caption = raw[raw.upper().find("CAPTION:") + 8:].strip()
+
+    # Create a pending action for the revised post
+    from agent.executor import executor
+    action = {
+        "type": "create_post",
+        "platform": "instagram",
+        "parameters": {
+            "caption": f"{caption}\n\n{hashtags_text}" if hashtags_text else caption,
+            "platform": "instagram",
+        },
+        "reasoning": f"Revised post per owner request: {message[:100]}",
+        "risk_level": "medium",
+        "requires_approval": True
+    }
+    enriched = await executor.create_pending_action_with_tokens(
+        action, str(business.id), db
+    )
+    approve_url = f"{base_url}/actions/approve?token={enriched['approval_token']}"
+    decline_url = f"{base_url}/actions/decline?token={enriched['decline_token']}"
+
+    html = base_template(f"""
+    <p style="font-size:16px;font-weight:600;color:#1F2937;margin:0 0 8px 0;">
+      ✏️ Here's your revised post, {first_name}!
+    </p>
+    <p style="font-size:13px;color:#6B7280;margin:0 0 20px 0;">
+      Based on: <em>"{message[:80]}{'...' if len(message) > 80 else ''}"</em>
+    </p>
+
+    <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:20px;margin-bottom:20px;">
+      <p style="font-size:13px;font-weight:600;color:#374151;margin:0 0 10px 0;">📸 Revised Instagram post</p>
+      <p style="font-size:14px;color:#1F2937;line-height:1.8;margin:0 0 8px 0;white-space:pre-wrap;">{caption}</p>
+      {f'<p style="font-size:12px;color:#9CA3AF;margin:0;">{hashtags_text}</p>' if hashtags_text else ''}
+    </div>
+
+    <div style="background:#EFF6FF;border-radius:6px;padding:12px 14px;margin-bottom:20px;">
+      <p style="font-size:12px;color:#1D4ED8;margin:0;line-height:1.6;">
+        Still not right? Reply again with more instructions and I'll revise further.
+      </p>
+    </div>
+
+    {approve_button("✓ Approve & Schedule", approve_url)}
+    {decline_button("✗ Skip", decline_url)}
+    """)
+
+    await email_sender.send(
+        to_email=user.email,
+        subject=f"Re: Your revised post is ready",
+        html_body=html,
+        email_type="post_revision",
         business_id=str(business.id),
         db=db,
         reply_to=f"reply+{business.id}@reply.marlo021.ai"

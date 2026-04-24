@@ -6,11 +6,12 @@ async def process_onboarding_reply(business_id: str, reply_text: str, db):
     from agent.brain import brain
     from sqlalchemy import select, update
     from database.models import Business, User
-    import json
+    import json, os
 
-    # Step 1: Use Claude to extract structured info from their reply
-    result = await brain.think(
-        user_message=f"""Extract the following from this business description reply and return as JSON:
+    base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
+
+    # Step 1: Extract structured info from their reply
+    extract_prompt = f"""Extract the following from this business description and return ONLY valid JSON, no explanation:
 {{
   "description": "what the business sells or does (1-2 sentences)",
   "target_audience": "who their typical customers are",
@@ -18,17 +19,26 @@ async def process_onboarding_reply(business_id: str, reply_text: str, db):
   "upcoming_promotions": "any events or promotions mentioned, or empty string if none"
 }}
 
-Reply text: {reply_text}""",
-        context={}, business_id=business_id, db=None,
-        model="claude-haiku-4-5-20251001"
+Business description: {reply_text}"""
+
+    raw = await brain.generate_content(
+        content_type="business info extraction JSON",
+        business={},
+        context={},
+        instructions=extract_prompt
     )
 
     try:
-        extracted = json.loads(result.get("reasoning", "{}"))
+        clean = raw.strip()
+        if "```" in clean:
+            clean = clean.split("```")[1]
+            if clean.startswith("json"):
+                clean = clean[4:]
+        extracted = json.loads(clean.strip())
     except Exception:
         extracted = {"description": reply_text[:500]}
 
-    # Step 2: Update business record with extracted info
+    # Step 2: Update business record
     await db.execute(
         update(Business)
         .where(Business.id == business_id)
@@ -50,10 +60,11 @@ Reply text: {reply_text}""",
 
     # Step 4: Generate first week of Instagram posts
     posts_for_email = []
-    campaigns_for_email = []
 
     try:
         from agent.content_pipeline import content_pipeline
+        from agent.executor import executor
+
         theme = extracted.get("upcoming_promotions") or None
         posts = await content_pipeline.generate_week_of_content(
             business_id=business_id,
@@ -62,13 +73,7 @@ Reply text: {reply_text}""",
             theme=theme
         )
 
-        # Format posts for email 5 display
-        from agent.executor import executor
-        import os
-        base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
-
         for post in posts[:3]:
-            # Create approval action for each post
             action = {
                 "type": "create_post",
                 "platform": post.get("platform", "instagram"),
@@ -76,6 +81,7 @@ Reply text: {reply_text}""",
                     "caption": post.get("caption", ""),
                     "image_url": post.get("image_url"),
                     "scheduled_day": post.get("scheduled_day"),
+                    "hashtags": post.get("hashtags", []),
                 },
                 "reasoning": f"First week of content for {biz.name}",
                 "risk_level": "medium",
@@ -85,53 +91,63 @@ Reply text: {reply_text}""",
                 action, business_id, db
             )
             posts_for_email.append({
-                "day": post.get("scheduled_day") or post.get("title") or "This week",
-                "caption_preview": post.get("caption", "")[:120],
+                "scheduled_day": post.get("scheduled_day") or "This week",
+                "day": post.get("scheduled_day") or "This week",
+                "caption": post.get("caption", ""),
+                "hashtags": post.get("hashtags", []),
                 "image_url": post.get("image_url"),
+                "platform": post.get("platform", "instagram"),
                 "approve_url": f"{base_url}/actions/approve?token={enriched['approval_token']}",
                 "decline_url": f"{base_url}/actions/decline?token={enriched['decline_token']}",
             })
 
     except Exception as e:
         print(f"Content generation error (non-fatal): {e}")
-        # Don't block email 5 if content generation fails — send with empty posts
         posts_for_email = []
 
-    # Step 5: Generate a placeholder Google Ads campaign suggestion
-    try:
-        import os
-        base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
+    # Step 5: Generate Google Ads campaign suggestion
+    campaigns_for_email = []
 
-        # Use brain to suggest a first campaign
-        campaign_result = await brain.think(
-            user_message=f"""Suggest a first Google Ads search campaign for this business.
-Business: {biz.name} — {biz.description}
-Target audience: {biz.target_audience}
+    try:
+        from agent.executor import executor
+
+        campaign_prompt = f"""Suggest a first Google Ads search campaign for this business.
+Business: {biz.name} — {biz.description or 'local business'}
+Target audience: {biz.target_audience or 'local customers'}
 Monthly ad budget: ${biz.monthly_ad_budget or 300}
 
-Return JSON with:
+Return ONLY valid JSON, no explanation:
 {{
   "name": "campaign name",
   "keywords": ["keyword1", "keyword2", "keyword3", "keyword4"],
   "daily_budget": 8,
-  "est_clicks": "30-50"
-}}""",
-            context={}, business_id=business_id, db=None,
-            model="claude-haiku-4-5-20251001"
+  "est_clicks": "30-50",
+  "goal": "one sentence describing the campaign goal"
+}}"""
+
+        raw_campaign = await brain.generate_content(
+            content_type="Google Ads campaign suggestion JSON",
+            business={"name": biz.name, "industry": biz.industry or ""},
+            context={},
+            instructions=campaign_prompt
         )
 
         try:
-            campaign_data = json.loads(campaign_result.get("reasoning", "{}"))
+            clean = raw_campaign.strip()
+            if "```" in clean:
+                clean = clean.split("```")[1]
+                if clean.startswith("json"):
+                    clean = clean[4:]
+            campaign_data = json.loads(clean.strip())
         except Exception:
             campaign_data = {
                 "name": f"{biz.name} — Search Campaign",
-                "keywords": [biz.industry or "local business"],
+                "keywords": [biz.industry or "local business", biz.name],
                 "daily_budget": 8,
-                "est_clicks": "30-50"
+                "est_clicks": "30-50",
+                "goal": "Drive local awareness and website visits"
             }
 
-        # Create approval action for campaign
-        from agent.executor import executor
         campaign_action = {
             "type": "create_campaign",
             "platform": "google_ads",
@@ -151,7 +167,7 @@ Return JSON with:
         print(f"Campaign suggestion error (non-fatal): {e}")
         campaigns_for_email = []
 
-    # Step 6: Send email 5 with real content
+    # Step 6: Send email 5
     from email_system.sender import email_sender
     await email_sender.send_onboarding_step(
         step=5,

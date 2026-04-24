@@ -447,62 +447,138 @@ def onboarding_email_4(first_name: str, business_id: str, base_url: str) -> str:
 
 def onboarding_email_5_ready(first_name: str, campaigns: list, posts: list,
                                approve_all_url: str, base_url: str) -> str:
+
+    # ── Campaign section ──────────────────────────────────────────────────────
     campaigns_html = ""
     for c in campaigns[:1]:
         campaigns_html += f"""
-        <div style="background:#F8FAFC;border-radius:8px;padding:16px;margin-bottom:12px;
+        <div style="background:#F8FAFC;border-radius:12px;padding:20px;margin-bottom:8px;
              border:1px solid {BORDER_COLOR};">
-          <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 4px 0;">
-            📊 {c.get('name', 'Google Search Campaign')}
+          <p style="font-size:12px;font-weight:600;color:{MUTED_COLOR};text-transform:uppercase;
+             letter-spacing:0.08em;margin:0 0 8px 0;">Google Search Campaign</p>
+          <p style="font-size:15px;font-weight:600;color:{TEXT_COLOR};margin:0 0 8px 0;">
+            {c.get('name', 'Search Campaign')}
           </p>
-          <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 12px 0;line-height:1.5;">
-            Keywords: {', '.join(c.get('keywords', [])[:4])}<br>
-            Budget: ${c.get('daily_budget', 8)}/day · Est. {c.get('est_clicks', '40–60')} clicks/day
+          <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 16px 0;line-height:1.6;">
+            <strong>Keywords:</strong> {', '.join(c.get('keywords', [])[:5])}<br>
+            <strong>Budget:</strong> ${c.get('daily_budget', 8)}/day · Est. {c.get('est_clicks', '30–50')} clicks/day<br>
+            <strong>Goal:</strong> {c.get('goal', 'Drive local awareness and website visits')}
           </p>
           {approve_button("✓ Approve Campaign", c.get('approve_url', '#'))}
-          {decline_button("✗ Skip", c.get('decline_url', '#'))}
+          {decline_button("✗ Skip for now", c.get('decline_url', '#'))}
         </div>"""
 
+    # ── Instagram posts section ───────────────────────────────────────────────
     posts_html = ""
     for p in posts[:3]:
-        image_html = ""
-        if p.get("image_url"):
-            image_html = f"""<img src="{p['image_url']}" alt="Post image"
-                style="width:100%;max-width:400px;border-radius:8px;margin-bottom:10px;display:block;" />"""
+        day = p.get('scheduled_day') or p.get('day') or 'This week'
+        caption = p.get('caption') or p.get('caption_preview') or ''
+        hashtags = p.get('hashtags', [])
+        image_url = p.get('image_url')
+        platform = p.get('platform', 'instagram').title()
+
+        # Image — show AI image or placeholder with upload prompt
+        if image_url:
+            image_html = f"""
+            <img src="{image_url}" alt="AI generated image for {day}"
+                style="width:100%;border-radius:8px;margin-bottom:12px;display:block;" />"""
+        else:
+            image_html = f"""
+            <div style="background:#F3F4F6;border:2px dashed #D1D5DB;border-radius:8px;
+                 padding:20px;text-align:center;margin-bottom:12px;">
+              <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 4px 0;">📷 No image yet</p>
+              <p style="font-size:12px;color:#9CA3AF;margin:0;line-height:1.5;">
+                Reply to this email with a photo to use your own image,<br>
+                or Marlo will generate one when you approve.
+              </p>
+            </div>"""
+
+        # Hashtags display
+        hashtags_html = ""
+        if hashtags:
+            hashtags_html = f"""
+            <p style="font-size:12px;color:#9CA3AF;margin:8px 0 16px 0;line-height:1.6;">
+              {' '.join(hashtags[:10])}
+            </p>"""
+
         posts_html += f"""
-        <div style="margin-bottom:24px;padding-bottom:24px;border-bottom:1px solid {BORDER_COLOR};">
-          <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 8px 0;">
-            📸 {p.get('day', 'This week')} — Instagram
-          </p>
+        <div style="background:#FFFFFF;border:1px solid {BORDER_COLOR};border-radius:12px;
+             padding:20px;margin-bottom:16px;">
+
+          <!-- Post header -->
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+            <p style="font-size:12px;font-weight:600;color:{MUTED_COLOR};text-transform:uppercase;
+               letter-spacing:0.08em;margin:0;">📸 {platform} · {day}</p>
+          </div>
+
+          <!-- Image -->
           {image_html}
-          <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 8px 0;font-style:italic;">
-            "{p.get('caption_preview', '')[:100]}..."
-          </p>
-          {approve_button("✓ Approve", p.get('approve_url', '#'))}
+
+          <!-- Full caption -->
+          <p style="font-size:14px;color:{TEXT_COLOR};line-height:1.7;margin:0 0 4px 0;
+             white-space:pre-wrap;">{caption}</p>
+
+          {hashtags_html}
+
+          <!-- Revision hint -->
+          <div style="background:#F9FAFB;border-radius:6px;padding:10px 12px;margin-bottom:16px;">
+            <p style="font-size:12px;color:{MUTED_COLOR};margin:0;line-height:1.6;">
+              ✏️ <strong>Want changes?</strong> Reply: <em>"Change {day} post: [your instruction]"</em><br>
+              📷 <strong>Have a photo?</strong> Reply with the photo attached and it'll replace the image above.
+            </p>
+          </div>
+
+          <!-- Approve / Skip -->
+          {approve_button(f"✓ Approve {day} post", p.get('approve_url', '#'))}
           {decline_button("✗ Skip", p.get('decline_url', '#'))}
         </div>"""
 
+    # ── Full email ─────────────────────────────────────────────────────────────
     content = f"""
-    <p style="font-size:16px;font-weight:600;color:{TEXT_COLOR};margin:0 0 8px 0;">
-      🚀 {first_name}, everything is ready!
+    <!-- Greeting -->
+    <p style="font-size:17px;font-weight:600;color:{TEXT_COLOR};margin:0 0 8px 0;">
+      🚀 {first_name}, your first marketing plan is ready!
     </p>
-    <p style="font-size:14px;color:{MUTED_COLOR};margin:0 0 24px 0;line-height:1.6;">
-      I've analyzed your accounts and built your first marketing plan.
-      Review and approve what looks good — skip anything you want to change later.
+    <p style="font-size:14px;color:{MUTED_COLOR};margin:0 0 28px 0;line-height:1.6;">
+      I've read your brief and built a plan for this week. Everything below needs your approval
+      before anything goes live — nothing runs without your say-so.
     </p>
-    <p style="font-size:13px;font-weight:600;color:{MUTED_COLOR};text-transform:uppercase;
-       letter-spacing:0.05em;margin:0 0 12px 0;">YOUR FIRST GOOGLE ADS CAMPAIGN</p>
+
+    <!-- How to use this email -->
+    <div style="background:#F0F9FF;border-radius:8px;padding:16px 20px;margin-bottom:28px;">
+      <p style="font-size:13px;font-weight:600;color:#0369A1;margin:0 0 8px 0;">
+        How this works
+      </p>
+      <p style="font-size:13px;color:#0369A1;margin:0;line-height:1.8;">
+        ✓ Tap <strong>Approve</strong> on anything you like → it goes live<br>
+        ✗ Tap <strong>Skip</strong> to pass on something → nothing happens<br>
+        ✏️ <strong>Reply</strong> with changes → Marlo rewrites and sends a new version<br>
+        📷 <strong>Reply with a photo</strong> → replaces the AI image
+      </p>
+    </div>
+
+    {f'''
+    <!-- Campaign section -->
+    <p style="font-size:12px;font-weight:600;color:{MUTED_COLOR};text-transform:uppercase;
+       letter-spacing:0.08em;margin:0 0 12px 0;">Your Google Ads Campaign</p>
     {campaigns_html}
     {section_divider()}
-    <p style="font-size:13px;font-weight:600;color:{MUTED_COLOR};text-transform:uppercase;
-       letter-spacing:0.05em;margin:0 0 12px 0;">THIS WEEK'S INSTAGRAM POSTS</p>
+    ''' if campaigns_html else ''}
+
+    <!-- Posts section -->
+    <p style="font-size:12px;font-weight:600;color:{MUTED_COLOR};text-transform:uppercase;
+       letter-spacing:0.08em;margin:0 0 16px 0;">This week's Instagram posts</p>
     {posts_html}
+
     {section_divider()}
-    <p style="font-size:14px;color:{MUTED_COLOR};margin:0;line-height:1.6;">
-      🎉 Starting tomorrow at 8am, you'll get your first daily briefing.<br>
-      From then on — just open your morning email and tap approve. That's it.
+
+    <!-- Footer note -->
+    <p style="font-size:13px;color:{MUTED_COLOR};margin:0;line-height:1.8;">
+      🎉 After you approve, posts will go live on their scheduled days.<br>
+      Starting tomorrow at 8am you'll get a daily briefing — one email, one tap, done.
     </p>"""
-    return base_template(content, preheader="Your first marketing plan is ready — please review")
+
+    return base_template(content, preheader=f"{first_name}, your first marketing plan is ready — review below")
 
 def photo_response_template(first_name: str, original_caption: str,
                               platform_previews: list, base_url: str) -> str:
