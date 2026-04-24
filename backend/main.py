@@ -34,6 +34,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+async def startup():
+    """Auto-create any new tables on deploy (safe — won't drop existing tables)."""
+    try:
+        from database.session import engine
+        from database.models import Base
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        print("Database tables verified/created.")
+    except Exception as e:
+        print(f"Startup DB check error (non-fatal): {e}")
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "version": "0.1.0"}
