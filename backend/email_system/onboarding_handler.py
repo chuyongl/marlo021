@@ -70,18 +70,15 @@ Business description: {reply_text}"""
     connected_platforms = [i.platform for i in integrations]
     has_google = any(p in connected_platforms for p in ["google_ads", "google"])
     has_meta = any(p in connected_platforms for p in ["meta", "instagram", "facebook"])
-    has_mailchimp = "mailchimp" in connected_platforms
 
     # Determine which platforms to generate content for
     content_platforms = []
     if has_meta:
         content_platforms.append("instagram")
     if not content_platforms:
-        # Fallback: generate instagram content even if not connected
-        # (user can connect later, content is ready)
-        content_platforms = ["instagram"]
+        content_platforms = ["instagram"]  # fallback — content ready for when they connect
 
-    # Step 4: Generate first week of posts for connected platforms
+    # Step 4: Generate first week of posts
     posts_for_email = []
 
     try:
@@ -132,9 +129,10 @@ Business description: {reply_text}"""
     campaigns_for_email = []
 
     if has_google:
-        from agent.executor import executor
+        try:
+            from agent.executor import executor
 
-        campaign_prompt = f"""Suggest a first Google Ads search campaign for this business.
+            campaign_prompt = f"""Suggest a first Google Ads search campaign for this business.
 Business: {biz.name} — {biz.description or 'local business'}
 Target audience: {biz.target_audience or 'local customers'}
 Monthly ad budget: ${biz.monthly_ad_budget or 300}
@@ -148,47 +146,47 @@ Return ONLY valid JSON, no explanation:
   "goal": "one sentence describing the campaign goal"
 }}"""
 
-        raw_campaign = await brain.generate_content(
-            content_type="Google Ads campaign suggestion JSON",
-            business={"name": biz.name, "industry": biz.industry or ""},
-            context={},
-            instructions=campaign_prompt
-        )
+            raw_campaign = await brain.generate_content(
+                content_type="Google Ads campaign suggestion JSON",
+                business={"name": biz.name, "industry": biz.industry or ""},
+                context={},
+                instructions=campaign_prompt
+            )
 
-        try:
-            clean = raw_campaign.strip()
-            if "```" in clean:
-                clean = clean.split("```")[1]
-                if clean.startswith("json"):
-                    clean = clean[4:]
-            campaign_data = json.loads(clean.strip())
-        except Exception:
-            campaign_data = {
-                "name": f"{biz.name} — Search Campaign",
-                "keywords": [biz.industry or "local business", biz.name],
-                "daily_budget": 8,
-                "est_clicks": "30-50",
-                "goal": "Drive local awareness and website visits"
+            try:
+                clean = raw_campaign.strip()
+                if "```" in clean:
+                    clean = clean.split("```")[1]
+                    if clean.startswith("json"):
+                        clean = clean[4:]
+                campaign_data = json.loads(clean.strip())
+            except Exception:
+                campaign_data = {
+                    "name": f"{biz.name} — Search Campaign",
+                    "keywords": [biz.industry or "local business", biz.name],
+                    "daily_budget": 8,
+                    "est_clicks": "30-50",
+                    "goal": "Drive local awareness and website visits"
+                }
+
+            campaign_action = {
+                "type": "create_campaign",
+                "platform": "google_ads",
+                "parameters": campaign_data,
+                "reasoning": f"First Google Ads campaign for {biz.name}",
+                "risk_level": "medium",
+                "requires_approval": True
             }
+            enriched_campaign = await executor.create_pending_action_with_tokens(
+                campaign_action, business_id, db
+            )
+            campaign_data["approve_url"] = f"{base_url}/actions/approve?token={enriched_campaign['approval_token']}"
+            campaign_data["decline_url"] = f"{base_url}/actions/decline?token={enriched_campaign['decline_token']}"
+            campaigns_for_email = [campaign_data]
 
-        campaign_action = {
-            "type": "create_campaign",
-            "platform": "google_ads",
-            "parameters": campaign_data,
-            "reasoning": f"First Google Ads campaign for {biz.name}",
-            "risk_level": "medium",
-            "requires_approval": True
-        }
-        enriched_campaign = await executor.create_pending_action_with_tokens(
-            campaign_action, business_id, db
-        )
-        campaign_data["approve_url"] = f"{base_url}/actions/approve?token={enriched_campaign['approval_token']}"
-        campaign_data["decline_url"] = f"{base_url}/actions/decline?token={enriched_campaign['decline_token']}"
-        campaigns_for_email = [campaign_data]
-
-    except Exception as e:
-        print(f"Campaign suggestion error (non-fatal): {e}")
-        campaigns_for_email = []
+        except Exception as e:
+            print(f"Campaign suggestion error (non-fatal): {e}")
+            campaigns_for_email = []
 
     # Step 6: Send email 5
     from email_system.sender import email_sender
