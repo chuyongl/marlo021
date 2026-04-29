@@ -27,7 +27,10 @@ GOOGLE_SCOPES = " ".join([
 ])
 META_SCOPES = "pages_show_list,pages_read_engagement,instagram_basic,instagram_content_publish"
 
-oauth_states: dict = {}  # Use Redis in production (Day 38)
+oauth_states: dict = {}
+
+
+# ── Google ────────────────────────────────────────────────────────────────────
 
 @router.get("/connect/google")
 async def connect_google(business_id: str):
@@ -116,7 +119,54 @@ async def google_callback(code: str, state: str, db: AsyncSession = Depends(get_
     </body></html>
     """)
 
-@router.get("/connect/mailchimp")
+@router.get("/skip-google")
+async def skip_google(business_id: str):
+    """User chose to skip Google Ads — advance to step 2 and send email 2."""
+    async def send_email_2():
+        from database.session import AsyncSessionLocal
+        from email_system.sender import email_sender
+        from sqlalchemy import select, update as sql_update
+        async with AsyncSessionLocal() as new_db:
+            biz_result = await new_db.execute(select(Business).where(Business.id == business_id))
+            biz = biz_result.scalar_one_or_none()
+            if not biz or biz.onboarding_step > 1:
+                return
+            await new_db.execute(
+                sql_update(Business)
+                .where(Business.id == business_id)
+                .values(onboarding_step=2)
+            )
+            await new_db.commit()
+            biz_result2 = await new_db.execute(select(Business).where(Business.id == business_id))
+            biz = biz_result2.scalar_one_or_none()
+            if biz:
+                user_result = await new_db.execute(select(User).where(User.id == biz.owner_id))
+                usr = user_result.scalar_one_or_none()
+                if usr:
+                    first_name = (usr.full_name or "").split()[0] or "there"
+                    await email_sender.send_onboarding_step(
+                        step=2,
+                        business_id=business_id,
+                        user_email=usr.email,
+                        first_name=first_name,
+                        business_name=biz.name,
+                        db=new_db,
+                        skipped_platform="google"
+                    )
+    asyncio.create_task(send_email_2())
+    return HTMLResponse("""
+    <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
+    <div style="font-size:48px">✅</div>
+    <h2 style="color:#1a1a1a">No problem!</h2>
+    <p style="color:#666">Marlo will start with Instagram. You can connect Google Ads anytime by replying to any Marlo email.</p>
+    <p style="color:#999;font-size:14px">You can close this tab.</p>
+    </body></html>
+    """)
+
+
+# ── Meta ──────────────────────────────────────────────────────────────────────
+
+@router.get("/connect/meta")
 async def connect_meta(business_id: str):
     state = secrets.token_urlsafe(32)
     oauth_states[state] = {"business_id": business_id, "platform": "meta"}
@@ -229,6 +279,53 @@ async def meta_callback(
     </body></html>
     """)
 
+@router.get("/skip-meta")
+async def skip_meta(business_id: str):
+    """User chose to skip Meta/Instagram — advance to step 3 and send email 3."""
+    async def send_email_3():
+        from database.session import AsyncSessionLocal
+        from email_system.sender import email_sender
+        from sqlalchemy import select, update as sql_update
+        async with AsyncSessionLocal() as new_db:
+            biz_result = await new_db.execute(select(Business).where(Business.id == business_id))
+            biz = biz_result.scalar_one_or_none()
+            if not biz or biz.onboarding_step > 2:
+                return
+            await new_db.execute(
+                sql_update(Business)
+                .where(Business.id == business_id)
+                .values(onboarding_step=3)
+            )
+            await new_db.commit()
+            biz_result2 = await new_db.execute(select(Business).where(Business.id == business_id))
+            biz = biz_result2.scalar_one_or_none()
+            if biz:
+                user_result = await new_db.execute(select(User).where(User.id == biz.owner_id))
+                usr = user_result.scalar_one_or_none()
+                if usr:
+                    first_name = (usr.full_name or "").split()[0] or "there"
+                    await email_sender.send_onboarding_step(
+                        step=3,
+                        business_id=business_id,
+                        user_email=usr.email,
+                        first_name=first_name,
+                        business_name=biz.name,
+                        db=new_db,
+                        skipped_platform="meta"
+                    )
+    asyncio.create_task(send_email_3())
+    return HTMLResponse("""
+    <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
+    <div style="font-size:48px">✅</div>
+    <h2 style="color:#1a1a1a">No problem!</h2>
+    <p style="color:#666">Marlo will start with Google Ads. You can connect Instagram anytime by replying to any Marlo email.</p>
+    <p style="color:#999;font-size:14px">You can close this tab.</p>
+    </body></html>
+    """)
+
+
+# ── Mailchimp ─────────────────────────────────────────────────────────────────
+
 @router.get("/connect/mailchimp")
 async def connect_mailchimp(business_id: str):
     """Start Mailchimp OAuth — if no credentials configured, skip to step 4."""
@@ -253,7 +350,6 @@ async def mailchimp_callback(
     error: str = None,
     db: AsyncSession = Depends(get_db)
 ):
-    """Handle Mailchimp OAuth callback."""
     if error or not code or not state:
         return HTMLResponse(f"""
         <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
@@ -306,100 +402,13 @@ async def mailchimp_callback(
 
     return await _advance_to_step_4(state_data["business_id"], connected=True)
 
-@router.get("/skip-google")
-async def skip_google(business_id: str):
-    """User chose to skip Google Ads — advance to step 2 and send email 2."""
-    async def send_email_2():
-        from database.session import AsyncSessionLocal
-        from email_system.sender import email_sender
-        from sqlalchemy import select, update as sql_update
-        async with AsyncSessionLocal() as new_db:
-            # Guard: only advance if still on step 1
-            biz_result = await new_db.execute(select(Business).where(Business.id == business_id))
-            biz = biz_result.scalar_one_or_none()
-            if not biz or biz.onboarding_step != 1:
-                return
-            await new_db.execute(
-                sql_update(Business)
-                .where(Business.id == business_id)
-                .values(onboarding_step=2)
-            )
-            await new_db.commit()
-            biz_result2 = await new_db.execute(select(Business).where(Business.id == business_id))
-            biz = biz_result2.scalar_one_or_none()
-            if biz:
-                user_result = await new_db.execute(select(User).where(User.id == biz.owner_id))
-                usr = user_result.scalar_one_or_none()
-                if usr:
-                    first_name = (usr.full_name or "").split()[0] or "there"
-                    await email_sender.send_onboarding_step(
-                        step=2,
-                        business_id=business_id,
-                        user_email=usr.email,
-                        first_name=first_name,
-                        business_name=biz.name,
-                        db=new_db,
-                        skipped_platform="google"
-                    )
-    asyncio.create_task(send_email_2())
-    return HTMLResponse("""
-    <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
-    <div style="font-size:48px">✅</div>
-    <h2 style="color:#1a1a1a">No problem!</h2>
-    <p style="color:#666">Marlo will start with Instagram. You can connect Google Ads anytime by replying to any Marlo email.</p>
-    <p style="color:#999;font-size:14px">You can close this tab.</p>
-    </body></html>
-    """)
-
-@router.get("/skip-meta")
-async def skip_meta(business_id: str):
-    """User chose to skip Meta/Instagram — advance to step 3 and send email 3."""
-    async def send_email_3():
-        from database.session import AsyncSessionLocal
-        from email_system.sender import email_sender
-        from sqlalchemy import select, update as sql_update
-        async with AsyncSessionLocal() as new_db:
-            # Guard: only advance if still on step 2
-            biz_result = await new_db.execute(select(Business).where(Business.id == business_id))
-            biz = biz_result.scalar_one_or_none()
-            if not biz or biz.onboarding_step != 2:
-                return
-            await new_db.execute(
-                sql_update(Business)
-                .where(Business.id == business_id)
-                .values(onboarding_step=3)
-            )
-            await new_db.commit()
-            biz_result2 = await new_db.execute(select(Business).where(Business.id == business_id))
-            biz = biz_result2.scalar_one_or_none()
-            if biz:
-                user_result = await new_db.execute(select(User).where(User.id == biz.owner_id))
-                usr = user_result.scalar_one_or_none()
-                if usr:
-                    first_name = (usr.full_name or "").split()[0] or "there"
-                    await email_sender.send_onboarding_step(
-                        step=3,
-                        business_id=business_id,
-                        user_email=usr.email,
-                        first_name=first_name,
-                        business_name=biz.name,
-                        db=new_db,
-                        skipped_platform="meta"
-                    )
-    asyncio.create_task(send_email_3())
-    return HTMLResponse("""
-    <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
-    <div style="font-size:48px">✅</div>
-    <h2 style="color:#1a1a1a">No problem!</h2>
-    <p style="color:#666">Marlo will start with Google Ads. You can connect Instagram anytime by replying to any Marlo email.</p>
-    <p style="color:#999;font-size:14px">You can close this tab.</p>
-    </body></html>
-    """)
-
 @router.get("/skip-mailchimp")
 async def skip_mailchimp(business_id: str):
     """User chose to skip Mailchimp — advance to step 4."""
     return await _advance_to_step_4(business_id, skipped=True)
+
+
+# ── Shared helpers ────────────────────────────────────────────────────────────
 
 async def _advance_to_step_4(business_id: str, connected: bool = False, skipped: bool = False):
     """Update onboarding step to 4 and send email 4. Guard against duplicate triggers."""
@@ -408,10 +417,9 @@ async def _advance_to_step_4(business_id: str, connected: bool = False, skipped:
         from email_system.sender import email_sender
         from sqlalchemy import select, update as sql_update
         async with AsyncSessionLocal() as new_db:
-            # Guard: only advance if still on step 3
             biz_result = await new_db.execute(select(Business).where(Business.id == business_id))
             biz = biz_result.scalar_one_or_none()
-            if not biz or biz.onboarding_step != 3:
+            if not biz or biz.onboarding_step > 3:
                 return
             await new_db.execute(
                 sql_update(Business)
