@@ -103,7 +103,8 @@ class EmailSender:
         first_name: str,
         business_name: str,
         db: AsyncSession,
-        extra_data: dict = None
+        extra_data: dict = None,
+        skipped_platform: str = None  # "google" | "meta" | "mailchimp" | None
     ):
         from email_system import templates
         base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
@@ -113,15 +114,31 @@ class EmailSender:
         if step == 1:
             html = templates.onboarding_email_1(business_name, first_name, business_id, base_url)
             subject = f"👋 Welcome {first_name}! Let's set up Marlo (Step 1 of 4)"
+
         elif step == 2:
-            html = templates.onboarding_email_2(first_name, business_id, base_url, frontend_url)
-            subject = "✅ Google connected! Now let's do Instagram (Step 2 of 4)"
+            html = templates.onboarding_email_2(
+                first_name, business_id, base_url, frontend_url,
+                skipped_google=(skipped_platform == "google")
+            )
+            if skipped_platform == "google":
+                subject = "Skipped Google — let's connect Instagram next (Step 2 of 4)"
+            else:
+                subject = "✅ Google connected! Now let's do Instagram (Step 2 of 4)"
+
         elif step == 3:
-            html = templates.onboarding_email_3(first_name, business_id, base_url)
-            subject = "✅ Instagram connected! One more step (Step 3 of 4)"
+            html = templates.onboarding_email_3(
+                first_name, business_id, base_url,
+                skipped_meta=(skipped_platform == "meta")
+            )
+            if skipped_platform == "meta":
+                subject = "Skipped Instagram — one more optional step (Step 3 of 4)"
+            else:
+                subject = "✅ Instagram connected! One more step (Step 3 of 4)"
+
         elif step == 4:
             html = templates.onboarding_email_4(first_name, business_id, base_url)
             subject = "Almost done! Tell me about your business (Step 4 of 4)"
+
         elif step == 5:
             html = templates.onboarding_email_5_ready(
                 first_name,
@@ -131,6 +148,7 @@ class EmailSender:
                 base_url
             )
             subject = f"🚀 {first_name}, your first marketing plan is ready!"
+
         else:
             return
 

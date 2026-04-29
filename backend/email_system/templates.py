@@ -39,8 +39,8 @@ def base_template(content: str, preheader: str = "") -> str:
       <tr><td style="padding:20px 28px;border-top:1px solid {BORDER_COLOR};background:#F9FAFB;">
         <p style="margin:0;font-size:12px;color:{MUTED_COLOR};line-height:1.5;">
           Reply to this email anytime to talk to Marlo.<br>
-          <a href="https://marlo021.ai/help" style="color:{MUTED_COLOR};">Help & FAQ</a> · 
-          <a href="{{unsubscribe_url}}" style="color:{MUTED_COLOR};">Unsubscribe</a> · 
+          <a href="https://marlo021.ai/help" style="color:{MUTED_COLOR};">Help &amp; FAQ</a> ·
+          <a href="{{unsubscribe_url}}" style="color:{MUTED_COLOR};">Unsubscribe</a> ·
           <a href="{{preferences_url}}" style="color:{MUTED_COLOR};">Preferences</a>
         </p>
       </td></tr>
@@ -49,27 +49,35 @@ def base_template(content: str, preheader: str = "") -> str:
 </table>
 </body></html>"""
 
+
 def approve_button(label: str, url: str, color: str = "#16A34A") -> str:
-    return f"""<a href="{url}" style="display:inline-block;background:{color};color:#FFFFFF;
-    text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;
-    border-radius:8px;margin:4px 4px 4px 0;">{label}</a>"""
+    return (
+        f'<a href="{url}" style="display:inline-block;background:{color};color:#FFFFFF;'
+        f'text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;'
+        f'border-radius:8px;margin:4px 4px 4px 0;">{label}</a>'
+    )
+
 
 def decline_button(label: str, url: str) -> str:
-    return f"""<a href="{url}" style="display:inline-block;background:#FFFFFF;color:#374151;
-    text-decoration:none;font-weight:500;font-size:15px;padding:14px 28px;
-    border-radius:8px;border:1px solid #D1D5DB;margin:4px 0;">{label}</a>"""
+    return (
+        f'<a href="{url}" style="display:inline-block;background:#FFFFFF;color:#374151;'
+        f'text-decoration:none;font-weight:500;font-size:15px;padding:14px 28px;'
+        f'border-radius:8px;border:1px solid #D1D5DB;margin:4px 0;">{label}</a>'
+    )
+
 
 def section_divider() -> str:
     return f'<hr style="border:none;border-top:1px solid {BORDER_COLOR};margin:24px 0;">'
 
+
 def metric_row(label: str, value: str, trend: str = "", positive: bool = True) -> str:
     trend_color = "#16A34A" if positive else "#DC2626"
+    trend_html = f'<span style="color:{trend_color};font-size:12px;margin-left:4px;">{trend}</span>' if trend else ""
     return f"""<tr>
       <td style="padding:8px 0;font-size:14px;color:{MUTED_COLOR};">{label}</td>
-      <td style="padding:8px 0;font-size:14px;font-weight:600;color:{TEXT_COLOR};text-align:right;">{value}
-        {f'<span style="color:{trend_color};font-size:12px;margin-left:4px;">{trend}</span>' if trend else ''}
-      </td>
+      <td style="padding:8px 0;font-size:14px;font-weight:600;color:{TEXT_COLOR};text-align:right;">{value}{trend_html}</td>
     </tr>"""
+
 
 def morning_briefing_template(
     business_name: str,
@@ -95,8 +103,7 @@ def morning_briefing_template(
        letter-spacing:0.05em;margin:0 0 8px 0;">YESTERDAY'S RESULTS</p>
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
       {metrics_rows}
-    </table>
-    """
+    </table>"""
 
     actions_section = ""
     if actions:
@@ -124,12 +131,13 @@ def morning_briefing_template(
     <p style="font-size:13px;color:{MUTED_COLOR};margin:0;line-height:1.6;">
       💬 <strong>Reply to this email</strong> anytime to talk to Marlo.<br>
       "Create a post about our weekend special" · "Pause ads today" · "How much have I spent?"<br><br>
-      📸 <strong>Got a product photo?</strong> Reply with the photo attached and Marlo will 
+      📸 <strong>Got a product photo?</strong> Reply with the photo attached and Marlo will
       turn it into ad-ready content for every platform.
     </p>"""
 
     content = results_section + actions_section + reply_hint
     return base_template(content, preheader=f"Your marketing update for {business_name}")
+
 
 def onboarding_email_1(business_name: str, first_name: str, business_id: str, base_url: str) -> str:
     connect_url = f"{base_url}/integrations/connect/google?business_id={business_id}"
@@ -151,8 +159,6 @@ def onboarding_email_1(business_name: str, first_name: str, business_id: str, ba
         This lets me manage your Google Ads campaigns and see your website traffic.
         It takes about 2 minutes — you'll sign into Google and click Allow.
       </p>
-
-      <!-- Value prop -->
       <p style="font-size:13px;color:{TEXT_COLOR};font-weight:600;margin:0 0 8px 0;">
         Why Google Ads is worth connecting:
       </p>
@@ -162,8 +168,6 @@ def onboarding_email_1(business_name: str, first_name: str, business_id: str, ba
         ✓ Marlo optimizes your budget daily so every dollar works harder<br>
         ✓ See exactly what you spent and what you got in your morning email
       </p>
-
-      <!-- Safety reassurance -->
       <div style="background:#EFF6FF;border-radius:6px;padding:10px 14px;margin-bottom:16px;">
         <p style="font-size:13px;color:#1D4ED8;margin:0;line-height:1.6;">
           🛡️ <strong>You're always in control.</strong> Marlo will never spend a dollar
@@ -171,16 +175,13 @@ def onboarding_email_1(business_name: str, first_name: str, business_id: str, ba
           nothing runs — and nothing gets charged.
         </p>
       </div>
-
       <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 16px 0;">
         <strong>What I can do:</strong> ✓ Manage Google Ads · ✓ Read Analytics · ✓ View Business Profile<br>
         <strong>What I cannot do:</strong> ✗ See your billing info · ✗ Access Gmail · ✗ Share your data
       </p>
-
       {approve_button("🔵 Connect Google →", connect_url, BRAND_COLOR)}
     </div>
 
-    <!-- Don't have Google Ads yet -->
     <div style="background:#F9FAFB;border:1px solid {BORDER_COLOR};border-radius:8px;padding:16px;margin-bottom:20px;">
       <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 6px 0;">
         Don't have Google Ads yet?
@@ -189,12 +190,10 @@ def onboarding_email_1(business_name: str, first_name: str, business_id: str, ba
         Just click the button above and sign in with your Google account.
         Google will walk you through creating a free account in about 3 minutes.<br><br>
         When asked, choose <strong>"Switch to Expert Mode"</strong> then
-        <strong>"Create account without a campaign"</strong> — Marlo will set up
-        your first campaign for you.
+        <strong>"Create account without a campaign"</strong> — Marlo will set up your first campaign for you.
       </p>
     </div>
 
-    <!-- Skip option -->
     <p style="font-size:13px;color:{MUTED_COLOR};margin:0;line-height:1.6;">
       Want to start with just Instagram?
       <a href="{skip_url}" style="color:{MUTED_COLOR};font-weight:600;">Skip Google for now →</a><br>
@@ -202,31 +201,36 @@ def onboarding_email_1(business_name: str, first_name: str, business_id: str, ba
     </p>"""
     return base_template(content, preheader="Step 1 of 4 — Connect Google (2 minutes)")
 
-def onboarding_email_2(first_name: str, business_id: str, base_url: str, frontend_url: str = "") -> str:
-    """Step 2: Connect Meta/Instagram — sent automatically after Google connects."""
+
+def onboarding_email_2(first_name: str, business_id: str, base_url: str, frontend_url: str = "", skipped_google: bool = False) -> str:
+    """Step 2: Connect Meta/Instagram — sent after Google connects or is skipped."""
     connect_url = f"{base_url}/integrations/connect/meta?business_id={business_id}"
     retry_url = f"{base_url}/integrations/connect/meta?business_id={business_id}&retry=true"
     skip_url = f"{base_url}/integrations/skip-meta?business_id={business_id}"
 
-    # FAQ links point to frontend /help page with anchors
     faq_base = frontend_url or "https://marlo021.ai"
-    faq_page_link = f"{faq_base}/help"
     faq_why_page = f"{faq_base}/help#why-facebook-page"
     faq_why_business = f"{faq_base}/help#why-business-account"
     faq_permissions = f"{faq_base}/help#meta-permissions"
-
-    # Working Facebook Page creation link (2025)
     fb_create_page = "https://www.facebook.com/pages/create"
 
-    content = f"""
-    <p style="font-size:16px;font-weight:600;color:#16A34A;margin:0 0 4px 0;">
-      ✅ Google is connected!
-    </p>
-    <p style="font-size:14px;color:{MUTED_COLOR};margin:0 0 28px 0;line-height:1.6;">
-      Great work {first_name}. One more connection and Marlo can start posting for you.
-    </p>
+    if skipped_google:
+        top_message = (
+            f'<p style="font-size:16px;font-weight:600;color:{TEXT_COLOR};margin:0 0 4px 0;">'
+            f'No problem — let\'s connect Instagram next!</p>'
+            f'<p style="font-size:14px;color:{MUTED_COLOR};margin:0 0 28px 0;line-height:1.6;">'
+            f'You can always connect Google Ads later by replying to any Marlo email. '
+            f'For now, let\'s get Instagram set up so Marlo can start posting for you.</p>'
+        )
+    else:
+        top_message = (
+            f'<p style="font-size:16px;font-weight:600;color:#16A34A;margin:0 0 4px 0;">'
+            f'✅ Google is connected!</p>'
+            f'<p style="font-size:14px;color:{MUTED_COLOR};margin:0 0 28px 0;line-height:1.6;">'
+            f'Great work {first_name}. One more connection and Marlo can start posting for you.</p>'
+        )
 
-    <!-- MAIN CARD -->
+    main_card = f"""
     <div style="background:#F5F3FF;border-radius:8px;padding:20px;margin-bottom:24px;">
       <p style="font-size:13px;font-weight:600;color:#7C3AED;margin:0 0 16px 0;
          text-transform:uppercase;letter-spacing:0.05em;">
@@ -236,51 +240,40 @@ def onboarding_email_2(first_name: str, business_id: str, base_url: str, fronten
         Before clicking connect, make sure you have these 3 things:
       </p>
 
-      <!-- Item 1 -->
       <div style="display:flex;align-items:flex-start;margin-bottom:14px;">
         <div style="min-width:22px;height:22px;background:#7C3AED;border-radius:50%;
              color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:22px;
              margin-right:12px;flex-shrink:0;">1</div>
         <div>
-          <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 2px 0;">
-            A Facebook account
-          </p>
+          <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 2px 0;">A Facebook account</p>
           <p style="font-size:13px;color:{MUTED_COLOR};margin:0;line-height:1.5;">
             Your personal Facebook account is fine. You'll use it to log in.
           </p>
         </div>
       </div>
 
-      <!-- Item 2 -->
       <div style="display:flex;align-items:flex-start;margin-bottom:14px;">
         <div style="min-width:22px;height:22px;background:#7C3AED;border-radius:50%;
              color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:22px;
              margin-right:12px;flex-shrink:0;">2</div>
         <div>
-          <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 2px 0;">
-            A Facebook Page for your business
-          </p>
+          <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 2px 0;">A Facebook Page for your business</p>
           <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 4px 0;line-height:1.5;">
             Don't have one yet?
-            <a href="{fb_create_page}" style="color:#7C3AED;font-weight:600;">
-              Create a free Page here</a> — just give it your business name (2 min).
+            <a href="{fb_create_page}" style="color:#7C3AED;font-weight:600;">Create a free Page here</a> — just give it your business name (2 min).
           </p>
           <p style="font-size:12px;color:{MUTED_COLOR};margin:0;line-height:1.5;font-style:italic;">
-            Not sure why you need this?
-            <a href="{faq_why_page}" style="color:#7C3AED;">See explanation →</a>
+            Not sure why you need this? <a href="{faq_why_page}" style="color:#7C3AED;">See explanation →</a>
           </p>
         </div>
       </div>
 
-      <!-- Item 3 -->
       <div style="display:flex;align-items:flex-start;margin-bottom:20px;">
         <div style="min-width:22px;height:22px;background:#7C3AED;border-radius:50%;
              color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:22px;
              margin-right:12px;flex-shrink:0;">3</div>
         <div>
-          <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 2px 0;">
-            Instagram set to Business account
-          </p>
+          <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 2px 0;">Instagram set to Business account</p>
           <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 4px 0;line-height:1.6;">
             <strong>Step A — Switch to Business account:</strong><br>
             Instagram → ☰ → Settings → <strong>Account type and tools</strong> →
@@ -288,14 +281,12 @@ def onboarding_email_2(first_name: str, business_id: str, base_url: str, fronten
             <strong>Step B — Link your Instagram to Facebook (easiest on desktop):</strong><br>
             Go to <a href="https://accountscenter.facebook.com" style="color:#7C3AED;font-weight:600;">accountscenter.facebook.com</a>
             while logged into your Facebook account →
-            <strong>Profiles and personal details</strong> → <strong>Add accounts</strong> →
-            add your Instagram account.
+            <strong>Profiles and personal details</strong> → <strong>Add accounts</strong> → add your Instagram account.
           </p>
           <div style="background:#FEF9C3;border-radius:6px;padding:10px 12px;margin-top:6px;margin-bottom:6px;">
             <p style="font-size:12px;color:#854D0E;margin:0;line-height:1.5;">
               ⚠️ Log into Facebook with the account that owns your Facebook Page.
-              Once your Instagram is added to that Accounts Center,
-              the Facebook Page link happens automatically.
+              Once your Instagram is added to that Accounts Center, the Facebook Page link happens automatically.
             </p>
           </div>
           <p style="font-size:12px;color:#16A34A;margin:0 0 4px 0;line-height:1.5;font-weight:600;">
@@ -309,11 +300,10 @@ def onboarding_email_2(first_name: str, business_id: str, base_url: str, fronten
         </div>
       </div>
 
-      <!-- PRE-BUTTON NOTE -->
       <div style="background:#EDE9FE;border-radius:6px;padding:12px 14px;margin-bottom:16px;">
         <p style="font-size:13px;color:#5B21B6;margin:0;line-height:1.6;">
-          <strong>What happens when you click:</strong> You'll go to Facebook's official
-          login page. You'll see a list of permissions — this is normal and expected.
+          <strong>What happens when you click:</strong> You'll go to Facebook's official login page.
+          You'll see a list of permissions — this is normal and expected.
           Select your Business Page and click <strong>Allow</strong> to finish.
           Marlo never sees your password or personal messages.
         </p>
@@ -322,41 +312,30 @@ def onboarding_email_2(first_name: str, business_id: str, base_url: str, fronten
       {approve_button("🟣 Connect Facebook & Instagram →", connect_url, "#7C3AED")}
     </div>
 
-    <!-- NO INSTAGRAM ESCAPE HATCH -->
-    <div style="background:#F9FAFB;border:1px solid {BORDER_COLOR};border-radius:8px;
-         padding:16px;margin-bottom:24px;">
-      <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 6px 0;">
-        Don't have Instagram yet?
-      </p>
+    <div style="background:#F9FAFB;border:1px solid {BORDER_COLOR};border-radius:8px;padding:16px;margin-bottom:24px;">
+      <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 6px 0;">Don't have Instagram yet?</p>
       <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 10px 0;line-height:1.5;">
         No problem — Marlo can start with just Facebook Ads and Google while you set up Instagram.
         You can connect Instagram anytime later by replying to any Marlo email.
       </p>
-      <a href="{skip_url}"
-         style="font-size:13px;color:{MUTED_COLOR};font-weight:600;text-decoration:none;">
+      <a href="{skip_url}" style="font-size:13px;color:{MUTED_COLOR};font-weight:600;text-decoration:none;">
         Skip Instagram for now →
       </a>
     </div>
 
-    <!-- RETRY LINK -->
     <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 24px 0;line-height:1.6;">
       Already tried connecting but something went wrong?
       <a href="{retry_url}" style="color:#7C3AED;font-weight:600;">Try connecting again →</a>
     </p>
 
-    <!-- FAQ LINKS -->
     <div style="border-top:1px solid {BORDER_COLOR};padding-top:16px;">
       <p style="font-size:12px;font-weight:600;color:{MUTED_COLOR};margin:0 0 10px 0;
          text-transform:uppercase;letter-spacing:0.05em;">Common questions</p>
       <p style="font-size:13px;color:{MUTED_COLOR};margin:0;line-height:2.2;">
-        <a href="{faq_why_page}" style="color:#7C3AED;">
-          → Why do I need a Facebook Page just for Instagram?</a><br>
-        <a href="{faq_why_business}" style="color:#7C3AED;">
-          → Why can't Marlo post to my personal Instagram?</a><br>
-        <a href="{faq_permissions}" style="color:#7C3AED;">
-          → What permissions is Marlo asking for, and why?</a><br>
-        <a href="mailto:reply+{business_id}@reply.marlo021.ai?subject=Help with Step 2" style="color:#7C3AED;">
-          → I'm stuck — get help</a>
+        <a href="{faq_why_page}" style="color:#7C3AED;">→ Why do I need a Facebook Page just for Instagram?</a><br>
+        <a href="{faq_why_business}" style="color:#7C3AED;">→ Why can't Marlo post to my personal Instagram?</a><br>
+        <a href="{faq_permissions}" style="color:#7C3AED;">→ What permissions is Marlo asking for, and why?</a><br>
+        <a href="mailto:reply+{business_id}@reply.marlo021.ai?subject=Help with Step 2" style="color:#7C3AED;">→ I'm stuck — get help</a>
       </p>
     </div>
 
@@ -364,17 +343,31 @@ def onboarding_email_2(first_name: str, business_id: str, base_url: str, fronten
       While you set this up, I'm already reading your Google Ads history
       and researching the best keywords for your business. ⚙️
     </p>"""
-    return base_template(content, preheader=f"{first_name}, Google is connected — one more step for Instagram")
 
-def onboarding_email_3(first_name: str, business_id: str, base_url: str) -> str:
+    content = top_message + main_card
+    preheader = "Skipped Google — let's connect Instagram next" if skipped_google else f"{first_name}, Google is connected — one more step for Instagram"
+    return base_template(content, preheader=preheader)
+
+
+def onboarding_email_3(first_name: str, business_id: str, base_url: str, skipped_meta: bool = False) -> str:
     connect_url = f"{base_url}/integrations/connect/mailchimp?business_id={business_id}"
-    content = f"""
-    <p style="font-size:16px;font-weight:600;color:#16A34A;margin:0 0 8px 0;">
-      ✅ Facebook &amp; Instagram connected!
-    </p>
-    <p style="font-size:14px;color:{MUTED_COLOR};margin:0 0 24px 0;">
-      One more connection and you're done with setup.
-    </p>
+
+    if skipped_meta:
+        top_message = (
+            f'<p style="font-size:16px;font-weight:600;color:{TEXT_COLOR};margin:0 0 8px 0;">'
+            f'No worries — you can connect Instagram anytime later.</p>'
+            f'<p style="font-size:14px;color:{MUTED_COLOR};margin:0 0 24px 0;">'
+            f'One more optional connection and setup is complete.</p>'
+        )
+    else:
+        top_message = (
+            f'<p style="font-size:16px;font-weight:600;color:#16A34A;margin:0 0 8px 0;">'
+            f'✅ Facebook &amp; Instagram connected!</p>'
+            f'<p style="font-size:14px;color:{MUTED_COLOR};margin:0 0 24px 0;">'
+            f'One more connection and you\'re done with setup.</p>'
+        )
+
+    mailchimp_card = f"""
     <div style="background:#FEFCE8;border-radius:8px;padding:20px;margin-bottom:24px;">
       <p style="font-size:13px;font-weight:600;color:#A16207;margin:0 0 12px 0;">
         STEP 3 OF 4 — Connect Email Marketing (Optional)
@@ -383,28 +376,22 @@ def onboarding_email_3(first_name: str, business_id: str, base_url: str) -> str:
         Connect Mailchimp so Marlo can send email campaigns to your subscribers
         and track open rates and clicks.
       </p>
-
-      <!-- Free tier callout -->
       <div style="background:#F0FDF4;border-radius:6px;padding:10px 14px;margin-bottom:16px;">
         <p style="font-size:13px;color:#15803D;margin:0;line-height:1.5;">
           💚 <strong>Mailchimp is free for your first 500 subscribers.</strong>
           No credit card needed to get started.
         </p>
       </div>
-
       <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 16px 0;line-height:1.6;">
         Don't have a Mailchimp account yet?
         <a href="https://mailchimp.com/signup/" style="color:#D97706;font-weight:600;">
           Create a free account here</a> — it takes 2 minutes.
         Then come back to this email and click the button below.
       </p>
-
       <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 16px 0;">
         Already have Mailchimp? Just click below to connect it.
       </p>
-
       {approve_button("🟡 Connect Mailchimp →", connect_url, "#D97706")}
-
       <p style="font-size:12px;color:{MUTED_COLOR};margin:16px 0 0 0;">
         Don't use email marketing yet?
         <a href="{base_url}/integrations/skip-mailchimp?business_id={business_id}"
@@ -412,7 +399,10 @@ def onboarding_email_3(first_name: str, business_id: str, base_url: str) -> str:
         you can connect Mailchimp anytime later by replying to any Marlo email.
       </p>
     </div>"""
+
+    content = top_message + mailchimp_card
     return base_template(content, preheader="Step 3 of 4 — Connect email marketing (free for 500 subscribers)")
+
 
 def onboarding_email_4(first_name: str, business_id: str, base_url: str) -> str:
     content = f"""
@@ -445,10 +435,11 @@ def onboarding_email_4(first_name: str, business_id: str, base_url: str) -> str:
     </p>"""
     return base_template(content, preheader="Step 4 of 4 — Just reply to this email")
 
+
 def onboarding_email_5_ready(first_name: str, campaigns: list, posts: list,
                                approve_all_url: str, base_url: str) -> str:
 
-    # ── Campaign section ──────────────────────────────────────────────────────
+    # Campaign section
     campaigns_html = ""
     for c in campaigns[:1]:
         campaigns_html += f"""
@@ -461,14 +452,14 @@ def onboarding_email_5_ready(first_name: str, campaigns: list, posts: list,
           </p>
           <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 16px 0;line-height:1.6;">
             <strong>Keywords:</strong> {', '.join(c.get('keywords', [])[:5])}<br>
-            <strong>Budget:</strong> ${c.get('daily_budget', 8)}/day · Est. {c.get('est_clicks', '30–50')} clicks/day<br>
+            <strong>Budget:</strong> ${c.get('daily_budget', 8)}/day · Est. {c.get('est_clicks', '30-50')} clicks/day<br>
             <strong>Goal:</strong> {c.get('goal', 'Drive local awareness and website visits')}
           </p>
           {approve_button("✓ Approve Campaign", c.get('approve_url', '#'))}
           {decline_button("✗ Skip for now", c.get('decline_url', '#'))}
         </div>"""
 
-    # ── Instagram posts section ───────────────────────────────────────────────
+    # Posts section
     posts_html = ""
     for p in posts[:3]:
         day = p.get('scheduled_day') or p.get('day') or 'This week'
@@ -477,14 +468,10 @@ def onboarding_email_5_ready(first_name: str, campaigns: list, posts: list,
         image_url = p.get('image_url')
         platform = p.get('platform', 'instagram').title()
 
-        # Image — show AI image or placeholder with upload prompt
         if image_url:
-            image_html = f"""
-            <img src="{image_url}" alt="AI generated image for {day}"
-                style="width:100%;border-radius:8px;margin-bottom:12px;display:block;" />"""
+            image_html = f'<img src="{image_url}" alt="Post image for {day}" style="width:100%;border-radius:8px;margin-bottom:12px;display:block;" />'
         else:
-            image_html = f"""
-            <div style="background:#F3F4F6;border:2px dashed #D1D5DB;border-radius:8px;
+            image_html = f"""<div style="background:#F3F4F6;border:2px dashed #D1D5DB;border-radius:8px;
                  padding:20px;text-align:center;margin-bottom:12px;">
               <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 4px 0;">📷 No image yet</p>
               <p style="font-size:12px;color:#9CA3AF;margin:0;line-height:1.5;">
@@ -493,49 +480,38 @@ def onboarding_email_5_ready(first_name: str, campaigns: list, posts: list,
               </p>
             </div>"""
 
-        # Hashtags display
         hashtags_html = ""
         if hashtags:
-            hashtags_html = f"""
-            <p style="font-size:12px;color:#9CA3AF;margin:8px 0 16px 0;line-height:1.6;">
-              {' '.join(hashtags[:10])}
-            </p>"""
+            hashtags_html = f'<p style="font-size:12px;color:#9CA3AF;margin:8px 0 16px 0;line-height:1.6;">{" ".join(hashtags[:10])}</p>'
 
         posts_html += f"""
         <div style="background:#FFFFFF;border:1px solid {BORDER_COLOR};border-radius:12px;
              padding:20px;margin-bottom:16px;">
-
-          <!-- Post header -->
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-            <p style="font-size:12px;font-weight:600;color:{MUTED_COLOR};text-transform:uppercase;
-               letter-spacing:0.08em;margin:0;">📸 {platform} · {day}</p>
-          </div>
-
-          <!-- Image -->
+          <p style="font-size:12px;font-weight:600;color:{MUTED_COLOR};text-transform:uppercase;
+             letter-spacing:0.08em;margin:0 0 16px 0;">📸 {platform} · {day}</p>
           {image_html}
-
-          <!-- Full caption -->
           <p style="font-size:14px;color:{TEXT_COLOR};line-height:1.7;margin:0 0 4px 0;
              white-space:pre-wrap;">{caption}</p>
-
           {hashtags_html}
-
-          <!-- Revision hint -->
           <div style="background:#F9FAFB;border-radius:6px;padding:10px 12px;margin-bottom:16px;">
             <p style="font-size:12px;color:{MUTED_COLOR};margin:0;line-height:1.6;">
               ✏️ <strong>Want changes?</strong> Reply: <em>"Change {day} post: [your instruction]"</em><br>
               📷 <strong>Have a photo?</strong> Reply with the photo attached and it'll replace the image above.
             </p>
           </div>
-
-          <!-- Approve / Skip -->
           {approve_button(f"✓ Approve {day} post", p.get('approve_url', '#'))}
           {decline_button("✗ Skip", p.get('decline_url', '#'))}
         </div>"""
 
-    # ── Full email ─────────────────────────────────────────────────────────────
+    campaign_section = ""
+    if campaigns_html:
+        campaign_section = f"""
+    <p style="font-size:12px;font-weight:600;color:{MUTED_COLOR};text-transform:uppercase;
+       letter-spacing:0.08em;margin:0 0 12px 0;">Your Google Ads Campaign</p>
+    {campaigns_html}
+    {section_divider()}"""
+
     content = f"""
-    <!-- Greeting -->
     <p style="font-size:17px;font-weight:600;color:{TEXT_COLOR};margin:0 0 8px 0;">
       🚀 {first_name}, your first marketing plan is ready!
     </p>
@@ -544,11 +520,8 @@ def onboarding_email_5_ready(first_name: str, campaigns: list, posts: list,
       before anything goes live — nothing runs without your say-so.
     </p>
 
-    <!-- How to use this email -->
     <div style="background:#F0F9FF;border-radius:8px;padding:16px 20px;margin-bottom:28px;">
-      <p style="font-size:13px;font-weight:600;color:#0369A1;margin:0 0 8px 0;">
-        How this works
-      </p>
+      <p style="font-size:13px;font-weight:600;color:#0369A1;margin:0 0 8px 0;">How this works</p>
       <p style="font-size:13px;color:#0369A1;margin:0;line-height:1.8;">
         ✓ Tap <strong>Approve</strong> on anything you like → it goes live<br>
         ✗ Tap <strong>Skip</strong> to pass on something → nothing happens<br>
@@ -557,22 +530,14 @@ def onboarding_email_5_ready(first_name: str, campaigns: list, posts: list,
       </p>
     </div>
 
-    {f'''
-    <!-- Campaign section -->
-    <p style="font-size:12px;font-weight:600;color:{MUTED_COLOR};text-transform:uppercase;
-       letter-spacing:0.08em;margin:0 0 12px 0;">Your Google Ads Campaign</p>
-    {campaigns_html}
-    {section_divider()}
-    ''' if campaigns_html else ''}
+    {campaign_section}
 
-    <!-- Posts section -->
     <p style="font-size:12px;font-weight:600;color:{MUTED_COLOR};text-transform:uppercase;
        letter-spacing:0.08em;margin:0 0 16px 0;">This week's Instagram posts</p>
     {posts_html}
 
     {section_divider()}
 
-    <!-- Footer note -->
     <p style="font-size:13px;color:{MUTED_COLOR};margin:0;line-height:1.8;">
       🎉 After you approve, posts will go live on their scheduled days.<br>
       Starting tomorrow at 8am you'll get a daily briefing — one email, one tap, done.
@@ -580,14 +545,14 @@ def onboarding_email_5_ready(first_name: str, campaigns: list, posts: list,
 
     return base_template(content, preheader=f"{first_name}, your first marketing plan is ready — review below")
 
+
 def photo_response_template(first_name: str, original_caption: str,
                               platform_previews: list, base_url: str) -> str:
     previews_html = ""
     for p in platform_previews:
         image_html = ""
         if p.get("image_url"):
-            image_html = f"""<img src="{p['image_url']}" alt="{p['platform_label']}"
-                style="width:100%;max-width:400px;border-radius:8px;margin-bottom:10px;display:block;" />"""
+            image_html = f'<img src="{p["image_url"]}" alt="{p["platform_label"]}" style="width:100%;max-width:400px;border-radius:8px;margin-bottom:10px;display:block;" />'
         previews_html += f"""
         <div style="margin-bottom:24px;padding-bottom:24px;border-bottom:1px solid {BORDER_COLOR};">
           <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 8px 0;">
@@ -613,6 +578,7 @@ def photo_response_template(first_name: str, original_caption: str,
       Want to edit a caption? Just reply: "Edit Instagram caption: [your new text]"
     </p>"""
     return base_template(content, preheader="Your photo is ready to post — approve below")
+
 
 def weekly_report_template(first_name: str, report_data: dict) -> str:
     summary = report_data.get("summary", "")

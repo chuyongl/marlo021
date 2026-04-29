@@ -377,7 +377,8 @@ async def skip_google(business_id: str):
                         user_email=usr.email,
                         first_name=first_name,
                         business_name=biz.name,
-                        db=new_db
+                        db=new_db,
+                        skipped_platform="google"
                     )
     asyncio.create_task(send_email_2())
     return HTMLResponse("""
@@ -421,7 +422,8 @@ async def skip_meta(business_id: str):
                         user_email=usr.email,
                         first_name=first_name,
                         business_name=biz.name,
-                        db=new_db
+                        db=new_db,
+                        skipped_platform="meta"
                     )
     asyncio.create_task(send_email_3())
     return HTMLResponse("""
