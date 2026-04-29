@@ -345,6 +345,50 @@ async def mailchimp_callback(
 
     return await _advance_to_step_4(state_data["business_id"], connected=True)
 
+@router.get("/skip-google")
+async def skip_google(business_id: str):
+    """User chose to skip Google Ads — advance to step 2 and send email 2."""
+    async def send_email_2():
+        from database.session import AsyncSessionLocal
+        from email_system.sender import email_sender
+        from sqlalchemy import select, update as sql_update
+        async with AsyncSessionLocal() as new_db:
+            # Guard: only advance if still on step 1
+            biz_result = await new_db.execute(select(Business).where(Business.id == business_id))
+            biz = biz_result.scalar_one_or_none()
+            if not biz or biz.onboarding_step != 1:
+                return
+            await new_db.execute(
+                sql_update(Business)
+                .where(Business.id == business_id)
+                .values(onboarding_step=2)
+            )
+            await new_db.commit()
+            biz_result2 = await new_db.execute(select(Business).where(Business.id == business_id))
+            biz = biz_result2.scalar_one_or_none()
+            if biz:
+                user_result = await new_db.execute(select(User).where(User.id == biz.owner_id))
+                usr = user_result.scalar_one_or_none()
+                if usr:
+                    first_name = (usr.full_name or "").split()[0] or "there"
+                    await email_sender.send_onboarding_step(
+                        step=2,
+                        business_id=business_id,
+                        user_email=usr.email,
+                        first_name=first_name,
+                        business_name=biz.name,
+                        db=new_db
+                    )
+    asyncio.create_task(send_email_2())
+    return HTMLResponse("""
+    <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
+    <div style="font-size:48px">✅</div>
+    <h2 style="color:#1a1a1a">No problem!</h2>
+    <p style="color:#666">Marlo will start with Instagram. You can connect Google Ads anytime by replying to any Marlo email.</p>
+    <p style="color:#999;font-size:14px">You can close this tab.</p>
+    </body></html>
+    """)
+
 @router.get("/skip-meta")
 async def skip_meta(business_id: str):
     """User chose to skip Meta/Instagram — advance to step 3 and send email 3."""
@@ -353,14 +397,19 @@ async def skip_meta(business_id: str):
         from email_system.sender import email_sender
         from sqlalchemy import select, update as sql_update
         async with AsyncSessionLocal() as new_db:
+            # Guard: only advance if still on step 2
+            biz_result = await new_db.execute(select(Business).where(Business.id == business_id))
+            biz = biz_result.scalar_one_or_none()
+            if not biz or biz.onboarding_step != 2:
+                return
             await new_db.execute(
                 sql_update(Business)
                 .where(Business.id == business_id)
                 .values(onboarding_step=3)
             )
             await new_db.commit()
-            biz_result = await new_db.execute(select(Business).where(Business.id == business_id))
-            biz = biz_result.scalar_one_or_none()
+            biz_result2 = await new_db.execute(select(Business).where(Business.id == business_id))
+            biz = biz_result2.scalar_one_or_none()
             if biz:
                 user_result = await new_db.execute(select(User).where(User.id == biz.owner_id))
                 usr = user_result.scalar_one_or_none()
@@ -390,21 +439,25 @@ async def skip_mailchimp(business_id: str):
     return await _advance_to_step_4(business_id, skipped=True)
 
 async def _advance_to_step_4(business_id: str, connected: bool = False, skipped: bool = False):
-    """Update onboarding step to 4 and send email 4."""
+    """Update onboarding step to 4 and send email 4. Guard against duplicate triggers."""
     async def send_email_4():
         from database.session import AsyncSessionLocal
         from email_system.sender import email_sender
         from sqlalchemy import select, update as sql_update
         async with AsyncSessionLocal() as new_db:
+            # Guard: only advance if still on step 3
+            biz_result = await new_db.execute(select(Business).where(Business.id == business_id))
+            biz = biz_result.scalar_one_or_none()
+            if not biz or biz.onboarding_step != 3:
+                return
             await new_db.execute(
                 sql_update(Business)
                 .where(Business.id == business_id)
                 .values(onboarding_step=4)
             )
             await new_db.commit()
-
-            biz_result = await new_db.execute(select(Business).where(Business.id == business_id))
-            biz = biz_result.scalar_one_or_none()
+            biz_result2 = await new_db.execute(select(Business).where(Business.id == business_id))
+            biz = biz_result2.scalar_one_or_none()
             if biz:
                 user_result = await new_db.execute(select(User).where(User.id == biz.owner_id))
                 usr = user_result.scalar_one_or_none()

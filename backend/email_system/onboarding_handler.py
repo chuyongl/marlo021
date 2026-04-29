@@ -58,7 +58,30 @@ Business description: {reply_text}"""
     usr = user_result.scalar_one_or_none()
     first_name = (usr.full_name or "").split()[0] or "there"
 
-    # Step 4: Generate first week of Instagram posts
+    # Step 3b: Check which platforms are connected
+    from database.models import PlatformIntegration
+    from sqlalchemy import select as sa_select
+    integrations_result = await db.execute(
+        sa_select(PlatformIntegration)
+        .where(PlatformIntegration.business_id == business_id)
+        .where(PlatformIntegration.is_active == True)
+    )
+    integrations = integrations_result.scalars().all()
+    connected_platforms = [i.platform for i in integrations]
+    has_google = any(p in connected_platforms for p in ["google_ads", "google"])
+    has_meta = any(p in connected_platforms for p in ["meta", "instagram", "facebook"])
+    has_mailchimp = "mailchimp" in connected_platforms
+
+    # Determine which platforms to generate content for
+    content_platforms = []
+    if has_meta:
+        content_platforms.append("instagram")
+    if not content_platforms:
+        # Fallback: generate instagram content even if not connected
+        # (user can connect later, content is ready)
+        content_platforms = ["instagram"]
+
+    # Step 4: Generate first week of posts for connected platforms
     posts_for_email = []
 
     try:
@@ -69,7 +92,7 @@ Business description: {reply_text}"""
         posts = await content_pipeline.generate_week_of_content(
             business_id=business_id,
             db=db,
-            platforms=["instagram"],
+            platforms=content_platforms,
             theme=theme
         )
 
@@ -105,10 +128,10 @@ Business description: {reply_text}"""
         print(f"Content generation error (non-fatal): {e}")
         posts_for_email = []
 
-    # Step 5: Generate Google Ads campaign suggestion
+    # Step 5: Generate Google Ads campaign — ONLY if Google is connected
     campaigns_for_email = []
 
-    try:
+    if has_google:
         from agent.executor import executor
 
         campaign_prompt = f"""Suggest a first Google Ads search campaign for this business.
