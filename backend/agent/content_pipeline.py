@@ -184,7 +184,7 @@ class ContentPipeline:
 
         return {
             "title": strategy.get("key_message", "New Post")[:50],
-            "caption": content.get("full_text", content.get("caption", "")),
+            "caption": content.get("caption", ""),  # caption without hashtags
             "caption_preview": content.get("caption", "")[:120],
             "hashtags": content.get("hashtags", []),
             "image_url": image_url,

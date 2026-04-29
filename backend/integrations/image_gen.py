@@ -10,14 +10,12 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path="../../.env")
 fal_client.api_key = os.getenv("FAL_API_KEY", "")
 
-# Register at fal.ai to get an API key — $10 credit gets you ~180 images at Flux Pro pricing
-
 PLATFORM_SIZES = {
-    "instagram_feed":   {"width": 1024, "height": 1024},   # 1:1 square
-    "instagram_story":  {"width": 1024, "height": 1792},   # 9:16 vertical
+    "instagram_feed":   {"width": 1024, "height": 1024},
+    "instagram_story":  {"width": 1024, "height": 1792},
     "facebook_feed":    {"width": 1024, "height": 1024},
     "tiktok":           {"width": 1024, "height": 1792},
-    "google_display":   {"width": 1792, "height": 1024},   # 16:9 landscape
+    "google_display":   {"width": 1792, "height": 1024},
     "email_header":     {"width": 1792, "height": 600},
 }
 
@@ -44,7 +42,7 @@ clean composition optimized for {platform.replace('_', ' ')} format.
             "fal-ai/flux-pro/v1.1",
             arguments={
                 "prompt": prompt,
-                "image_size": f"{size['width']}x{size['height']}",
+                "image_size": size,  # dict with width/height, not a string
                 "num_inference_steps": 25,
                 "guidance_scale": 3.5,
                 "num_images": 1,
@@ -77,10 +75,7 @@ clean composition optimized for {platform.replace('_', ' ')} format.
         return {"url": result}
 
     async def enhance_photo(self, image_url: str) -> str:
-        """
-        Enhance a photo for ad use.
-        Improves lighting, sharpness, and color grading.
-        """
+        """Enhance a photo for ad use."""
         result = await fal_client.run_async(
             "fal-ai/clarity-upscaler",
             arguments={
@@ -99,22 +94,14 @@ clean composition optimized for {platform.replace('_', ' ')} format.
         business: dict,
         caption_hint: str = ""
     ) -> dict:
-        """
-        Take an enhanced photo URL and:
-        1. Resize for each platform using Pillow
-        2. Generate captions for each platform using Claude
-        Returns dict with platform key → {url, caption}
-        """
         from agent.brain import brain
 
         temp_dir = os.environ.get("TEMP", "/tmp")
 
-        # Download the enhanced image
         async with httpx.AsyncClient() as client:
             response = await client.get(enhanced_url)
             image_data = response.content
 
-        # Handle iPhone HEIC format via pillow-heif
         try:
             import pillow_heif
             pillow_heif.register_heif_opener()
@@ -132,31 +119,26 @@ clean composition optimized for {platform.replace('_', ' ')} format.
 
         results = {}
         for platform_key, (w, h) in SIZES.items():
-            # Smart crop: center crop then resize
             img_copy = img.copy()
             img_ratio = img_copy.width / img_copy.height
             target_ratio = w / h
 
             if img_ratio > target_ratio:
-                # Image is wider — crop sides
                 new_width = int(img_copy.height * target_ratio)
                 left = (img_copy.width - new_width) // 2
                 img_copy = img_copy.crop((left, 0, left + new_width, img_copy.height))
             else:
-                # Image is taller — crop top/bottom
                 new_height = int(img_copy.width / target_ratio)
                 top = (img_copy.height - new_height) // 2
                 img_copy = img_copy.crop((0, top, img_copy.width, top + new_height))
 
             img_copy = img_copy.resize((w, h), Image.LANCZOS)
 
-            # Save to temp and upload
             temp_path = os.path.join(temp_dir, f"marlo_{platform_key}_{uuid.uuid4().hex}.jpg")
             img_copy.save(temp_path, "JPEG", quality=90)
             upload_url = await self.upload_image(temp_path)
 
-            # Generate caption for this platform
-            instructions = f"""For {platform_key.replace('_', ' ')}. 
+            instructions = f"""For {platform_key.replace('_', ' ')}.
 {'Include relevant hashtags.' if 'instagram' in platform_key else 'No hashtags — keep it short and punchy.'}
 {f'Context from user: {caption_hint}' if caption_hint else ''}
 Max 150 chars for ads, 300 for organic posts."""
