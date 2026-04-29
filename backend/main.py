@@ -90,3 +90,6 @@ app.include_router(inbound_router)
 
 from agent.router import router as agent_router
 app.include_router(agent_router)
+
+from billing.billing_router import router as billing_router
+app.include_router(billing_router)

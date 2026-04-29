@@ -37,6 +37,7 @@ class Business(Base):
     email_notifications = Column(Boolean, default=True)
     onboarding_step = Column(Integer, default=0)
     onboarding_completed = Column(Boolean, default=False)
+    subscription_id = Column(String, nullable=True)  # Stripe subscription ID
     created_at = Column(DateTime, default=datetime.utcnow)
     owner = relationship("User", back_populates="businesses")
     integrations = relationship("PlatformIntegration", back_populates="business")
