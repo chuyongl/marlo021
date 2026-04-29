@@ -9,18 +9,18 @@ import httpx
 
 router = APIRouter(prefix="/email", tags=["email-inbound"])
 
+
+def clean_subject(text: str, max_len: int = 60) -> str:
+    """Strip newlines and extra whitespace from email subject lines."""
+    return " ".join(text[:max_len * 2].split())[:max_len]
+
+
 @router.post("/inbound")
 async def receive_inbound_email(request: Request, background_tasks: BackgroundTasks):
-    """
-    Postmark sends a JSON payload here whenever someone replies to a Marlo email.
-    We parse it and hand off to the agent in the background.
-    """
     payload = await request.json()
 
     from_email = payload.get("From", "").lower()
-    subject = payload.get("Subject", "")
     text_body = payload.get("TextBody", "")
-    html_body = payload.get("HtmlBody", "")
     attachments = payload.get("Attachments", [])
 
     to_full = payload.get("OriginalRecipient", payload.get("To", ""))
@@ -38,6 +38,7 @@ async def receive_inbound_email(request: Request, background_tasks: BackgroundTa
     )
     return {"status": "received"}
 
+
 def extract_business_id_from_to(to_address: str) -> str:
     """Extract business ID from reply+BUSINESS_ID@domain format.
     Returns empty string if not found or not a valid UUID.
@@ -46,11 +47,12 @@ def extract_business_id_from_to(to_address: str) -> str:
         local_part = to_address.split("@")[0]
         if "+" in local_part:
             candidate = local_part.split("+")[1]
-            uuid.UUID(candidate)  # raises ValueError if not a valid UUID
+            uuid.UUID(candidate)
             return candidate
     except Exception:
         pass
     return ""
+
 
 async def process_inbound_email(
     business_id: str,
@@ -90,6 +92,7 @@ async def process_inbound_email(
                 db=db
             )
 
+
 async def handle_text_reply(business, user, message: str, db: AsyncSession):
     """Process a plain-text reply — route to onboarding handler or main agent."""
     from email_system.sender import email_sender
@@ -113,27 +116,28 @@ async def handle_text_reply(business, user, message: str, db: AsyncSession):
         )
         return
 
-    # Step 5+: fully onboarded — use the full agent brain
-    # Check if this is a post revision instruction first
+    # Step 5+: fully onboarded
     lower_msg = message.lower()
+
+    # Check for cancellation request
+    if "cancel my marlo021 subscription" in lower_msg:
+        await handle_cancellation(business=business, user=user, db=db)
+        return
+
+    # Check for post revision instruction
     revision_days = ["monday", "wednesday", "friday", "tuesday", "thursday", "saturday", "sunday"]
     is_revision = any(
         f"change {day}" in lower_msg or f"edit {day}" in lower_msg or f"rewrite {day}" in lower_msg
         for day in revision_days
     )
-
     if is_revision:
-        await handle_post_revision(
-            business=business,
-            user=user,
-            message=message,
-            db=db
-        )
+        await handle_post_revision(business=business, user=user, message=message, db=db)
         return
+
+    # Full agent brain
     from agent.brain import brain
     from agent.executor import executor
 
-    # Try to build full context, fall back to basic context if module missing
     try:
         from agent.context_builder import context_builder
         context = await context_builder.build_full_context(str(business.id), db)
@@ -182,18 +186,59 @@ async def handle_text_reply(business, user, message: str, db: AsyncSession):
               {approve_button("✓ Approve", approve_url)}
               {decline_button("✗ Decline", decline_url)}
             </div>"""
+        from email_system.templates import base_template
         html = base_template(actions_html)
-        subject = f"Re: {summary[:60]}"
+        subject = f"Re: {clean_subject(summary)}"
     else:
         from email_system.templates import base_template
         html = base_template(f'<p style="font-size:15px;color:#1F2937;">{summary}</p>')
-        subject = f"Re: {summary[:50]}"
+        subject = f"Re: {clean_subject(summary, 50)}"
 
     await email_sender.send(
         to_email=user.email,
         subject=subject,
         html_body=html,
         email_type="reply_response",
+        business_id=str(business.id),
+        db=db,
+        reply_to=f"reply+{business.id}@reply.marlo021.ai"
+    )
+
+
+async def handle_cancellation(business, user, db: AsyncSession):
+    """Handle subscription cancellation request."""
+    from email_system.sender import email_sender
+    from email_system.templates import base_template
+
+    first_name = (user.full_name or "there").split()[0]
+
+    # TODO: call Stripe API to cancel subscription when billing is set up
+    # For now, just log and send confirmation
+    print(f"[Cancellation] Business {business.id} requested cancellation")
+
+    html = base_template(f"""
+    <p style="font-size:16px;font-weight:600;color:#1F2937;margin:0 0 8px 0;">
+      We've received your cancellation request, {first_name}.
+    </p>
+    <p style="font-size:14px;color:#6B7280;margin:0 0 16px 0;line-height:1.7;">
+      Your Marlo021 subscription will be cancelled. You'll continue to have access
+      until the end of your current billing period.
+    </p>
+    <p style="font-size:14px;color:#6B7280;margin:0 0 16px 0;line-height:1.7;">
+      We'll send you a confirmation email within 24 hours.
+      If you change your mind, just reply to this email within the next 24 hours
+      and we'll keep your account active.
+    </p>
+    <p style="font-size:13px;color:#9CA3AF;margin:0;">
+      Thank you for trying Marlo. We hope to see you again.
+    </p>
+    """)
+
+    await email_sender.send(
+        to_email=user.email,
+        subject="Your Marlo021 subscription cancellation",
+        html_body=html,
+        email_type="cancellation",
         business_id=str(business.id),
         db=db,
         reply_to=f"reply+{business.id}@reply.marlo021.ai"
@@ -261,9 +306,7 @@ async def handle_post_revision(business, user, message: str, db: AsyncSession):
     from agent.brain import brain
     from email_system.sender import email_sender
     from email_system.templates import base_template, approve_button, decline_button
-    import os
 
-    frontend_url = os.getenv("FRONTEND_URL", "https://marlo021.ai")
     base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
     first_name = (user.full_name or "there").split()[0]
 
@@ -275,7 +318,6 @@ async def handle_post_revision(business, user, message: str, db: AsyncSession):
         "description": business.description or "",
     }
 
-    # Generate revised post
     revision_prompt = f"""A business owner wants to revise an Instagram post.
 
 Business: {business.name}
@@ -302,11 +344,9 @@ HASHTAGS:
         instructions=revision_prompt
     )
 
-    # Parse caption and hashtags
     caption = raw.strip()
     hashtags_text = ""
     if "HASHTAGS:" in raw.upper():
-        parts = raw.upper().split("HASHTAGS:")
         caption_part = raw[:raw.upper().find("HASHTAGS:")].strip()
         if "CAPTION:" in caption_part.upper():
             caption = caption_part[caption_part.upper().find("CAPTION:") + 8:].strip()
@@ -316,7 +356,6 @@ HASHTAGS:
     elif "CAPTION:" in raw.upper():
         caption = raw[raw.upper().find("CAPTION:") + 8:].strip()
 
-    # Create a pending action for the revised post
     from agent.executor import executor
     action = {
         "type": "create_post",
@@ -342,26 +381,23 @@ HASHTAGS:
     <p style="font-size:13px;color:#6B7280;margin:0 0 20px 0;">
       Based on: <em>"{message[:80]}{'...' if len(message) > 80 else ''}"</em>
     </p>
-
     <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:20px;margin-bottom:20px;">
       <p style="font-size:13px;font-weight:600;color:#374151;margin:0 0 10px 0;">📸 Revised Instagram post</p>
       <p style="font-size:14px;color:#1F2937;line-height:1.8;margin:0 0 8px 0;white-space:pre-wrap;">{caption}</p>
       {f'<p style="font-size:12px;color:#9CA3AF;margin:0;">{hashtags_text}</p>' if hashtags_text else ''}
     </div>
-
     <div style="background:#EFF6FF;border-radius:6px;padding:12px 14px;margin-bottom:20px;">
       <p style="font-size:12px;color:#1D4ED8;margin:0;line-height:1.6;">
         Still not right? Reply again with more instructions and I'll revise further.
       </p>
     </div>
-
     {approve_button("✓ Approve & Schedule", approve_url)}
     {decline_button("✗ Skip", decline_url)}
     """)
 
     await email_sender.send(
         to_email=user.email,
-        subject=f"Re: Your revised post is ready",
+        subject="Re: Your revised post is ready",
         html_body=html,
         email_type="post_revision",
         business_id=str(business.id),
