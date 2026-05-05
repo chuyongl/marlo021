@@ -2,11 +2,16 @@
 scheduler.py
 Marlo background scheduler — all time-based jobs.
 
-Weekly content flow:
-  Sunday  9pm local  → generate all content + send Sunday kickoff email (Monday post approval)
-  Tuesday 2pm local  → send Wednesday post approval; expire Monday post if still pending
-  Thursday 2pm local → send Friday post approval; expire Wednesday post if still pending
-  Friday  6pm local  → expire Friday post if still pending
+Weekly content flow (fully data-driven from business.posting_schedule):
+  Sunday 9pm local  → generate all posts + send kickoff email (first post approval)
+  Day before each post at 2pm local → send approval email, expire previous post
+  Last post day 6pm local → expire if still pending
+
+posting_schedule examples:
+  ["Monday", "Wednesday", "Friday"]         ← default 3x/week
+  ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]  ← daily weekdays
+  ["Monday"]                                 ← once a week
+  ["Monday", "Wednesday", "Friday", "Saturday", "Sunday"]   ← 5x/week
 
 Other jobs:
   Every 30min → expire stale actions older than 3 days (safety net)
@@ -25,32 +30,111 @@ import logging
 logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler()
 
+ALL_DAYS_ORDERED = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+DAY_TO_WEEKDAY  = {"Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3,
+                   "Friday": 4, "Saturday": 5, "Sunday": 6}
+
 
 # ─── HELPERS ─────────────────────────────────────────────────────────────────
 
-def get_local_hour(biz, utc_now) -> int:
+def get_biz_tz(biz):
+    from zoneinfo import ZoneInfo
+    tz_name = biz.preferred_post_timezone or biz.timezone or "America/New_York"
     try:
-        from zoneinfo import ZoneInfo
-        tz = ZoneInfo(biz.preferred_post_timezone or biz.timezone or "America/New_York")
-        return utc_now.astimezone(tz).hour
+        return ZoneInfo(tz_name)
     except Exception:
-        return utc_now.hour
+        return ZoneInfo("America/New_York")
+
+def get_local_dt(biz, utc_now) -> datetime:
+    return utc_now.astimezone(get_biz_tz(biz))
+
+def get_local_hour(biz, utc_now) -> int:
+    return get_local_dt(biz, utc_now).hour
 
 def get_local_weekday(biz, utc_now) -> int:
-    try:
-        from zoneinfo import ZoneInfo
-        tz = ZoneInfo(biz.preferred_post_timezone or biz.timezone or "America/New_York")
-        return utc_now.astimezone(tz).weekday()
-    except Exception:
-        return utc_now.weekday()
+    return get_local_dt(biz, utc_now).weekday()
+
+def get_local_day_name(biz, utc_now) -> str:
+    return get_local_dt(biz, utc_now).strftime("%A")  # "Monday", "Tuesday" etc
+
+def get_posting_schedule(biz) -> list:
+    """
+    Returns the ordered list of posting days for this business.
+    Reads from biz.posting_schedule (JSON column), falls back to posts_per_week,
+    falls back to ["Monday", "Wednesday", "Friday"].
+    """
+    # Try JSON column first
+    schedule = biz.posting_schedule
+    if schedule and isinstance(schedule, list) and len(schedule) > 0:
+        # Validate all entries are real day names
+        valid = [d for d in schedule if d in DAY_TO_WEEKDAY]
+        if valid:
+            # Return in week order
+            return sorted(valid, key=lambda d: DAY_TO_WEEKDAY[d])
+
+    # Fall back to posts_per_week
+    n = biz.posts_per_week or 3
+    defaults = {
+        1: ["Monday"],
+        2: ["Monday", "Thursday"],
+        3: ["Monday", "Wednesday", "Friday"],
+        4: ["Monday", "Tuesday", "Thursday", "Friday"],
+        5: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        6: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+        7: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+    }
+    return defaults.get(n, ["Monday", "Wednesday", "Friday"])
+
+def get_approval_windows(posting_schedule: list) -> list:
+    """
+    Build approval/expiry windows from a posting schedule.
+    For each post day, the approval email goes out the day before at 2pm.
+    That same window also expires the previous post.
+    The last post expires at 6pm on its own day.
+
+    Returns list of dicts:
+    {
+      "weekday": int,        # local weekday to fire on
+      "hour": int,           # local hour to fire on
+      "send_day": str|None,  # which post to send approval for
+      "expire_day": str|None # which post to expire
+    }
+    """
+    if not posting_schedule:
+        return []
+
+    windows = []
+    for i, day in enumerate(posting_schedule):
+        day_weekday = DAY_TO_WEEKDAY[day]
+
+        # Approval email goes out day before at 2pm (except first post — that's in kickoff email)
+        if i > 0:
+            prev_day_weekday = (day_weekday - 1) % 7
+            expire_day = posting_schedule[i - 1]  # expire the post before this one
+            windows.append({
+                "weekday": prev_day_weekday,
+                "hour": 14,
+                "send_day": day,
+                "expire_day": expire_day,
+            })
+
+    # Last post expires at 6pm on its own day
+    last_day = posting_schedule[-1]
+    windows.append({
+        "weekday": DAY_TO_WEEKDAY[last_day],
+        "hour": 18,
+        "send_day": None,
+        "expire_day": last_day,
+    })
+
+    return windows
 
 def build_scheduled_post_time(biz, day_name: str) -> datetime:
+    """Build UTC datetime for when this post should go live."""
     try:
-        from zoneinfo import ZoneInfo
-        tz = ZoneInfo(biz.preferred_post_timezone or biz.timezone or "America/New_York")
+        tz = get_biz_tz(biz)
         now_local = datetime.now(tz)
-        day_map = {"Monday": 0, "Wednesday": 2, "Friday": 4}
-        target_weekday = day_map.get(day_name, 0)
+        target_weekday = DAY_TO_WEEKDAY.get(day_name, 0)
         days_ahead = (target_weekday - now_local.weekday()) % 7
         hour, minute = map(int, (biz.preferred_post_time or "09:00").split(":"))
         post_local = now_local.replace(hour=hour, minute=minute, second=0, microsecond=0)
@@ -64,9 +148,10 @@ def build_scheduled_post_time(biz, day_name: str) -> datetime:
 
 async def weekly_content_generation():
     """
-    Runs every hour. For each business, fires only on Sunday between 21:00-21:59 local.
-    Generates all posts for the week, stores as pending actions, sends Sunday kickoff email
-    containing: last week's results + this week's strategy + image guide + Monday post approval.
+    Runs every hour. Fires for each business on Sunday between 21:00-21:59 local.
+    - Reads posting_schedule from DB (fully data-driven)
+    - Generates exactly len(posting_schedule) posts
+    - Sends kickoff email with: last week stats + this week strategy + image guide + first post approval
     """
     try:
         from database.session import AsyncSessionLocal
@@ -111,6 +196,11 @@ async def weekly_content_generation():
                         logger.info(f"[Scheduler] Already generated this week for {biz.name}, skipping.")
                         continue
 
+                    # Get this business's posting schedule
+                    posting_schedule = get_posting_schedule(biz)
+                    posts_count = len(posting_schedule)
+                    logger.info(f"[Scheduler] {biz.name} posting schedule: {posting_schedule}")
+
                     # Connected platforms
                     integrations_result = await db.execute(
                         select(PlatformIntegration).where(
@@ -121,7 +211,7 @@ async def weekly_content_generation():
                     integrations = integrations_result.scalars().all()
                     connected  = [p.platform for p in integrations]
                     has_google = "google" in connected
-                    platforms  = ["instagram"]  # default; extend when more platforms supported
+                    platforms  = ["instagram"]
 
                     business_dict = {
                         "name": biz.name,
@@ -132,19 +222,19 @@ async def weekly_content_generation():
                         "monthly_ad_budget": float(biz.monthly_ad_budget or 300),
                     }
 
-                    posts_per_week = biz.posts_per_week or 3
-                    all_days       = ["Monday", "Wednesday", "Friday"]
-                    scheduled_days = all_days[:posts_per_week]
-
-                    # Generate social posts
+                    # Generate exactly posts_count posts
                     posts = await content_pipeline.generate_week_of_content(
                         business_id=str(biz.id),
                         db=db,
                         platforms=platforms,
                     )
-                    posts = posts[:posts_per_week]
+                    # Pad or trim to match schedule length
+                    while len(posts) < posts_count:
+                        posts.append(posts[-1].copy() if posts else {})
+                    posts = posts[:posts_count]
+
                     for i, post in enumerate(posts):
-                        post["scheduled_day"] = scheduled_days[i]
+                        post["scheduled_day"] = posting_schedule[i]
 
                     # Generate Google Ads if connected
                     google_campaign = None
@@ -158,7 +248,7 @@ async def weekly_content_generation():
                             business_id=str(biz.id),
                         )
 
-                    # Store as pending actions
+                    # Store all as pending actions
                     stored_actions = []
                     for post in posts:
                         action = AgentAction(
@@ -189,7 +279,7 @@ async def weekly_content_generation():
                             status="pending",
                             requires_approval=True,
                             scheduled_post_time=datetime.now(timezone.utc),
-                            scheduled_day="Monday",
+                            scheduled_day=posting_schedule[0],
                             approval_email_sent=False,
                             created_at=datetime.now(timezone.utc),
                         )
@@ -198,7 +288,7 @@ async def weekly_content_generation():
 
                     await db.commit()
 
-                    # Last week stats for kickoff email
+                    # Last week stats
                     week_ago = utc_now - timedelta(days=7)
                     past_result = await db.execute(
                         select(AgentAction).where(
@@ -214,36 +304,41 @@ async def weekly_content_generation():
                         "expired":  len([a for a in past if a.status == "expired"]),
                     }
 
-                    # Send Sunday kickoff email (Monday post + ads + strategy + image guide)
-                    monday_action = next((a for a in stored_actions if a.scheduled_day == "Monday" and a.action_type != "google_ads_campaign"), None)
-                    ads_stored    = next((a for a in stored_actions if a.action_type == "google_ads_campaign"), None)
+                    # First post action (for kickoff email)
+                    first_day = posting_schedule[0]
+                    first_action = next((a for a in stored_actions
+                                        if a.scheduled_day == first_day
+                                        and a.action_type != "google_ads_campaign"), None)
+                    ads_stored = next((a for a in stored_actions
+                                       if a.action_type == "google_ads_campaign"), None)
 
                     user_result = await db.execute(select(User).where(User.id == biz.owner_id))
                     user = user_result.scalar_one_or_none()
 
-                    if user and monday_action:
+                    if user and first_action:
                         first_name = (user.full_name or "").split()[0] or "there"
                         await email_sender.send_weekly_kickoff(
                             business_id=str(biz.id),
                             user_email=user.email,
                             first_name=first_name,
                             business_name=biz.name,
-                            monday_post=monday_action.action_parameters,
-                            monday_approve_token=monday_action.approval_token,
-                            monday_decline_token=monday_action.decline_token,
+                            first_post=first_action.action_parameters,
+                            first_post_day=first_day,
+                            first_approve_token=first_action.approval_token,
+                            first_decline_token=first_action.decline_token,
                             google_campaign=google_campaign,
                             ads_approve_token=ads_stored.approval_token if ads_stored else None,
                             ads_decline_token=ads_stored.decline_token if ads_stored else None,
-                            scheduled_days=scheduled_days,
+                            posting_schedule=posting_schedule,
                             last_week_stats=last_week_stats,
                             db=db,
                         )
-                        monday_action.approval_email_sent = True
+                        first_action.approval_email_sent = True
                         if ads_stored:
                             ads_stored.approval_email_sent = True
                         await db.commit()
 
-                    logger.info(f"[Scheduler] Weekly kickoff sent for {biz.name} ({len(posts)} posts)")
+                    logger.info(f"[Scheduler] Weekly kickoff sent for {biz.name} — {posts_count} posts: {posting_schedule}")
 
                 except Exception as e:
                     logger.error(f"[Scheduler] Weekly gen error for {biz.id}: {e}", exc_info=True)
@@ -256,10 +351,8 @@ async def weekly_content_generation():
 
 async def post_approval_and_expiry():
     """
-    Runs every hour. Per business local time:
-    - Tuesday  2pm → expire Monday post, send Wednesday approval email
-    - Thursday 2pm → expire Wednesday post, send Friday approval email
-    - Friday   6pm → expire Friday post
+    Runs every hour. Fully data-driven from posting_schedule.
+    For each business, computes approval windows dynamically and fires accordingly.
     """
     try:
         from database.session import AsyncSessionLocal
@@ -268,12 +361,6 @@ async def post_approval_and_expiry():
         from sqlalchemy import select
 
         utc_now = datetime.now(timezone.utc)
-
-        WINDOWS = [
-            {"weekday": 1, "hour": 14, "expire_day": "Monday",    "send_day": "Wednesday"},
-            {"weekday": 3, "hour": 14, "expire_day": "Wednesday",  "send_day": "Friday"},
-            {"weekday": 4, "hour": 18, "expire_day": "Friday",     "send_day": None},
-        ]
 
         async with AsyncSessionLocal() as db:
             result = await db.execute(
@@ -289,11 +376,15 @@ async def post_approval_and_expiry():
                     local_hour    = get_local_hour(biz, utc_now)
                     local_weekday = get_local_weekday(biz, utc_now)
 
-                    for w in WINDOWS:
+                    # Build windows dynamically from this business's schedule
+                    posting_schedule = get_posting_schedule(biz)
+                    windows = get_approval_windows(posting_schedule)
+
+                    for w in windows:
                         if local_weekday != w["weekday"] or local_hour != w["hour"]:
                             continue
 
-                        # Expire previous post
+                        # Expire previous post if still pending
                         if w["expire_day"]:
                             expire_result = await db.execute(
                                 select(AgentAction).where(
@@ -307,7 +398,7 @@ async def post_approval_and_expiry():
                                 logger.info(f"[Scheduler] Expired {w['expire_day']} post for {biz.name}")
                             await db.commit()
 
-                        # Send next post approval email
+                        # Send approval email for next post
                         if w["send_day"]:
                             next_result = await db.execute(
                                 select(AgentAction).where(
@@ -340,7 +431,7 @@ async def post_approval_and_expiry():
                             )
                             next_action.approval_email_sent = True
                             await db.commit()
-                            logger.info(f"[Scheduler] {w['send_day']} approval email sent to {biz.name}")
+                            logger.info(f"[Scheduler] {w['send_day']} approval email → {biz.name}")
 
                 except Exception as e:
                     logger.error(f"[Scheduler] post_approval_and_expiry error for {biz.id}: {e}", exc_info=True)
@@ -352,7 +443,7 @@ async def post_approval_and_expiry():
 # ─── 3. EXECUTE APPROVED POSTS (every 15min) ─────────────────────────────────
 
 async def execute_approved_posts():
-    """Find approved posts whose scheduled_post_time has passed and actually post them."""
+    """Find approved posts whose scheduled_post_time has passed and post them."""
     try:
         from database.session import AsyncSessionLocal
         from database.models import AgentAction
@@ -374,7 +465,7 @@ async def execute_approved_posts():
                     await executor.run(action, db)
                     action.executed_at = utc_now
                     await db.commit()
-                    logger.info(f"[Scheduler] Posted action {action.id} ({action.action_type})")
+                    logger.info(f"[Scheduler] Posted {action.id} ({action.action_type})")
                 except Exception as e:
                     logger.error(f"[Scheduler] Execute {action.id} error: {e}")
 
