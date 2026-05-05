@@ -34,7 +34,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
-    """Auto-create any new tables on deploy (safe — won't drop existing tables)."""
+    # 1. Auto-create DB tables
     try:
         from database.session import engine
         from database.models import Base
@@ -43,6 +43,14 @@ async def startup():
         print("Database tables verified/created.")
     except Exception as e:
         print(f"Startup DB check error (non-fatal): {e}")
+
+    # 2. Start background scheduler
+    try:
+        from agent.scheduler import start_scheduler
+        start_scheduler()
+        print("Background scheduler started.")
+    except Exception as e:
+        print(f"Scheduler startup error (non-fatal): {e}")
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
