@@ -404,8 +404,47 @@ async def mailchimp_callback(
 
 @router.get("/skip-mailchimp")
 async def skip_mailchimp(business_id: str):
-    """User chose to skip Mailchimp — advance to step 4."""
-    return await _advance_to_step_4(business_id, skipped=True)
+    """User chose to skip Mailchimp — advance to step 4 and send email 4."""
+    async def send_email_4():
+        from database.session import AsyncSessionLocal
+        from email_system.sender import email_sender
+        from sqlalchemy import select, update as sql_update
+        async with AsyncSessionLocal() as new_db:
+            biz_result = await new_db.execute(select(Business).where(Business.id == business_id))
+            biz = biz_result.scalar_one_or_none()
+            if not biz or biz.onboarding_step > 3:
+                return
+            await new_db.execute(
+                sql_update(Business)
+                .where(Business.id == business_id)
+                .values(onboarding_step=4)
+            )
+            await new_db.commit()
+            biz_result2 = await new_db.execute(select(Business).where(Business.id == business_id))
+            biz = biz_result2.scalar_one_or_none()
+            if biz:
+                user_result = await new_db.execute(select(User).where(User.id == biz.owner_id))
+                usr = user_result.scalar_one_or_none()
+                if usr:
+                    first_name = (usr.full_name or "").split()[0] or "there"
+                    await email_sender.send_onboarding_step(
+                        step=4,
+                        business_id=business_id,
+                        user_email=usr.email,
+                        first_name=first_name,
+                        business_name=biz.name,
+                        db=new_db,
+                        skipped_platform="mailchimp"
+                    )
+    asyncio.create_task(send_email_4())
+    return HTMLResponse("""
+    <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
+    <div style="font-size:48px">✅</div>
+    <h2 style="color:#1a1a1a">No problem!</h2>
+    <p style="color:#666">Marlo has everything it needs to get started. Check your email for the next step.</p>
+    <p style="color:#999;font-size:14px">You can close this tab.</p>
+    </body></html>
+    """)
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
