@@ -45,7 +45,6 @@ function SignupForm() {
   const update = (key: string, value: any) =>
     setFormData(prev => ({ ...prev, [key]: value }))
 
-  // ── Step 1 → 2: validate account fields ───────────────────────────────────
   const handleStep1 = (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.full_name || !formData.email || !formData.password) {
@@ -60,7 +59,6 @@ function SignupForm() {
     setStep(2)
   }
 
-  // ── Step 2 → 3: register + login + create business ────────────────────────
   const handleStep2 = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.business_name || !formData.industry) {
@@ -85,11 +83,14 @@ function SignupForm() {
         throw new Error(err.detail || 'Registration failed')
       }
 
-      // 2. Login to get token
+      // 2. Login — backend expects form-urlencoded with 'username' field (OAuth2 standard)
+      const loginParams = new URLSearchParams()
+      loginParams.append('username', formData.email)
+      loginParams.append('password', formData.password)
       const loginRes = await fetch(`${apiBase}/auth/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: formData.email, password: formData.password }),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: loginParams,
       })
       if (!loginRes.ok) throw new Error('Login failed')
       const loginData = await loginRes.json()
@@ -123,7 +124,6 @@ function SignupForm() {
     }
   }
 
-  // ── Step 3: Stripe card + create subscription ─────────────────────────────
   const handleStep3 = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!stripe || !elements) return
@@ -211,21 +211,17 @@ function SignupForm() {
         <a className="su-logo" href="/">marlo<span>021.</span></a>
 
         <div className="su-card">
-          {/* Progress bar — 3 steps */}
           <div className="su-progress">
             {([1, 2, 3] as const).map(s => (
               <div key={s} className={`su-prog-step ${step >= s ? 'done' : ''}`} />
             ))}
           </div>
 
-          {/* ── STEP 1: Account info ── */}
           {step === 1 && (
             <form onSubmit={handleStep1}>
               <h1>Start your free trial</h1>
               <p className="su-subtitle">14 days free, then $99/month. Cancel anytime.</p>
-
               {error && <div className="su-error">{error}</div>}
-
               <div className="su-field">
                 <label className="su-label">Your name</label>
                 <input className="su-input" type="text" placeholder="Anna Liu"
@@ -241,21 +237,17 @@ function SignupForm() {
                 <input className="su-input" type="password" placeholder="At least 8 characters"
                   value={formData.password} onChange={e => update('password', e.target.value)} required minLength={8} />
               </div>
-
               <button className="su-btn" type="submit">Continue →</button>
               <p className="su-login">Already have an account? <a href="/login">Log in</a></p>
             </form>
           )}
 
-          {/* ── STEP 2: Business info + budget slider ── */}
           {step === 2 && (
             <form onSubmit={handleStep2}>
               <button className="su-back" type="button" onClick={() => { setStep(1); setError('') }}>← Back</button>
               <h1>Your business</h1>
               <p className="su-subtitle">Tell Marlo what you do and your ad budget.</p>
-
               {error && <div className="su-error">{error}</div>}
-
               <div className="su-field">
                 <label className="su-label">Business name</label>
                 <input className="su-input" type="text" placeholder="Anna's Café"
@@ -269,8 +261,6 @@ function SignupForm() {
                   {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
                 </select>
               </div>
-
-              {/* Budget slider */}
               <div className="su-field">
                 <label className="su-label">Monthly ad budget</label>
                 <div className="su-budget-display">
@@ -291,36 +281,29 @@ function SignupForm() {
                 />
                 <div className="su-range-labels"><span>$50/mo</span><span>$2,000/mo</span></div>
               </div>
-
               <button className="su-btn" type="submit" disabled={loading}>
                 {loading ? 'Setting up...' : 'Continue →'}
               </button>
             </form>
           )}
 
-          {/* ── STEP 3: Stripe card ── */}
           {step === 3 && (
             <form onSubmit={handleStep3}>
               <button className="su-back" type="button" onClick={() => { setStep(2); setError('') }}>← Back</button>
               <h1>Add your card</h1>
               <p className="su-subtitle">No charge today. Your trial starts now.</p>
-
               <div className="su-trial-badge">
                 🎉 <strong>14-day free trial</strong> — your card won't be charged until {trialEndDate}.<br />
                 We'll send you a reminder 3 days before your trial ends.
               </div>
-
               {error && <div className="su-error">{error}</div>}
-
               <label className="su-label">Card details</label>
               <div className="su-card-field">
                 <CardElement options={CARD_ELEMENT_OPTIONS} />
               </div>
-
               <button className="su-btn" type="submit" disabled={loading || !stripe}>
                 {loading ? 'Setting up...' : 'Start free trial →'}
               </button>
-
               <p className="su-security">
                 🔒 Secured by Stripe. We never store your card details.<br />
                 Cancel anytime by replying "Cancel my Marlo021 subscription"
