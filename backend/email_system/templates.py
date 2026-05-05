@@ -404,15 +404,38 @@ def onboarding_email_3(first_name: str, business_id: str, base_url: str, skipped
     return base_template(content, preheader="Step 3 of 4 — Connect email marketing (free for 500 subscribers)")
 
 
-def onboarding_email_4(first_name: str, business_id: str, base_url: str) -> str:
-    content = f"""
+def onboarding_email_4(first_name: str, business_id: str, base_url: str, is_reminder: bool = False) -> str:
+    if is_reminder:
+        top_section = f"""
+    <p style="font-size:16px;font-weight:600;color:#D97706;margin:0 0 8px 0;">
+      ⏰ Just checking in, {first_name}!
+    </p>
+    <p style="font-size:14px;color:{MUTED_COLOR};margin:0 0 16px 0;line-height:1.6;">
+      Marlo is ready to build your first marketing plan — I'm just waiting on one thing: a quick description of your business.
+    </p>
+    <div style="background:#FEF9C3;border-radius:8px;padding:14px 16px;margin-bottom:20px;">
+      <p style="font-size:13px;color:#854D0E;margin:0;line-height:1.6;">
+        ⚠️ <strong>Without your answers, Marlo can't generate personalised content.</strong>
+        Your posts and ads will stay on hold until you reply.
+      </p>
+    </div>"""
+    else:
+        top_section = f"""
     <p style="font-size:16px;font-weight:600;color:#16A34A;margin:0 0 8px 0;">
       Almost there {first_name}! One last thing.
     </p>
-    <p style="font-size:14px;color:{MUTED_COLOR};margin:0 0 24px 0;line-height:1.6;">
-      Just reply to this email and answer these 4 questions in plain English.
+    <p style="font-size:14px;color:{MUTED_COLOR};margin:0 0 16px 0;line-height:1.6;">
+      Just reply to this email and answer these 4 quick questions.
       No forms, no website — just hit reply and type your answers.
     </p>
+    <div style="background:#FEF9C3;border-radius:8px;padding:14px 16px;margin-bottom:20px;">
+      <p style="font-size:13px;color:#854D0E;margin:0;line-height:1.6;">
+        ⚠️ <strong>Marlo won't be able to generate your first week of content until you reply.</strong>
+        This takes 2 minutes and unlocks everything.
+      </p>
+    </div>"""
+
+    content = top_section + f"""
     <div style="background:#F0FDF4;border-radius:8px;padding:20px;margin-bottom:24px;">
       <p style="font-size:13px;font-weight:600;color:#15803D;margin:0 0 16px 0;">
         STEP 4 OF 4 — Tell me about your business
@@ -430,10 +453,10 @@ def onboarding_email_4(first_name: str, business_id: str, base_url: str) -> str:
     </div>
     <p style="font-size:14px;color:{MUTED_COLOR};margin:0;line-height:1.6;">
       Hit reply and send your answers — I'll take it from there. ✉️<br><br>
-      While you reply I'm already analyzing your accounts, building your keyword strategy,
-      and preparing your first week of content. ⚙️
+      While you reply I'm already analyzing your accounts and building your keyword strategy. ⚙️
     </p>"""
-    return base_template(content, preheader="Step 4 of 4 — Just reply to this email")
+    preheader = "Marlo is waiting — reply to unlock your first marketing plan" if is_reminder else "Step 4 of 4 — Reply to unlock your first week of content"
+    return base_template(content, preheader=preheader)
 
 
 def onboarding_email_5_ready(first_name: str, campaigns: list, posts: list,

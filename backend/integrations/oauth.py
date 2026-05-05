@@ -410,7 +410,44 @@ async def skip_mailchimp(business_id: str):
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
-async def _advance_to_step_4(business_id: str, connected: bool = False, skipped: bool = False):
+async def _schedule_email4_reminder(business_id: str):
+    """
+    Wait 72 hours. If the business is still on step 4 (hasn't replied to email 4),
+    send a reminder email nudging them to reply.
+    """
+    await asyncio.sleep(72 * 60 * 60)  # 72 hours
+
+    from database.session import AsyncSessionLocal
+    from email_system.sender import email_sender
+    from sqlalchemy import select
+
+    async with AsyncSessionLocal() as db:
+        biz_result = await db.execute(select(Business).where(Business.id == business_id))
+        biz = biz_result.scalar_one_or_none()
+        if not biz:
+            return
+
+        # Only send reminder if still stuck on step 4
+        if biz.onboarding_step != 4:
+            return
+
+        user_result = await db.execute(select(User).where(User.id == biz.owner_id))
+        usr = user_result.scalar_one_or_none()
+        if not usr:
+            return
+
+        first_name = (usr.full_name or "").split()[0] or "there"
+        print(f"[Reminder] Sending email 4 reminder to {usr.email} — still on step 4 after 72h")
+
+        await email_sender.send_onboarding_step(
+            step=4,
+            business_id=business_id,
+            user_email=usr.email,
+            first_name=first_name,
+            business_name=biz.name,
+            db=db,
+            extra_data={"is_reminder": True}
+        )
     """Update onboarding step to 4 and send email 4. Guard against duplicate triggers."""
     async def send_email_4():
         from database.session import AsyncSessionLocal
@@ -444,6 +481,7 @@ async def _advance_to_step_4(business_id: str, connected: bool = False, skipped:
                     )
 
     asyncio.create_task(send_email_4())
+    asyncio.create_task(_schedule_email4_reminder(business_id))
 
     if skipped:
         message = "No problem!"

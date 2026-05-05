@@ -136,8 +136,12 @@ class EmailSender:
                 subject = "✅ Instagram connected! One more step (Step 3 of 4)"
 
         elif step == 4:
-            html = templates.onboarding_email_4(first_name, business_id, base_url)
-            subject = "Almost done! Tell me about your business (Step 4 of 4)"
+            is_reminder = extra.get("is_reminder", False)
+            html = templates.onboarding_email_4(first_name, business_id, base_url, is_reminder=is_reminder)
+            if is_reminder:
+                subject = f"⏰ {first_name}, Marlo is waiting — reply to unlock your content"
+            else:
+                subject = "Almost done! Tell me about your business (Step 4 of 4)"
 
         elif step == 5:
             html = templates.onboarding_email_5_ready(
