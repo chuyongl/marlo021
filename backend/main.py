@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -10,19 +11,16 @@ import sentry_sdk
 
 load_dotenv(dotenv_path="../.env")
 
-# Sentry must be initialized before app
 sentry_sdk.init(
     dsn=os.getenv("SENTRY_DSN", ""),
     traces_sample_rate=0.1,
     environment=os.getenv("ENVIRONMENT", "development")
 )
 
-# Rate limiter
 limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(title="Marlo API", version="0.1.0")
 
-# Attach rate limiter
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -45,6 +43,10 @@ async def startup():
         print("Database tables verified/created.")
     except Exception as e:
         print(f"Startup DB check error (non-fatal): {e}")
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse("favicon.ico")
 
 @app.get("/health")
 async def health_check():
