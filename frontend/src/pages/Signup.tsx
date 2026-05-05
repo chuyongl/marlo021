@@ -112,7 +112,7 @@ function SignupForm() {
       })
       if (!bizRes.ok) {
         const err = await bizRes.json()
-        throw new Error(err.detail || 'Business creation failed')
+        throw new Error(Array.isArray(err.detail) ? JSON.stringify(err.detail) : (err.detail || 'Business creation failed'))
       }
       const bizData = await bizRes.json()
       setBusinessId(bizData.id)
