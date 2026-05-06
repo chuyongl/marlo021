@@ -10,9 +10,11 @@ load_dotenv(dotenv_path="../../.env")
 resend.api_key = os.getenv("RESEND_API_KEY", "")
 
 FROM_EMAIL = os.getenv("FROM_EMAIL", "hello@marlo.ai")
-FROM_NAME = os.getenv("FROM_NAME", "Marlo")
+FROM_NAME  = os.getenv("FROM_NAME", "Marlo")
+
 
 class EmailSender:
+
     async def send(
         self,
         to_email: str,
@@ -23,7 +25,6 @@ class EmailSender:
         db: AsyncSession = None,
         reply_to: str = None
     ) -> dict:
-        """Send an email via Resend and log it."""
         try:
             params = {
                 "from": f"{FROM_NAME} <{FROM_EMAIL}>",
@@ -55,45 +56,10 @@ class EmailSender:
             print(f"Email send error: {e}")
             return {"success": False, "error": str(e)}
 
-    async def send_morning_briefing(
-        self,
-        business: Business,
-        user_email: str,
-        user_first_name: str,
-        yesterday_metrics: dict,
-        pending_actions: list,
-        db: AsyncSession
-    ):
-        from email_system.templates import morning_briefing_template
-        base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
+    def _reply_to(self, business_id: str) -> str:
+        return f"reply+{business_id}@reply.marlo021.ai"
 
-        actions_for_email = []
-        for action in pending_actions:
-            actions_for_email.append({
-                "title": action.get("title", action.get("action_type", "Action")),
-                "description": action.get("description", action.get("agent_reasoning", "")[:200]),
-                "approve_token": action.get("approval_token"),
-                "decline_token": action.get("decline_token"),
-                "risk_level": action.get("risk_level", "medium")
-            })
-
-        html = morning_briefing_template(
-            business_name=business.name,
-            first_name=user_first_name,
-            yesterday_metrics=yesterday_metrics,
-            actions=actions_for_email,
-            base_url=base_url
-        )
-
-        await self.send(
-            to_email=user_email,
-            subject=f"☀️ Good morning {user_first_name} — your Marlo briefing",
-            html_body=html,
-            email_type="morning_briefing",
-            business_id=str(business.id),
-            db=db,
-            reply_to=f"reply+{business.id}@reply.marlo021.ai"
-        )
+    # ── Onboarding steps ──────────────────────────────────────────────────────
 
     async def send_onboarding_step(
         self,
@@ -104,7 +70,7 @@ class EmailSender:
         business_name: str,
         db: AsyncSession,
         extra_data: dict = None,
-        skipped_platform: str = None  # "google" | "meta" | "mailchimp" | None
+        skipped_platform: str = None,
     ):
         from email_system import templates
         base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
@@ -114,44 +80,47 @@ class EmailSender:
         if step == 1:
             html = templates.onboarding_email_1(business_name, first_name, business_id, base_url)
             subject = f"👋 Welcome {first_name}! Let's set up Marlo (Step 1 of 4)"
+            email_type = "onboarding_1"
 
         elif step == 2:
             html = templates.onboarding_email_2(
                 first_name, business_id, base_url, frontend_url,
                 skipped_google=(skipped_platform == "google")
             )
-            if skipped_platform == "google":
-                subject = "Skipped Google — let's connect Instagram next (Step 2 of 4)"
-            else:
-                subject = "✅ Google connected! Now let's do Instagram (Step 2 of 4)"
+            subject = (
+                "Skipped Google — let's connect Instagram next (Step 2 of 4)"
+                if skipped_platform == "google"
+                else "✅ Google connected! Now let's do Instagram (Step 2 of 4)"
+            )
+            email_type = "onboarding_2"
 
         elif step == 3:
             html = templates.onboarding_email_3(
                 first_name, business_id, base_url,
                 skipped_meta=(skipped_platform == "meta")
             )
-            if skipped_platform == "meta":
-                subject = "Skipped Instagram — one more optional step (Step 3 of 4)"
-            else:
-                subject = "✅ Instagram connected! One more step (Step 3 of 4)"
+            subject = (
+                "Skipped Instagram — one more optional step (Step 3 of 4)"
+                if skipped_platform == "meta"
+                else "✅ Instagram connected! One more step (Step 3 of 4)"
+            )
+            email_type = "onboarding_3"
 
         elif step == 4:
             is_reminder = extra.get("is_reminder", False)
             html = templates.onboarding_email_4(first_name, business_id, base_url, is_reminder=is_reminder)
-            if is_reminder:
-                subject = f"⏰ {first_name}, Marlo is waiting — reply to unlock your content"
-            else:
-                subject = "Almost done! Tell me about your business (Step 4 of 4)"
+            subject = (
+                f"⏰ {first_name}, Marlo is waiting — reply to unlock your content"
+                if is_reminder
+                else "Almost done! Tell me about your business (Step 4 of 4)"
+            )
+            email_type = "onboarding_4_reminder" if is_reminder else "onboarding_4"
 
         elif step == 5:
-            html = templates.onboarding_email_5_ready(
-                first_name,
-                extra.get("campaigns", []),
-                extra.get("posts", []),
-                f"{base_url}/onboarding/approve-all?business_id={business_id}",
-                base_url
-            )
-            subject = f"🚀 {first_name}, your first marketing plan is ready!"
+            # Simplified confirmation only — kickoff email is sent separately
+            html = templates.onboarding_complete_template(first_name, business_name)
+            subject = f"✅ Setup complete, {first_name}! Your kickoff email is on its way."
+            email_type = "onboarding_5"
 
         else:
             return
@@ -160,10 +129,240 @@ class EmailSender:
             to_email=user_email,
             subject=subject,
             html_body=html,
-            email_type=f"onboarding_{step}",
+            email_type=email_type,
             business_id=business_id,
             db=db,
-            reply_to=f"reply+{business_id}@reply.marlo021.ai"
+            reply_to=self._reply_to(business_id),
         )
+
+    # ── First kickoff (sent immediately after onboarding) ────────────────────
+
+    async def send_first_kickoff(
+        self,
+        business_id: str,
+        user_email: str,
+        first_name: str,
+        business_name: str,
+        first_post: dict,
+        first_post_day: str,
+        first_approve_token: str,
+        first_decline_token: str,
+        google_campaign: dict,
+        ads_approve_token: str,
+        ads_decline_token: str,
+        posting_schedule: list,
+        strategy_summary: str,
+        image_guide: list,
+        db: AsyncSession,
+    ):
+        from email_system.templates import first_kickoff_template
+        base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
+
+        html = first_kickoff_template(
+            first_name=first_name,
+            business_name=business_name,
+            business_id=business_id,
+            first_post=first_post,
+            first_post_day=first_post_day,
+            first_approve_token=first_approve_token,
+            first_decline_token=first_decline_token,
+            google_campaign=google_campaign,
+            ads_approve_token=ads_approve_token,
+            ads_decline_token=ads_decline_token,
+            posting_schedule=posting_schedule,
+            strategy_summary=strategy_summary,
+            image_guide=image_guide,
+            base_url=base_url,
+        )
+
+        await self.send(
+            to_email=user_email,
+            subject=f"🚀 Welcome to Marlo, {first_name} — your first content plan is ready",
+            html_body=html,
+            email_type="first_kickoff",
+            business_id=business_id,
+            db=db,
+            reply_to=self._reply_to(business_id),
+        )
+
+    # ── Weekly kickoff (recurring) ────────────────────────────────────────────
+
+    async def send_weekly_kickoff(
+        self,
+        business_id: str,
+        user_email: str,
+        first_name: str,
+        business_name: str,
+        first_post: dict,
+        first_post_day: str,
+        first_approve_token: str,
+        first_decline_token: str,
+        google_campaign: dict,
+        ads_approve_token: str,
+        ads_decline_token: str,
+        posting_schedule: list,
+        strategy_summary: str,
+        image_guide: list,
+        last_week_stats: dict,
+        db: AsyncSession,
+    ):
+        from email_system.templates import weekly_kickoff_template
+        base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
+
+        html = weekly_kickoff_template(
+            first_name=first_name,
+            business_name=business_name,
+            business_id=business_id,
+            first_post=first_post,
+            first_post_day=first_post_day,
+            first_approve_token=first_approve_token,
+            first_decline_token=first_decline_token,
+            google_campaign=google_campaign,
+            ads_approve_token=ads_approve_token,
+            ads_decline_token=ads_decline_token,
+            posting_schedule=posting_schedule,
+            strategy_summary=strategy_summary,
+            image_guide=image_guide,
+            last_week_stats=last_week_stats,
+            base_url=base_url,
+        )
+
+        await self.send(
+            to_email=user_email,
+            subject=f"📅 Your week ahead, {first_name} — {first_post_day}'s post is ready",
+            html_body=html,
+            email_type="weekly_kickoff",
+            business_id=business_id,
+            db=db,
+            reply_to=self._reply_to(business_id),
+        )
+
+    # ── Post approval (day-before drip) ──────────────────────────────────────
+
+    async def send_post_approval(
+        self,
+        business_id: str,
+        user_email: str,
+        first_name: str,
+        business_name: str,
+        post: dict,
+        scheduled_day: str,
+        approve_token: str,
+        decline_token: str,
+        db: AsyncSession,
+    ):
+        from email_system.templates import post_approval_template
+        base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
+
+        html = post_approval_template(
+            first_name=first_name,
+            post=post,
+            scheduled_day=scheduled_day,
+            approve_token=approve_token,
+            decline_token=decline_token,
+            base_url=base_url,
+        )
+
+        await self.send(
+            to_email=user_email,
+            subject=f"📅 Tomorrow is {scheduled_day} — approve your post now",
+            html_body=html,
+            email_type=f"post_approval_{scheduled_day.lower()}",
+            business_id=business_id,
+            db=db,
+            reply_to=self._reply_to(business_id),
+        )
+
+    # ── Weekly analytics ──────────────────────────────────────────────────────
+
+    async def send_weekly_analytics(
+        self,
+        business_id: str,
+        user_email: str,
+        first_name: str,
+        business_name: str,
+        insights: dict,
+        db: AsyncSession,
+    ):
+        from email_system.templates import weekly_analytics_template
+        from datetime import datetime, timedelta, timezone
+
+        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+        insights["week_start"] = week_ago.strftime("%b %d")
+        insights["week_end"]   = datetime.now(timezone.utc).strftime("%b %d")
+
+        html = weekly_analytics_template(
+            first_name=first_name,
+            business_name=business_name,
+            insights=insights,
+        )
+
+        await self.send(
+            to_email=user_email,
+            subject=f"📊 {business_name}'s weekly results — {insights['week_start']} to {insights['week_end']}",
+            html_body=html,
+            email_type="weekly_analytics",
+            business_id=business_id,
+            db=db,
+            reply_to=self._reply_to(business_id),
+        )
+
+    # ── Morning briefing ──────────────────────────────────────────────────────
+
+    async def send_morning_briefing(
+        self,
+        business_id: str,
+        user_email: str,
+        first_name: str,
+        business_name: str,
+        briefing_items: list,
+        db: AsyncSession,
+    ):
+        from email_system.templates import morning_briefing_template
+        base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
+
+        html = morning_briefing_template(
+            business_name=business_name,
+            first_name=first_name,
+            yesterday_metrics={"highlights": []},
+            actions=briefing_items,
+            base_url=base_url,
+        )
+
+        await self.send(
+            to_email=user_email,
+            subject=f"☀️ Good morning {first_name} — your Marlo briefing",
+            html_body=html,
+            email_type="morning_briefing",
+            business_id=business_id,
+            db=db,
+            reply_to=self._reply_to(business_id),
+        )
+
+    # ── Weekly performance report (legacy) ───────────────────────────────────
+
+    async def send_weekly_report(
+        self,
+        business_id: str,
+        user_email: str,
+        first_name: str,
+        business_name: str,
+        report_data: dict,
+        db: AsyncSession,
+    ):
+        from email_system.templates import weekly_report_template
+
+        html = weekly_report_template(first_name=first_name, report_data=report_data)
+
+        await self.send(
+            to_email=user_email,
+            subject=f"📊 {business_name}'s weekly report",
+            html_body=html,
+            email_type="weekly_report",
+            business_id=business_id,
+            db=db,
+            reply_to=self._reply_to(business_id),
+        )
+
 
 email_sender = EmailSender()
