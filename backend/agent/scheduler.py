@@ -17,7 +17,7 @@ Other jobs:
   Every 30min → expire stale actions older than 3 days (safety net)
   Every 15min → execute approved posts whose scheduled_post_time has passed
   Every hour  → onboarding reminder (72h no reply to email 4)
-  Monday 8am UTC → weekly performance report
+  Friday 2pm local → weekly analytics email (AI-powered insights)
   Daily  2am UTC → subscription health check
 """
 
@@ -55,24 +55,20 @@ def get_local_weekday(biz, utc_now) -> int:
     return get_local_dt(biz, utc_now).weekday()
 
 def get_local_day_name(biz, utc_now) -> str:
-    return get_local_dt(biz, utc_now).strftime("%A")  # "Monday", "Tuesday" etc
+    return get_local_dt(biz, utc_now).strftime("%A")
 
 def get_posting_schedule(biz) -> list:
     """
     Returns the ordered list of posting days for this business.
     Reads from biz.posting_schedule (JSON column), falls back to posts_per_week,
-    falls back to ["Monday", "Wednesday", "Friday"].
+    falls back to Mon/Wed/Fri.
     """
-    # Try JSON column first
     schedule = biz.posting_schedule
     if schedule and isinstance(schedule, list) and len(schedule) > 0:
-        # Validate all entries are real day names
         valid = [d for d in schedule if d in DAY_TO_WEEKDAY]
         if valid:
-            # Return in week order
             return sorted(valid, key=lambda d: DAY_TO_WEEKDAY[d])
 
-    # Fall back to posts_per_week
     n = biz.posts_per_week or 3
     defaults = {
         1: ["Monday"],
@@ -91,14 +87,6 @@ def get_approval_windows(posting_schedule: list) -> list:
     For each post day, the approval email goes out the day before at 2pm.
     That same window also expires the previous post.
     The last post expires at 6pm on its own day.
-
-    Returns list of dicts:
-    {
-      "weekday": int,        # local weekday to fire on
-      "hour": int,           # local hour to fire on
-      "send_day": str|None,  # which post to send approval for
-      "expire_day": str|None # which post to expire
-    }
     """
     if not posting_schedule:
         return []
@@ -106,11 +94,9 @@ def get_approval_windows(posting_schedule: list) -> list:
     windows = []
     for i, day in enumerate(posting_schedule):
         day_weekday = DAY_TO_WEEKDAY[day]
-
-        # Approval email goes out day before at 2pm (except first post — that's in kickoff email)
         if i > 0:
             prev_day_weekday = (day_weekday - 1) % 7
-            expire_day = posting_schedule[i - 1]  # expire the post before this one
+            expire_day = posting_schedule[i - 1]
             windows.append({
                 "weekday": prev_day_weekday,
                 "hour": 14,
@@ -118,7 +104,6 @@ def get_approval_windows(posting_schedule: list) -> list:
                 "expire_day": expire_day,
             })
 
-    # Last post expires at 6pm on its own day
     last_day = posting_schedule[-1]
     windows.append({
         "weekday": DAY_TO_WEEKDAY[last_day],
@@ -151,7 +136,7 @@ async def weekly_content_generation():
     Runs every hour. Fires for each business on Sunday between 21:00-21:59 local.
     - Reads posting_schedule from DB (fully data-driven)
     - Generates exactly len(posting_schedule) posts
-    - Sends kickoff email with: last week stats + this week strategy + image guide + first post approval
+    - Sends weekly kickoff email with strategy + image guide + first post approval
     """
     try:
         from database.session import AsyncSessionLocal
@@ -196,12 +181,10 @@ async def weekly_content_generation():
                         logger.info(f"[Scheduler] Already generated this week for {biz.name}, skipping.")
                         continue
 
-                    # Get this business's posting schedule
                     posting_schedule = get_posting_schedule(biz)
                     posts_count = len(posting_schedule)
                     logger.info(f"[Scheduler] {biz.name} posting schedule: {posting_schedule}")
 
-                    # Connected platforms
                     integrations_result = await db.execute(
                         select(PlatformIntegration).where(
                             PlatformIntegration.business_id == biz.id,
@@ -222,33 +205,46 @@ async def weekly_content_generation():
                         "monthly_ad_budget": float(biz.monthly_ad_budget or 300),
                     }
 
-                    # Generate exactly posts_count posts
+                    # Generate content strategy
+                    try:
+                        strategy = await strategy_agent.decide(
+                            "weekly_content", {"business": business_dict}, str(biz.id)
+                        )
+                        strategy_summary = (
+                            f"{strategy.get('key_message', '')} "
+                            f"Tone: {strategy.get('tone_guidance', '')} "
+                            f"Hook: {strategy.get('hook_strategy', '')} "
+                            f"CTA: {strategy.get('call_to_action', '')}"
+                        ).strip()
+                    except Exception:
+                        strategy = {}
+                        strategy_summary = f"Building authentic content that showcases {biz.name}'s unique value to {biz.target_audience or 'local customers'}."
+
+                    # Generate posts
                     posts = await content_pipeline.generate_week_of_content(
                         business_id=str(biz.id),
                         db=db,
                         platforms=platforms,
                     )
-                    # Pad or trim to match schedule length
                     while len(posts) < posts_count:
                         posts.append(posts[-1].copy() if posts else {})
                     posts = posts[:posts_count]
-
                     for i, post in enumerate(posts):
                         post["scheduled_day"] = posting_schedule[i]
 
                     # Generate Google Ads if connected
                     google_campaign = None
                     if has_google:
-                        strategy = await strategy_agent.decide(
+                        ads_strategy = await strategy_agent.decide(
                             "google_ads", {"business": business_dict}, str(biz.id)
                         )
                         google_campaign = await google_ads_agent.generate_campaign(
                             business=business_dict,
-                            strategy=strategy,
+                            strategy=ads_strategy,
                             business_id=str(biz.id),
                         )
 
-                    # Store all as pending actions
+                    # Store as pending actions
                     stored_actions = []
                     for post in posts:
                         action = AgentAction(
@@ -304,7 +300,17 @@ async def weekly_content_generation():
                         "expired":  len([a for a in past if a.status == "expired"]),
                     }
 
-                    # First post action (for kickoff email)
+                    # Image guide from strategy
+                    visual = strategy.get("visual_direction", "")
+                    image_guide = [
+                        {
+                            "day": posting_schedule[i],
+                            "type": "Real photo recommended",
+                            "description": visual or f"A photo showing {biz.name} in action — real photos always outperform AI-generated ones.",
+                        }
+                        for i in range(posts_count)
+                    ]
+
                     first_day = posting_schedule[0]
                     first_action = next((a for a in stored_actions
                                         if a.scheduled_day == first_day
@@ -330,6 +336,8 @@ async def weekly_content_generation():
                             ads_approve_token=ads_stored.approval_token if ads_stored else None,
                             ads_decline_token=ads_stored.decline_token if ads_stored else None,
                             posting_schedule=posting_schedule,
+                            strategy_summary=strategy_summary,
+                            image_guide=image_guide,
                             last_week_stats=last_week_stats,
                             db=db,
                         )
@@ -376,7 +384,6 @@ async def post_approval_and_expiry():
                     local_hour    = get_local_hour(biz, utc_now)
                     local_weekday = get_local_weekday(biz, utc_now)
 
-                    # Build windows dynamically from this business's schedule
                     posting_schedule = get_posting_schedule(biz)
                     windows = get_approval_windows(posting_schedule)
 
@@ -384,7 +391,6 @@ async def post_approval_and_expiry():
                         if local_weekday != w["weekday"] or local_hour != w["hour"]:
                             continue
 
-                        # Expire previous post if still pending
                         if w["expire_day"]:
                             expire_result = await db.execute(
                                 select(AgentAction).where(
@@ -398,7 +404,6 @@ async def post_approval_and_expiry():
                                 logger.info(f"[Scheduler] Expired {w['expire_day']} post for {biz.name}")
                             await db.commit()
 
-                        # Send approval email for next post
                         if w["send_day"]:
                             next_result = await db.execute(
                                 select(AgentAction).where(
@@ -567,17 +572,22 @@ async def onboarding_reminder():
         logger.error(f"[Scheduler] onboarding_reminder outer error: {e}")
 
 
-# ─── 6. WEEKLY PERFORMANCE REPORT (Monday 8am UTC) ───────────────────────────
+# ─── 6. WEEKLY ANALYTICS (Friday 2pm local) ──────────────────────────────────
 
-async def weekly_performance_report():
-    """Monday 8am UTC: send last week's stats to all active businesses."""
+async def weekly_analytics():
+    """
+    Runs every hour. Fires for each business on Friday between 14:00-14:59 local.
+    Collects all data → AI deep analysis → sends analytics email.
+    User has the weekend to review before Sunday kickoff.
+    """
     try:
         from database.session import AsyncSessionLocal
-        from database.models import Business, User, AgentAction
+        from database.models import Business, User
+        from agent.analytics_agent import analytics_agent
         from email_system.sender import email_sender
         from sqlalchemy import select
 
-        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+        utc_now = datetime.now(timezone.utc)
 
         async with AsyncSessionLocal() as db:
             result = await db.execute(
@@ -586,16 +596,15 @@ async def weekly_performance_report():
                     Business.subscription_id != None,
                 )
             )
-            for biz in result.scalars().all():
+            businesses = result.scalars().all()
+
+            for biz in businesses:
                 try:
-                    actions_result = await db.execute(
-                        select(AgentAction).where(
-                            AgentAction.business_id == biz.id,
-                            AgentAction.created_at >= week_ago,
-                        )
-                    )
-                    actions = actions_result.scalars().all()
-                    if not actions:
+                    local_hour    = get_local_hour(biz, utc_now)
+                    local_weekday = get_local_weekday(biz, utc_now)
+
+                    # Only fire Friday (4) 14:00-14:59 local
+                    if local_weekday != 4 or local_hour != 14:
                         continue
 
                     user_result = await db.execute(select(User).where(User.id == biz.owner_id))
@@ -604,29 +613,27 @@ async def weekly_performance_report():
                         continue
 
                     first_name = (user.full_name or "").split()[0] or "there"
-                    await email_sender.send_weekly_report(
+
+                    insights = await analytics_agent.generate_weekly_insights(
+                        business_id=str(biz.id),
+                        db=db,
+                    )
+
+                    await email_sender.send_weekly_analytics(
                         business_id=str(biz.id),
                         user_email=user.email,
                         first_name=first_name,
                         business_name=biz.name,
-                        report_data={
-                            "week_start":     week_ago.strftime("%b %d"),
-                            "week_end":       datetime.now(timezone.utc).strftime("%b %d"),
-                            "approved_count": len([a for a in actions if a.status == "executed"]),
-                            "skipped_count":  len([a for a in actions if a.status == "rejected"]),
-                            "expired_count":  len([a for a in actions if a.status == "expired"]),
-                            "pending_count":  len([a for a in actions if a.status == "pending"]),
-                            "total_count":    len(actions),
-                        },
+                        insights=insights,
                         db=db,
                     )
-                    logger.info(f"[Scheduler] Weekly report → {biz.name}")
+                    logger.info(f"[Scheduler] Weekly analytics sent → {biz.name}")
 
                 except Exception as e:
-                    logger.error(f"[Scheduler] Weekly report error for {biz.id}: {e}")
+                    logger.error(f"[Scheduler] Weekly analytics error for {biz.id}: {e}", exc_info=True)
 
     except Exception as e:
-        logger.error(f"[Scheduler] weekly_performance_report outer error: {e}")
+        logger.error(f"[Scheduler] weekly_analytics outer error: {e}", exc_info=True)
 
 
 # ─── 7. SUBSCRIPTION HEALTH CHECK (daily 2am UTC) ────────────────────────────
@@ -683,10 +690,9 @@ def start_scheduler():
         id="onboarding_reminder", name="Onboarding 72h reminder",
         replace_existing=True, misfire_grace_time=600)
 
-    scheduler.add_job(weekly_performance_report,
-        CronTrigger(day_of_week="mon", hour=8, minute=0, timezone="UTC"),
-        id="weekly_performance_report", name="Weekly performance report",
-        replace_existing=True, misfire_grace_time=3600)
+    scheduler.add_job(weekly_analytics, IntervalTrigger(hours=1),
+        id="weekly_analytics", name="Weekly analytics (Fri 2pm local)",
+        replace_existing=True, misfire_grace_time=600)
 
     scheduler.add_job(subscription_health_check,
         CronTrigger(hour=2, minute=0, timezone="UTC"),
