@@ -14,13 +14,13 @@ class AgentExecutor:
     """
 
     async def execute_action(
-    self,
-    action: dict,
-    business_id: str,
-    monthly_budget: float,
-    db: AsyncSession,
-    override_approval: bool = False
-) -> dict:
+        self,
+        action: dict,
+        business_id: str,
+        monthly_budget: float,
+        db: AsyncSession,
+        override_approval: bool = False
+    ) -> dict:
         action_type = action.get("type")
         platform = action.get("platform", "")
         params = action.get("parameters", {})
@@ -109,6 +109,52 @@ class AgentExecutor:
             "title": action.get("type", "").replace("_", " ").title(),
             "description": action.get("reasoning", "")[:250]
         }
+
+    async def run(self, action: AgentAction, db: AsyncSession) -> dict:
+        """
+        Called by the scheduler to execute an approved AgentAction from the DB.
+        Bridges between the AgentAction model and the internal _execute() format.
+        """
+        params = action.action_parameters or {}
+
+        # Map action_type to internal format
+        if action.action_type in ("post_instagram", "post_facebook"):
+            platform = action.action_type.replace("post_", "")
+            internal_action = {
+                "type": "create_post",
+                "platform": platform,
+                "parameters": {
+                    "image_url": params.get("image_url"),
+                    "caption": f"{params.get('caption', '')}\n\n{' '.join(params.get('hashtags', []))}".strip(),
+                    "ig_account_id": None,  # fetched from integration below
+                }
+            }
+        elif action.action_type == "google_ads_campaign":
+            internal_action = {
+                "type": "create_campaign",
+                "platform": "google_ads",
+                "parameters": params,
+            }
+        else:
+            return {"status": "no_handler", "action_type": action.action_type}
+
+        # Get ig_account_id from Meta integration
+        if action.action_type == "post_instagram":
+            int_result = await db.execute(
+                select(PlatformIntegration).where(
+                    PlatformIntegration.business_id == action.business_id,
+                    PlatformIntegration.platform == "meta",
+                    PlatformIntegration.is_active == True,
+                )
+            )
+            integration = int_result.scalar_one_or_none()
+            if integration:
+                internal_action["parameters"]["ig_account_id"] = integration.platform_account_id
+            else:
+                return {"status": "skipped", "reason": "No active Meta integration found"}
+
+        result = await self._execute(internal_action, str(action.business_id), db)
+        return result
 
     async def _execute(self, action: dict, business_id: str, db: AsyncSession) -> dict:
         action_type = action.get("type")
