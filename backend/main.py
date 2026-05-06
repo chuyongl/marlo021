@@ -103,3 +103,7 @@ app.include_router(agent_router)
 
 from billing.billing_router import router as billing_router
 app.include_router(billing_router)
+
+# Debug router — remove before going live with real users
+from agent.debug_router import router as debug_router
+app.include_router(debug_router)
