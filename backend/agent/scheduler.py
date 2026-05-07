@@ -188,11 +188,8 @@ async def weekly_content_generation():
                         strategy = await strategy_agent.decide(
                             "weekly_content", {"business": business_dict}, str(biz.id)
                         )
-                        strategy_summary = (
-                            f"{strategy.get('key_message', '')} "
-                            f"Tone: {strategy.get('tone_guidance', '')} "
-                            f"CTA: {strategy.get('call_to_action', '')}"
-                        ).strip()
+                        # Only use key_message — avoids internal prompt language leaking to users
+                        strategy_summary = strategy.get("key_message", f"Building authentic content for {biz.name}.")
                     except Exception:
                         strategy = {}
                         strategy_summary = f"Building authentic content for {biz.name}."
@@ -279,8 +276,7 @@ async def weekly_content_generation():
                     visual = strategy.get("visual_direction", "") if isinstance(strategy, dict) else ""
                     image_guide = [{
                         "day": posting_schedule[i],
-                        "type": "Real photo recommended",
-                        "description": visual or f"A photo showing {biz.name} in action.",
+                        "description": visual or f"A photo showing {biz.name} in action — real photos always outperform AI-generated ones.",
                     } for i in range(posts_count)]
 
                     first_day = posting_schedule[0]
