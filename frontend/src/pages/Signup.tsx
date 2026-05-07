@@ -68,6 +68,9 @@ function SignupForm() {
     setLoading(true)
     setError('')
     try {
+      // Detect user's timezone automatically
+      const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+
       // 1. Register user
       const registerRes = await fetch(`${apiBase}/auth/register`, {
         method: 'POST',
@@ -97,7 +100,7 @@ function SignupForm() {
       const token = loginData.access_token
       localStorage.setItem('token', token)
 
-      // 3. Create business
+      // 3. Create business — include detected timezone
       const bizRes = await fetch(`${apiBase}/businesses/`, {
         method: 'POST',
         headers: {
@@ -108,6 +111,8 @@ function SignupForm() {
           name: formData.business_name,
           industry: formData.industry,
           monthly_ad_budget: formData.monthly_ad_budget,
+          timezone: userTimezone,
+          preferred_post_timezone: userTimezone,
         }),
       })
       if (!bizRes.ok) {
