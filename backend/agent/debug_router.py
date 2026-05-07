@@ -15,8 +15,6 @@ router = APIRouter(prefix="/debug", tags=["debug"], include_in_schema=False)
 BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000")
 
 
-# ─── 1. LIST BUSINESSES ───────────────────────────────────────────────────────
-
 @router.get("/businesses")
 async def list_businesses():
     try:
@@ -37,8 +35,6 @@ async def list_businesses():
     except Exception as e:
         return {"error": str(e)}
 
-
-# ─── 2. TRIGGER KICKOFF ───────────────────────────────────────────────────────
 
 @router.get("/trigger-kickoff/{business_id}")
 async def trigger_kickoff(business_id: str):
@@ -92,11 +88,8 @@ async def trigger_kickoff(business_id: str):
                 strategy = await strategy_agent.decide(
                     "weekly_content", {"business": business_dict}, business_id
                 )
-                strategy_summary = (
-                    f"{strategy.get('key_message', '')} "
-                    f"Tone: {strategy.get('tone_guidance', '')} "
-                    f"CTA: {strategy.get('call_to_action', '')}"
-                ).strip()
+                # Only use key_message — avoids internal prompt language leaking to users
+                strategy_summary = strategy.get("key_message", f"Building authentic content for {biz.name}.")
             except Exception:
                 strategy = {}
                 strategy_summary = f"Building authentic content for {biz.name}."
@@ -168,8 +161,7 @@ async def trigger_kickoff(business_id: str):
             visual = strategy.get("visual_direction", "") if isinstance(strategy, dict) else ""
             image_guide = [{
                 "day": posting_schedule[i],
-                "type": "Real photo recommended",
-                "description": visual or f"A photo showing {biz.name} in action.",
+                "description": visual or f"A photo showing {biz.name} in action — real photos always outperform AI-generated ones.",
             } for i in range(posts_count)]
 
             first_day = posting_schedule[0]
@@ -249,8 +241,6 @@ async def trigger_kickoff(business_id: str):
         return {"error": str(e), "traceback": traceback.format_exc()}
 
 
-# ─── 3. RESEND KICKOFF ────────────────────────────────────────────────────────
-
 @router.get("/resend-kickoff/{business_id}")
 async def resend_kickoff(business_id: str):
     try:
@@ -306,7 +296,7 @@ async def resend_kickoff(business_id: str):
                 strategy = await strategy_agent.decide(
                     "weekly_content", {"business": business_dict}, business_id
                 )
-                strategy_summary = f"{strategy.get('key_message', '')} {strategy.get('tone_guidance', '')}".strip()
+                strategy_summary = strategy.get("key_message", f"Building authentic content for {biz.name}.")
             except Exception:
                 strategy = {}
                 strategy_summary = f"Building authentic content for {biz.name}."
@@ -314,7 +304,6 @@ async def resend_kickoff(business_id: str):
             visual = strategy.get("visual_direction", "") if isinstance(strategy, dict) else ""
             image_guide = [{
                 "day": d,
-                "type": "Real photo recommended",
                 "description": visual or f"A photo showing {biz.name} in action.",
             } for d in posting_schedule]
 
@@ -336,19 +325,12 @@ async def resend_kickoff(business_id: str):
                 db=db,
             )
 
-            return {
-                "status": "success",
-                "email_sent": "first_kickoff",
-                "to": user.email,
-                "first_post_day": first_day,
-            }
+            return {"status": "success", "email_sent": "first_kickoff", "to": user.email}
 
     except Exception as e:
         import traceback
         return {"error": str(e), "traceback": traceback.format_exc()}
 
-
-# ─── 4. TRIGGER ANALYTICS ─────────────────────────────────────────────────────
 
 @router.get("/trigger-analytics/{business_id}")
 async def trigger_analytics(business_id: str):
@@ -391,8 +373,6 @@ async def trigger_analytics(business_id: str):
         return {"error": str(e), "traceback": traceback.format_exc()}
 
 
-# ─── 5. TEST INSTAGRAM POST ───────────────────────────────────────────────────
-
 @router.get("/test-post/{business_id}")
 async def test_instagram_post(business_id: str):
     try:
@@ -425,8 +405,6 @@ async def test_instagram_post(business_id: str):
         return {"error": str(e), "traceback": traceback.format_exc()}
 
 
-# ─── 6. LIST ACTIONS ──────────────────────────────────────────────────────────
-
 @router.get("/actions/{business_id}")
 async def list_actions(business_id: str):
     try:
@@ -452,8 +430,6 @@ async def list_actions(business_id: str):
     except Exception as e:
         return {"error": str(e)}
 
-
-# ─── 7. SEND APPROVAL EMAIL ───────────────────────────────────────────────────
 
 @router.get("/send-approval/{business_id}/{day}")
 async def send_approval_email(business_id: str, day: str):
@@ -497,18 +473,12 @@ async def send_approval_email(business_id: str, day: str):
             action.approval_email_sent = True
             await db.commit()
 
-            return {
-                "status": "success",
-                "email_sent": f"post_approval_{day.lower()}",
-                "to": user.email,
-            }
+            return {"status": "success", "email_sent": f"post_approval_{day.lower()}", "to": user.email}
 
     except Exception as e:
         import traceback
         return {"error": str(e), "traceback": traceback.format_exc()}
 
-
-# ─── 8. RESET BUSINESS ────────────────────────────────────────────────────────
 
 @router.delete("/reset/{business_id}")
 async def reset_business(business_id: str):

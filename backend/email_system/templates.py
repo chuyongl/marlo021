@@ -95,6 +95,44 @@ def metric_row(label: str, value: str, trend: str = "", positive: bool = True) -
     </tr>"""
 
 
+def weekly_cadence_diagram() -> str:
+    """Chevron diagram showing the weekly cadence."""
+    cell_style = "padding:10px 6px;text-align:center;vertical-align:middle;"
+    arrow_style = f"font-size:18px;color:#D1D5DB;padding:0 2px;vertical-align:middle;"
+    return f"""
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;border-collapse:collapse;">
+      <tr>
+        <td style="{cell_style}width:22%;">
+          <div style="background:#111111;border-radius:8px;padding:10px 6px;text-align:center;">
+            <p style="font-size:11px;font-weight:700;color:{LIME_COLOR};margin:0 0 2px 0;">DAY 1</p>
+            <p style="font-size:10px;color:#888;margin:0;line-height:1.3;">Kickoff +<br>first post</p>
+          </div>
+        </td>
+        <td style="{arrow_style}">›</td>
+        <td style="{cell_style}width:22%;">
+          <div style="background:#F9FAFB;border:1px solid {BORDER_COLOR};border-radius:8px;padding:10px 6px;text-align:center;">
+            <p style="font-size:11px;font-weight:700;color:{TEXT_COLOR};margin:0 0 2px 0;">DAYS 2–8</p>
+            <p style="font-size:10px;color:{MUTED_COLOR};margin:0;line-height:1.3;">Post approvals<br>any day of week</p>
+          </div>
+        </td>
+        <td style="{arrow_style}">›</td>
+        <td style="{cell_style}width:22%;">
+          <div style="background:#F9FAFB;border:1px solid {BORDER_COLOR};border-radius:8px;padding:10px 6px;text-align:center;">
+            <p style="font-size:11px;font-weight:700;color:{TEXT_COLOR};margin:0 0 2px 0;">DAY 7</p>
+            <p style="font-size:10px;color:{MUTED_COLOR};margin:0;line-height:1.3;">Analytics +<br>next week strategy</p>
+          </div>
+        </td>
+        <td style="{arrow_style}">›</td>
+        <td style="{cell_style}width:22%;">
+          <div style="background:#111111;border-radius:8px;padding:10px 6px;text-align:center;">
+            <p style="font-size:11px;font-weight:700;color:{LIME_COLOR};margin:0 0 2px 0;">DAY 8</p>
+            <p style="font-size:10px;color:#888;margin:0;line-height:1.3;">= Next cycle's<br>Day 1</p>
+          </div>
+        </td>
+      </tr>
+    </table>"""
+
+
 # ─── ONBOARDING EMAILS ────────────────────────────────────────────────────────
 
 def onboarding_email_1(business_name: str, first_name: str, business_id: str, base_url: str) -> str:
@@ -131,7 +169,6 @@ def onboarding_email_1(business_name: str, first_name: str, business_id: str, ba
 def onboarding_email_2(first_name: str, business_id: str, base_url: str, frontend_url: str = "", skipped_google: bool = False) -> str:
     connect_url = f"{base_url}/integrations/connect/meta?business_id={business_id}"
     skip_url = f"{base_url}/integrations/skip-meta?business_id={business_id}"
-    faq_base = frontend_url or "https://marlo021.ai"
 
     top_message = (
         f'<p style="font-size:16px;font-weight:600;color:{TEXT_COLOR};margin:0 0 4px 0;">No problem — let\'s connect Instagram next!</p>'
@@ -237,16 +274,14 @@ def onboarding_email_4(first_name: str, business_id: str, base_url: str, is_remi
     return base_template(content, preheader=preheader)
 
 
-# ─── ONBOARDING COMPLETE (simplified email 5) ────────────────────────────────
+# ─── ONBOARDING COMPLETE ─────────────────────────────────────────────────────
 
 def onboarding_complete_template(first_name: str, business_name: str) -> str:
     content = f"""
     <p style="font-size:16px;font-weight:600;color:#16A34A;margin:0 0 8px 0;">🎉 Setup complete, {first_name}!</p>
-
     <p style="font-size:14px;color:{MUTED_COLOR};margin:0 0 20px 0;line-height:1.6;">
       Marlo has everything it needs to get started on {business_name}'s marketing. Your first content plan is being prepared right now.
     </p>
-
     <div style="background:#F0FDF4;border-radius:8px;padding:20px;margin-bottom:24px;">
       <p style="font-size:13px;font-weight:600;color:#15803D;margin:0 0 12px 0;">What happens next</p>
       <p style="font-size:14px;color:{TEXT_COLOR};margin:0 0 8px 0;line-height:1.8;">
@@ -256,11 +291,10 @@ def onboarding_complete_template(first_name: str, business_name: str) -> str:
         ✅ Nothing goes live until you approve it
       </p>
     </div>
-
     <p style="font-size:14px;color:{MUTED_COLOR};margin:0;line-height:1.6;">
       Check your inbox — your kickoff email is on its way. 🚀
     </p>"""
-    return base_template(content, preheader=f"Setup complete — your first content plan is being prepared")
+    return base_template(content, preheader="Setup complete — your first content plan is being prepared")
 
 
 # ─── FIRST KICKOFF EMAIL ──────────────────────────────────────────────────────
@@ -281,8 +315,6 @@ def first_kickoff_template(
     image_guide: list,
     base_url: str,
 ) -> str:
-    """First-ever kickoff email. Includes mechanism explanation + day picker."""
-
     # Day picker buttons
     days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     day_buttons_html = ""
@@ -297,21 +329,16 @@ def first_kickoff_template(
             f'border-radius:8px;margin:4px 4px 4px 0;border:1px solid {BORDER_COLOR};">{day}</a>'
         )
 
-    # Posting schedule display
-    schedule_html = " → ".join([
-        f'<strong>{d}</strong>' for d in posting_schedule
-    ])
+    schedule_html = " → ".join([f'<strong>{d}</strong>' for d in posting_schedule])
 
-    # Image guide
     image_guide_html = ""
     for item in image_guide:
         image_guide_html += f"""
         <div style="background:#F9FAFB;border-radius:6px;padding:12px 16px;margin-bottom:8px;border-left:3px solid {LIME_COLOR};">
-          <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 4px 0;">{item.get('day')} — {item.get('type', 'Photo needed')}</p>
+          <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 4px 0;">{item.get('day')}</p>
           <p style="font-size:13px;color:{MUTED_COLOR};margin:0;line-height:1.5;">{item.get('description', '')}</p>
         </div>"""
 
-    # First post card
     post_params = first_post or {}
     caption = post_params.get("caption", "")
     hashtags = post_params.get("hashtags", [])
@@ -332,7 +359,6 @@ def first_kickoff_template(
         if hashtags else ""
     )
 
-    # Google Ads card
     ads_html = ""
     if google_campaign:
         keywords = google_campaign.get("keywords", [])
@@ -353,7 +379,6 @@ def first_kickoff_template(
 
     content = f"""
     <p style="font-size:17px;font-weight:700;color:{TEXT_COLOR};margin:0 0 8px 0;">🚀 Welcome to Marlo, {first_name}!</p>
-
     <p style="font-size:14px;color:{MUTED_COLOR};margin:0 0 24px 0;line-height:1.6;">
       Your setup is complete and I've built {business_name}'s first content plan. Here's everything you need to know about how Marlo works — this is the only time I'll explain the full system.
     </p>
@@ -361,6 +386,8 @@ def first_kickoff_template(
     {section_divider()}
 
     <p style="font-size:14px;font-weight:600;color:{TEXT_COLOR};margin:0 0 12px 0;">📅 How your weekly cycle works</p>
+
+    {weekly_cadence_diagram()}
 
     <div style="background:#F9FAFB;border-radius:8px;padding:20px;margin-bottom:20px;border:1px solid {BORDER_COLOR};">
       <p style="font-size:13px;color:{TEXT_COLOR};margin:0 0 12px 0;line-height:1.8;">
@@ -371,10 +398,10 @@ def first_kickoff_template(
         &nbsp;&nbsp;• First post of the week ready for approval
       </p>
       <p style="font-size:13px;color:{TEXT_COLOR};margin:0 0 12px 0;line-height:1.8;">
-        <strong>Days 2–7</strong> — The day before each scheduled post, you'll get an approval email with the post ready to go. Tap Approve → it posts at your preferred time. Don't tap → it expires automatically.
+        <strong>Days 2–8</strong> — The day before each scheduled post, you'll get an approval email. Tap Approve → it posts at your preferred time. Don't tap → it expires automatically. Posts can fall on any day of the week including weekends. Day 8 rolls into the next cycle's Day 1.
       </p>
       <p style="font-size:13px;color:{TEXT_COLOR};margin:0 0 12px 0;line-height:1.8;">
-        <strong>Day 7 (Saturday 2pm)</strong> — You'll get a detailed analytics email covering reach, engagement, audience insights, and strategy recommendations for next week. Reply with feedback before Sunday's kickoff.
+        <strong>Day 7</strong> — You'll get a detailed analytics email covering reach, engagement, audience insights, and strategy recommendations for next week. Reply with feedback before your next kickoff.
       </p>
       <p style="font-size:13px;color:{MUTED_COLOR};margin:0;line-height:1.6;">
         💬 You can reply to <em>any</em> Marlo email to make changes, request revisions, or ask questions.
@@ -416,7 +443,6 @@ def first_kickoff_template(
     {section_divider()}''' if image_guide_html else section_divider()}
 
     <p style="font-size:14px;font-weight:600;color:{TEXT_COLOR};margin:0 0 12px 0;">📸 {platform} · {first_post_day} — ready for your approval</p>
-
     <div style="background:#FFFFFF;border:1px solid {BORDER_COLOR};border-radius:12px;padding:20px;margin-bottom:16px;">
       {image_html}
       <p style="font-size:14px;color:{TEXT_COLOR};line-height:1.7;margin:0 0 4px 0;">{caption}</p>
@@ -438,10 +464,10 @@ def first_kickoff_template(
       You can reply to this email anytime to adjust your posting schedule, kickoff day, or ask Marlo anything.
     </p>"""
 
-    return base_template(content, preheader=f"Welcome to Marlo — your first content plan is ready")
+    return base_template(content, preheader="Welcome to Marlo — your first content plan is ready")
 
 
-# ─── WEEKLY KICKOFF EMAIL (recurring, no mechanism explanation) ───────────────
+# ─── WEEKLY KICKOFF EMAIL ─────────────────────────────────────────────────────
 
 def weekly_kickoff_template(
     first_name: str,
@@ -460,8 +486,6 @@ def weekly_kickoff_template(
     last_week_stats: dict,
     base_url: str,
 ) -> str:
-    """Recurring weekly kickoff — no mechanism explanation, includes last week stats."""
-
     approved = last_week_stats.get("approved", 0)
     skipped  = last_week_stats.get("skipped", 0)
     expired  = last_week_stats.get("expired", 0)
@@ -483,7 +507,7 @@ def weekly_kickoff_template(
     for item in image_guide:
         image_guide_html += f"""
         <div style="background:#F9FAFB;border-radius:6px;padding:12px 16px;margin-bottom:8px;border-left:3px solid {LIME_COLOR};">
-          <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 4px 0;">{item.get('day')} — {item.get('type', 'Photo needed')}</p>
+          <p style="font-size:13px;font-weight:600;color:{TEXT_COLOR};margin:0 0 4px 0;">{item.get('day')}</p>
           <p style="font-size:13px;color:{MUTED_COLOR};margin:0;line-height:1.5;">{item.get('description', '')}</p>
         </div>"""
 
@@ -567,7 +591,7 @@ def weekly_kickoff_template(
     return base_template(content, preheader=f"Your week ahead — {first_post_day}'s post is ready to approve")
 
 
-# ─── POST APPROVAL EMAIL (day-before drip) ────────────────────────────────────
+# ─── POST APPROVAL EMAIL ─────────────────────────────────────────────────────
 
 def post_approval_template(
     first_name: str,
@@ -601,7 +625,6 @@ def post_approval_template(
     <p style="font-size:14px;color:{MUTED_COLOR};margin:0 0 24px 0;line-height:1.6;">
       Here's your {scheduled_day} post. Approve it today and it'll go live tomorrow morning.
     </p>
-
     <div style="background:#FFFFFF;border:1px solid {BORDER_COLOR};border-radius:12px;padding:20px;margin-bottom:16px;">
       <p style="font-size:12px;font-weight:600;color:{MUTED_COLOR};text-transform:uppercase;letter-spacing:0.08em;margin:0 0 16px 0;">
         📸 {platform} · {scheduled_day}
@@ -618,7 +641,6 @@ def post_approval_template(
       {approve_button(f"✓ Approve {scheduled_day} post", approve_url)}
       {decline_button("✗ Skip", decline_url)}
     </div>
-
     <p style="font-size:12px;color:{MUTED_COLOR};margin:0;line-height:1.6;">
       If you don't respond, this post will expire automatically. No action needed to skip.
     </p>"""
@@ -641,7 +663,6 @@ def weekly_analytics_template(
     week_start = insights.get("week_start", "")
     week_end   = insights.get("week_end", "")
 
-    # Top metrics row
     reach = instagram.get("total_reach") or google.get("total_impressions") or 0
     clicks = google.get("total_clicks", 0)
     approved = posting.get("approved", 0)
@@ -657,14 +678,12 @@ def weekly_analytics_template(
       </tr>
     </table>"""
 
-    # Audience insights
     audience_items = insights.get("audience_insights", [])
     audience_html = "".join([
         f'<li style="margin-bottom:10px;font-size:14px;color:{TEXT_COLOR};line-height:1.6;">{item}</li>'
         for item in audience_items
     ])
 
-    # Content performance
     content_perf = insights.get("content_performance", {})
     content_html = ""
     if content_perf.get("best_performing_content"):
@@ -686,14 +705,12 @@ def weekly_analytics_template(
           <p style="font-size:13px;color:{TEXT_COLOR};margin:0;line-height:1.5;">{content_perf['engagement_pattern']}</p>
         </div>"""
 
-    # Keyword insights
     kw_items = insights.get("keyword_insights", [])
     kw_html = "".join([
         f'<li style="margin-bottom:10px;font-size:14px;color:{TEXT_COLOR};line-height:1.6;">{item}</li>'
         for item in kw_items
     ])
 
-    # Next week strategy
     strategy_items = insights.get("next_week_strategy", [])
     strategy_html = "".join([
         f'<div style="background:#F9FAFB;border-radius:6px;padding:12px 16px;margin-bottom:8px;border-left:3px solid {LIME_COLOR};">'
@@ -706,56 +723,40 @@ def weekly_analytics_template(
     <p style="font-size:14px;color:{MUTED_COLOR};margin:0 0 24px 0;line-height:1.6;">
       {week_start} – {week_end} · Your full performance breakdown
     </p>
-
     {metrics_html}
-
     <p style="font-size:14px;color:{TEXT_COLOR};margin:0 0 24px 0;line-height:1.7;background:#F9FAFB;padding:16px;border-radius:8px;">
       {insights.get('performance_summary', '')}
     </p>
-
     {section_divider()}
-
     <p style="font-size:14px;font-weight:600;color:{TEXT_COLOR};margin:0 0 12px 0;">👥 Audience insights</p>
     <ul style="padding-left:20px;margin:0 0 24px 0;">{audience_html}</ul>
-
     {section_divider()}
-
     <p style="font-size:14px;font-weight:600;color:{TEXT_COLOR};margin:0 0 12px 0;">📸 Content performance</p>
     {content_html}
-
-    {f'''
-    {section_divider()}
+    {f'''{section_divider()}
     <p style="font-size:14px;font-weight:600;color:{TEXT_COLOR};margin:0 0 12px 0;">🔍 Keyword insights</p>
-    <ul style="padding-left:20px;margin:0 0 24px 0;">{kw_html}</ul>
-    ''' if kw_html else ''}
-
+    <ul style="padding-left:20px;margin:0 0 24px 0;">{kw_html}</ul>''' if kw_html else ''}
     {section_divider()}
-
     <p style="font-size:14px;font-weight:600;color:{TEXT_COLOR};margin:0 0 8px 0;">💰 Budget</p>
     <p style="font-size:14px;color:{TEXT_COLOR};margin:0 0 24px 0;line-height:1.6;background:#FFFBEB;padding:14px;border-radius:8px;border-left:3px solid #F59E0B;">
       {insights.get('budget_recommendation', '')}
     </p>
-
     {section_divider()}
-
     <p style="font-size:14px;font-weight:600;color:{TEXT_COLOR};margin:0 0 12px 0;">🎯 Next week's strategy</p>
     {strategy_html}
-
     <div style="background:#F0F9FF;border-radius:8px;padding:16px;margin-top:24px;">
       <p style="font-size:13px;font-weight:600;color:#0369A1;margin:0 0 6px 0;">👀 One thing to watch next week</p>
       <p style="font-size:14px;color:{TEXT_COLOR};margin:0;line-height:1.6;">{insights.get('one_thing_to_watch', '')}</p>
     </div>
-
     {section_divider()}
-
     <p style="font-size:13px;color:{MUTED_COLOR};margin:0;line-height:1.6;">
-      Reply to this email with any feedback or strategy adjustments before Sunday's kickoff. Marlo reads every reply. 💬
+      Reply to this email with any feedback or strategy adjustments before your next kickoff. Marlo reads every reply. 💬
     </p>"""
 
     return base_template(content, preheader=f"Your weekly results — {week_start} to {week_end}")
 
 
-# ─── EXISTING TEMPLATES (unchanged) ──────────────────────────────────────────
+# ─── REMAINING TEMPLATES ──────────────────────────────────────────────────────
 
 def morning_briefing_template(
     business_name: str,
@@ -766,9 +767,7 @@ def morning_briefing_template(
 ) -> str:
     metrics_rows = ""
     for m in yesterday_metrics.get("highlights", []):
-        metrics_rows += metric_row(
-            m["label"], m["value"], m.get("trend", ""), m.get("positive", True)
-        )
+        metrics_rows += metric_row(m["label"], m["value"], m.get("trend", ""), m.get("positive", True))
 
     results_section = f"""
     <p style="font-size:16px;font-weight:600;color:{TEXT_COLOR};margin:0 0 12px 0;">☀️ Good morning {first_name}!</p>

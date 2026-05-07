@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
+from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update as sql_update
 from pydantic import BaseModel
 from typing import Optional
 from database.session import get_db
@@ -19,6 +20,8 @@ class BusinessCreate(BaseModel):
     tone_of_voice: Optional[str] = None
     target_audience: Optional[str] = None
     website_url: Optional[str] = None
+    timezone: Optional[str] = None
+    preferred_post_timezone: Optional[str] = None
 
 @router.post("/", status_code=201)
 async def create_business(
@@ -56,3 +59,38 @@ async def list_businesses(current_user=Depends(get_current_user), db: AsyncSessi
     result = await db.execute(select(Business).where(Business.owner_id == current_user.id))
     businesses = result.scalars().all()
     return [{"id": str(b.id), "name": b.name, "onboarding_completed": b.onboarding_completed} for b in businesses]
+
+@router.get("/settings/kickoff-day", include_in_schema=False)
+async def set_kickoff_day(
+    business_id: str,
+    day: str,
+    db: AsyncSession = Depends(get_db)
+):
+    valid_days = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+    if day not in valid_days:
+        return HTMLResponse("<h2>Invalid day.</h2>", status_code=400)
+
+    biz_result = await db.execute(select(Business).where(Business.id == business_id))
+    biz = biz_result.scalar_one_or_none()
+    if not biz:
+        return HTMLResponse("<h2>Business not found.</h2>", status_code=404)
+
+    await db.execute(
+        sql_update(Business)
+        .where(Business.id == business_id)
+        .values(briefing_time=day)
+    )
+    await db.commit()
+
+    return HTMLResponse(f"""
+    <html>
+    <head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+    <body style="font-family:-apple-system,sans-serif;text-align:center;padding:60px 24px;background:#f9f9f9;">
+      <div style="max-width:400px;margin:0 auto;background:#fff;border-radius:16px;padding:40px;border:1px solid #e5e7eb;">
+        <div style="font-size:48px;margin-bottom:16px;">✅</div>
+        <h2 style="color:#111;margin:0 0 8px 0;">Kickoff day updated!</h2>
+        <p style="color:#6b7280;margin:0 0 20px 0;">Your weekly plan will now arrive every <strong style="color:#111;">{day}</strong>.</p>
+        <p style="color:#9ca3af;font-size:13px;margin:0;">You can close this tab.</p>
+      </div>
+    </body></html>
+    """)
