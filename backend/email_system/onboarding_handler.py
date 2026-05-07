@@ -100,7 +100,7 @@ Business description: {reply_text}"""
     )
 
     # ── Step 6: Generate posting schedule ────────────────────────────────────
-    from agent.scheduler import get_posting_schedule
+    from agent.scheduler import get_posting_schedule, build_scheduled_post_time
     posting_schedule = get_posting_schedule(biz)
     posts_count = len(posting_schedule)
 
@@ -110,7 +110,6 @@ Business description: {reply_text}"""
         strategy_summary = (
             f"{strategy.get('key_message', '')} "
             f"Tone: {strategy.get('tone_guidance', '')} "
-            f"Hook: {strategy.get('hook_strategy', '')} "
             f"CTA: {strategy.get('call_to_action', '')}"
         ).strip()
     except Exception as e:
@@ -128,7 +127,6 @@ Business description: {reply_text}"""
             platforms=platforms,
             theme=theme,
         )
-        # Pad or trim to match schedule
         while len(raw_posts) < posts_count:
             raw_posts.append(raw_posts[-1].copy() if raw_posts else {})
         raw_posts = raw_posts[:posts_count]
@@ -139,7 +137,6 @@ Business description: {reply_text}"""
         print(f"[OnboardingHandler] Content generation error: {e}")
 
     # ── Step 9: Store posts as pending actions ────────────────────────────────
-    from agent.scheduler import build_scheduled_post_time
     stored_actions = []
     for post in posts:
         action = AgentAction(
@@ -154,7 +151,7 @@ Business description: {reply_text}"""
             scheduled_post_time=build_scheduled_post_time(biz, post["scheduled_day"]),
             scheduled_day=post["scheduled_day"],
             approval_email_sent=False,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.utcnow(),
         )
         db.add(action)
         stored_actions.append(action)
@@ -182,7 +179,7 @@ Business description: {reply_text}"""
                 scheduled_post_time=datetime.now(timezone.utc),
                 scheduled_day=posting_schedule[0],
                 approval_email_sent=False,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.utcnow(),
             )
             db.add(ads_action)
         except Exception as e:
@@ -191,10 +188,10 @@ Business description: {reply_text}"""
     await db.commit()
 
     # ── Step 11: Build image guide ────────────────────────────────────────────
+    visual = strategy.get("visual_direction", "") if isinstance(strategy, dict) else ""
     image_guide = []
     for post in posts:
         day = post.get("scheduled_day", "")
-        visual = strategy.get("visual_direction", "")
         image_guide.append({
             "day": day,
             "type": "Real photo recommended",

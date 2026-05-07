@@ -58,11 +58,6 @@ def get_local_day_name(biz, utc_now) -> str:
     return get_local_dt(biz, utc_now).strftime("%A")
 
 def get_posting_schedule(biz) -> list:
-    """
-    Returns the ordered list of posting days for this business.
-    Reads from biz.posting_schedule (JSON column), falls back to posts_per_week,
-    falls back to Mon/Wed/Fri.
-    """
     schedule = biz.posting_schedule
     if schedule and isinstance(schedule, list) and len(schedule) > 0:
         valid = [d for d in schedule if d in DAY_TO_WEEKDAY]
@@ -82,12 +77,6 @@ def get_posting_schedule(biz) -> list:
     return defaults.get(n, ["Monday", "Wednesday", "Friday"])
 
 def get_approval_windows(posting_schedule: list) -> list:
-    """
-    Build approval/expiry windows from a posting schedule.
-    For each post day, the approval email goes out the day before at 2pm.
-    That same window also expires the previous post.
-    The last post expires at 6pm on its own day.
-    """
     if not posting_schedule:
         return []
 
@@ -115,7 +104,6 @@ def get_approval_windows(posting_schedule: list) -> list:
     return windows
 
 def build_scheduled_post_time(biz, day_name: str) -> datetime:
-    """Build UTC datetime for when this post should go live."""
     try:
         tz = get_biz_tz(biz)
         now_local = datetime.now(tz)
@@ -132,12 +120,6 @@ def build_scheduled_post_time(biz, day_name: str) -> datetime:
 # ─── 1. WEEKLY CONTENT GENERATION (Sunday 9pm local) ─────────────────────────
 
 async def weekly_content_generation():
-    """
-    Runs every hour. Fires for each business on Sunday between 21:00-21:59 local.
-    - Reads posting_schedule from DB (fully data-driven)
-    - Generates exactly len(posting_schedule) posts
-    - Sends weekly kickoff email with strategy + image guide + first post approval
-    """
     try:
         from database.session import AsyncSessionLocal
         from database.models import Business, User, PlatformIntegration, AgentAction
@@ -164,11 +146,9 @@ async def weekly_content_generation():
                     local_hour    = get_local_hour(biz, utc_now)
                     local_weekday = get_local_weekday(biz, utc_now)
 
-                    # Only fire Sunday (6) 21:00-21:59 local
                     if local_weekday != 6 or local_hour != 21:
                         continue
 
-                    # Idempotency: skip if already generated this week
                     week_start = utc_now - timedelta(days=(utc_now.weekday() + 1) % 7)
                     existing = await db.execute(
                         select(AgentAction).where(
@@ -183,7 +163,6 @@ async def weekly_content_generation():
 
                     posting_schedule = get_posting_schedule(biz)
                     posts_count = len(posting_schedule)
-                    logger.info(f"[Scheduler] {biz.name} posting schedule: {posting_schedule}")
 
                     integrations_result = await db.execute(
                         select(PlatformIntegration).where(
@@ -205,7 +184,6 @@ async def weekly_content_generation():
                         "monthly_ad_budget": float(biz.monthly_ad_budget or 300),
                     }
 
-                    # Generate content strategy
                     try:
                         strategy = await strategy_agent.decide(
                             "weekly_content", {"business": business_dict}, str(biz.id)
@@ -213,14 +191,12 @@ async def weekly_content_generation():
                         strategy_summary = (
                             f"{strategy.get('key_message', '')} "
                             f"Tone: {strategy.get('tone_guidance', '')} "
-                            f"Hook: {strategy.get('hook_strategy', '')} "
                             f"CTA: {strategy.get('call_to_action', '')}"
                         ).strip()
                     except Exception:
                         strategy = {}
-                        strategy_summary = f"Building authentic content that showcases {biz.name}'s unique value to {biz.target_audience or 'local customers'}."
+                        strategy_summary = f"Building authentic content for {biz.name}."
 
-                    # Generate posts
                     posts = await content_pipeline.generate_week_of_content(
                         business_id=str(biz.id),
                         db=db,
@@ -232,19 +208,20 @@ async def weekly_content_generation():
                     for i, post in enumerate(posts):
                         post["scheduled_day"] = posting_schedule[i]
 
-                    # Generate Google Ads if connected
                     google_campaign = None
                     if has_google:
-                        ads_strategy = await strategy_agent.decide(
-                            "google_ads", {"business": business_dict}, str(biz.id)
-                        )
-                        google_campaign = await google_ads_agent.generate_campaign(
-                            business=business_dict,
-                            strategy=ads_strategy,
-                            business_id=str(biz.id),
-                        )
+                        try:
+                            ads_strategy = await strategy_agent.decide(
+                                "google_ads", {"business": business_dict}, str(biz.id)
+                            )
+                            google_campaign = await google_ads_agent.generate_campaign(
+                                business=business_dict,
+                                strategy=ads_strategy,
+                                business_id=str(biz.id),
+                            )
+                        except Exception as e:
+                            logger.error(f"[Scheduler] Google Ads error: {e}")
 
-                    # Store as pending actions
                     stored_actions = []
                     for post in posts:
                         action = AgentAction(
@@ -259,7 +236,7 @@ async def weekly_content_generation():
                             scheduled_post_time=build_scheduled_post_time(biz, post["scheduled_day"]),
                             scheduled_day=post["scheduled_day"],
                             approval_email_sent=False,
-                            created_at=datetime.now(timezone.utc),
+                            created_at=datetime.utcnow(),
                         )
                         db.add(action)
                         stored_actions.append(action)
@@ -277,14 +254,13 @@ async def weekly_content_generation():
                             scheduled_post_time=datetime.now(timezone.utc),
                             scheduled_day=posting_schedule[0],
                             approval_email_sent=False,
-                            created_at=datetime.now(timezone.utc),
+                            created_at=datetime.utcnow(),
                         )
                         db.add(ads_action)
                         stored_actions.append(ads_action)
 
                     await db.commit()
 
-                    # Last week stats
                     week_ago = utc_now - timedelta(days=7)
                     past_result = await db.execute(
                         select(AgentAction).where(
@@ -300,16 +276,12 @@ async def weekly_content_generation():
                         "expired":  len([a for a in past if a.status == "expired"]),
                     }
 
-                    # Image guide from strategy
-                    visual = strategy.get("visual_direction", "")
-                    image_guide = [
-                        {
-                            "day": posting_schedule[i],
-                            "type": "Real photo recommended",
-                            "description": visual or f"A photo showing {biz.name} in action — real photos always outperform AI-generated ones.",
-                        }
-                        for i in range(posts_count)
-                    ]
+                    visual = strategy.get("visual_direction", "") if isinstance(strategy, dict) else ""
+                    image_guide = [{
+                        "day": posting_schedule[i],
+                        "type": "Real photo recommended",
+                        "description": visual or f"A photo showing {biz.name} in action.",
+                    } for i in range(posts_count)]
 
                     first_day = posting_schedule[0]
                     first_action = next((a for a in stored_actions
@@ -358,10 +330,6 @@ async def weekly_content_generation():
 # ─── 2. POST APPROVAL EMAILS + EXPIRY (every hour) ───────────────────────────
 
 async def post_approval_and_expiry():
-    """
-    Runs every hour. Fully data-driven from posting_schedule.
-    For each business, computes approval windows dynamically and fires accordingly.
-    """
     try:
         from database.session import AsyncSessionLocal
         from database.models import Business, User, AgentAction
@@ -383,7 +351,6 @@ async def post_approval_and_expiry():
                 try:
                     local_hour    = get_local_hour(biz, utc_now)
                     local_weekday = get_local_weekday(biz, utc_now)
-
                     posting_schedule = get_posting_schedule(biz)
                     windows = get_approval_windows(posting_schedule)
 
@@ -448,7 +415,6 @@ async def post_approval_and_expiry():
 # ─── 3. EXECUTE APPROVED POSTS (every 15min) ─────────────────────────────────
 
 async def execute_approved_posts():
-    """Find approved posts whose scheduled_post_time has passed and post them."""
     try:
         from database.session import AsyncSessionLocal
         from database.models import AgentAction
@@ -478,10 +444,9 @@ async def execute_approved_posts():
         logger.error(f"[Scheduler] execute_approved_posts error: {e}")
 
 
-# ─── 4. EXPIRE STALE ACTIONS — safety net (every 30min) ──────────────────────
+# ─── 4. EXPIRE STALE ACTIONS (every 30min) ───────────────────────────────────
 
 async def expire_stale_actions():
-    """Safety net: expire any pending action older than 3 days."""
     try:
         from database.session import AsyncSessionLocal
         from database.models import AgentAction
@@ -507,7 +472,6 @@ async def expire_stale_actions():
 # ─── 5. ONBOARDING REMINDER (every hour) ─────────────────────────────────────
 
 async def onboarding_reminder():
-    """Send email 4 reminder if business stuck on step 4 for 72h with no reply."""
     try:
         from database.session import AsyncSessionLocal
         from database.models import Business, User, EmailLog
@@ -575,11 +539,6 @@ async def onboarding_reminder():
 # ─── 6. WEEKLY ANALYTICS (Friday 2pm local) ──────────────────────────────────
 
 async def weekly_analytics():
-    """
-    Runs every hour. Fires for each business on Friday between 14:00-14:59 local.
-    Collects all data → AI deep analysis → sends analytics email.
-    User has the weekend to review before Sunday kickoff.
-    """
     try:
         from database.session import AsyncSessionLocal
         from database.models import Business, User
@@ -613,12 +572,9 @@ async def weekly_analytics():
                         continue
 
                     first_name = (user.full_name or "").split()[0] or "there"
-
                     insights = await analytics_agent.generate_weekly_insights(
-                        business_id=str(biz.id),
-                        db=db,
+                        business_id=str(biz.id), db=db,
                     )
-
                     await email_sender.send_weekly_analytics(
                         business_id=str(biz.id),
                         user_email=user.email,
@@ -639,7 +595,6 @@ async def weekly_analytics():
 # ─── 7. SUBSCRIPTION HEALTH CHECK (daily 2am UTC) ────────────────────────────
 
 async def subscription_health_check():
-    """Daily 2am UTC: deactivate businesses with cancelled Stripe subscriptions."""
     try:
         from database.session import AsyncSessionLocal
         from database.models import Business

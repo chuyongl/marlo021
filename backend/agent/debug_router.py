@@ -19,7 +19,6 @@ BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000")
 
 @router.get("/businesses")
 async def list_businesses():
-    """List all businesses with their IDs and onboarding status."""
     try:
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(Business))
@@ -39,20 +38,17 @@ async def list_businesses():
         return {"error": str(e)}
 
 
-# ─── 2. TRIGGER KICKOFF (bypasses Sunday 9pm check) ──────────────────────────
+# ─── 2. TRIGGER KICKOFF ───────────────────────────────────────────────────────
 
 @router.get("/trigger-kickoff/{business_id}")
 async def trigger_kickoff(business_id: str):
-    """
-    Trigger the full weekly content generation + kickoff email immediately.
-    Bypasses the Sunday 9pm time check.
-    """
     try:
         from agent.content_pipeline import content_pipeline
         from agent.google_ads_agent import google_ads_agent
         from agent.strategy_agent import strategy_agent
         from agent.scheduler import get_posting_schedule, build_scheduled_post_time
         from email_system.sender import email_sender
+        from database.models import EmailLog
         import uuid as _uuid
         from datetime import datetime, timezone
 
@@ -92,7 +88,6 @@ async def trigger_kickoff(business_id: str):
             posting_schedule = get_posting_schedule(biz)
             posts_count = len(posting_schedule)
 
-            # Strategy
             try:
                 strategy = await strategy_agent.decide(
                     "weekly_content", {"business": business_dict}, business_id
@@ -106,7 +101,6 @@ async def trigger_kickoff(business_id: str):
                 strategy = {}
                 strategy_summary = f"Building authentic content for {biz.name}."
 
-            # Generate posts
             posts = await content_pipeline.generate_week_of_content(
                 business_id=business_id,
                 db=db,
@@ -118,7 +112,6 @@ async def trigger_kickoff(business_id: str):
             for i, post in enumerate(posts):
                 post["scheduled_day"] = posting_schedule[i]
 
-            # Google Ads
             google_campaign = None
             if has_google:
                 try:
@@ -133,7 +126,6 @@ async def trigger_kickoff(business_id: str):
                 except Exception as e:
                     print(f"[Debug] Google Ads error: {e}")
 
-            # Store actions
             stored_actions = []
             for post in posts:
                 action = AgentAction(
@@ -148,7 +140,7 @@ async def trigger_kickoff(business_id: str):
                     scheduled_post_time=build_scheduled_post_time(biz, post["scheduled_day"]),
                     scheduled_day=post["scheduled_day"],
                     approval_email_sent=False,
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.utcnow(),
                 )
                 db.add(action)
                 stored_actions.append(action)
@@ -167,14 +159,13 @@ async def trigger_kickoff(business_id: str):
                     scheduled_post_time=datetime.now(timezone.utc),
                     scheduled_day=posting_schedule[0],
                     approval_email_sent=False,
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.utcnow(),
                 )
                 db.add(ads_stored)
 
             await db.commit()
 
-            # Image guide
-            visual = strategy.get("visual_direction", "")
+            visual = strategy.get("visual_direction", "") if isinstance(strategy, dict) else ""
             image_guide = [{
                 "day": posting_schedule[i],
                 "type": "Real photo recommended",
@@ -190,8 +181,6 @@ async def trigger_kickoff(business_id: str):
             if not first_action:
                 return {"error": "No posts generated"}
 
-            # Check if first kickoff already sent
-            from database.models import EmailLog
             kickoff_check = await db.execute(
                 select(EmailLog).where(
                     EmailLog.business_id == biz.id,
@@ -260,19 +249,14 @@ async def trigger_kickoff(business_id: str):
         return {"error": str(e), "traceback": traceback.format_exc()}
 
 
-# ─── 3. TRIGGER FIRST KICKOFF ONLY (reset and resend) ────────────────────────
+# ─── 3. RESEND KICKOFF ────────────────────────────────────────────────────────
 
 @router.get("/resend-kickoff/{business_id}")
 async def resend_kickoff(business_id: str):
-    """
-    Force-send the first_kickoff email using existing pending actions.
-    Useful if kickoff email failed but actions were already created.
-    """
     try:
         from agent.scheduler import get_posting_schedule
         from agent.strategy_agent import strategy_agent
         from email_system.sender import email_sender
-        from datetime import datetime, timezone
 
         async with AsyncSessionLocal() as db:
             biz_result = await db.execute(select(Business).where(Business.id == business_id))
@@ -324,6 +308,7 @@ async def resend_kickoff(business_id: str):
                 )
                 strategy_summary = f"{strategy.get('key_message', '')} {strategy.get('tone_guidance', '')}".strip()
             except Exception:
+                strategy = {}
                 strategy_summary = f"Building authentic content for {biz.name}."
 
             visual = strategy.get("visual_direction", "") if isinstance(strategy, dict) else ""
@@ -363,11 +348,10 @@ async def resend_kickoff(business_id: str):
         return {"error": str(e), "traceback": traceback.format_exc()}
 
 
-# ─── 4. TRIGGER ANALYTICS EMAIL ──────────────────────────────────────────────
+# ─── 4. TRIGGER ANALYTICS ─────────────────────────────────────────────────────
 
 @router.get("/trigger-analytics/{business_id}")
 async def trigger_analytics(business_id: str):
-    """Trigger the weekly analytics email immediately, bypassing Friday 2pm check."""
     try:
         from agent.analytics_agent import analytics_agent
         from email_system.sender import email_sender
@@ -384,11 +368,7 @@ async def trigger_analytics(business_id: str):
                 return {"error": "User not found"}
 
             first_name = (user.full_name or "").split()[0] or "there"
-
-            insights = await analytics_agent.generate_weekly_insights(
-                business_id=business_id,
-                db=db,
-            )
+            insights = await analytics_agent.generate_weekly_insights(business_id=business_id, db=db)
 
             await email_sender.send_weekly_analytics(
                 business_id=business_id,
@@ -415,10 +395,6 @@ async def trigger_analytics(business_id: str):
 
 @router.get("/test-post/{business_id}")
 async def test_instagram_post(business_id: str):
-    """
-    Find the most recent pending Instagram post and attempt to post it.
-    Tests the full executor → Meta API flow.
-    """
     try:
         from agent.executor import executor
 
@@ -449,11 +425,10 @@ async def test_instagram_post(business_id: str):
         return {"error": str(e), "traceback": traceback.format_exc()}
 
 
-# ─── 6. LIST PENDING ACTIONS ──────────────────────────────────────────────────
+# ─── 6. LIST ACTIONS ──────────────────────────────────────────────────────────
 
 @router.get("/actions/{business_id}")
 async def list_actions(business_id: str):
-    """List all pending actions for a business."""
     try:
         async with AsyncSessionLocal() as db:
             result = await db.execute(
@@ -478,14 +453,10 @@ async def list_actions(business_id: str):
         return {"error": str(e)}
 
 
-# ─── 7. TRIGGER POST APPROVAL EMAIL ──────────────────────────────────────────
+# ─── 7. SEND APPROVAL EMAIL ───────────────────────────────────────────────────
 
 @router.get("/send-approval/{business_id}/{day}")
 async def send_approval_email(business_id: str, day: str):
-    """
-    Manually send the approval email for a specific day's post.
-    e.g. /debug/send-approval/{id}/Wednesday
-    """
     try:
         from email_system.sender import email_sender
 
@@ -537,15 +508,10 @@ async def send_approval_email(business_id: str, day: str):
         return {"error": str(e), "traceback": traceback.format_exc()}
 
 
-# ─── 8. RESET BUSINESS (for clean retesting) ─────────────────────────────────
+# ─── 8. RESET BUSINESS ────────────────────────────────────────────────────────
 
 @router.delete("/reset/{business_id}")
 async def reset_business(business_id: str):
-    """
-    Delete all pending actions and email logs for a business.
-    Useful for clean retesting without re-registering.
-    ⚠️ DESTRUCTIVE — only use in testing.
-    """
     try:
         from sqlalchemy import delete
         from database.models import EmailLog
