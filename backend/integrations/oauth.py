@@ -25,7 +25,7 @@ GOOGLE_SCOPES = " ".join([
     "https://www.googleapis.com/auth/webmasters.readonly",
     "openid", "email"
 ])
-META_SCOPES = "pages_show_list,pages_read_engagement,instagram_basic,instagram_content_publish"
+META_SCOPES = "pages_show_list,pages_read_engagement,instagram_basic,instagram_content_publish,instagram_business_manage_insights,instagram_business_content_publish"
 
 oauth_states: dict = {}
 
@@ -121,7 +121,6 @@ async def google_callback(code: str, state: str, db: AsyncSession = Depends(get_
 
 @router.get("/skip-google")
 async def skip_google(business_id: str):
-    """User chose to skip Google Ads — advance to step 2 and send email 2."""
     async def send_email_2():
         from database.session import AsyncSessionLocal
         from email_system.sender import email_sender
@@ -179,6 +178,42 @@ async def connect_meta(business_id: str):
     )
     return RedirectResponse(auth_url)
 
+
+async def _get_instagram_account_id(access_token: str) -> str | None:
+    """
+    After Meta OAuth, fetch the Instagram Business Account ID linked to the user's Facebook Pages.
+    Flow: User Token → /me/accounts (FB Pages) → page/{id}?fields=instagram_business_account
+    Returns the first Instagram Business Account ID found, or None.
+    """
+    async with httpx.AsyncClient() as client:
+        # Step 1: Get Facebook Pages the user manages
+        pages_resp = await client.get(
+            "https://graph.facebook.com/v21.0/me/accounts",
+            params={"access_token": access_token, "fields": "id,name,instagram_business_account"}
+        )
+        pages_data = pages_resp.json()
+
+        if "error" in pages_data:
+            print(f"[Meta OAuth] Error fetching pages: {pages_data['error']}")
+            return None
+
+        pages = pages_data.get("data", [])
+        if not pages:
+            print("[Meta OAuth] No Facebook Pages found for this user")
+            return None
+
+        # Step 2: Find the first page that has an Instagram Business Account linked
+        for page in pages:
+            ig_account = page.get("instagram_business_account")
+            if ig_account and ig_account.get("id"):
+                ig_id = ig_account["id"]
+                print(f"[Meta OAuth] Found Instagram Business Account ID: {ig_id} (from page: {page.get('name')})")
+                return ig_id
+
+        print("[Meta OAuth] No Instagram Business Account linked to any Facebook Page")
+        return None
+
+
 @router.get("/callback/meta")
 async def meta_callback(
     code: str = None,
@@ -208,6 +243,7 @@ async def meta_callback(
     meta_app_id = os.getenv("META_APP_ID")
     meta_app_secret = os.getenv("META_APP_SECRET")
 
+    # Step 1: Exchange code for access token
     async with httpx.AsyncClient() as client:
         response = await client.get(
             "https://graph.facebook.com/v21.0/oauth/access_token",
@@ -229,24 +265,56 @@ async def meta_callback(
         </body></html>
         """)
 
-    from security.encryption import encrypt_token
-    integration = PlatformIntegration(
-        id=uuid.uuid4(),
-        business_id=state_data["business_id"],
-        platform="meta",
-        access_token=encrypt_token(tokens["access_token"]),
-        scopes=META_SCOPES.split(","),
-        is_active=True, created_at=datetime.utcnow()
-    )
-    db.add(integration)
+    access_token = tokens["access_token"]
 
+    # Step 2: Fetch Instagram Business Account ID
+    ig_account_id = await _get_instagram_account_id(access_token)
+
+    from security.encryption import encrypt_token
     from sqlalchemy import select, update
+
+    # Step 3: Store integration with ig_account_id
+    # Check if integration already exists (re-auth case)
+    existing_result = await db.execute(
+        select(PlatformIntegration).where(
+            PlatformIntegration.business_id == state_data["business_id"],
+            PlatformIntegration.platform == "meta",
+        )
+    )
+    existing = existing_result.scalar_one_or_none()
+
+    if existing:
+        existing.access_token = encrypt_token(access_token)
+        existing.platform_account_id = ig_account_id
+        existing.scopes = META_SCOPES.split(",")
+        existing.is_active = True
+    else:
+        integration = PlatformIntegration(
+            id=uuid.uuid4(),
+            business_id=state_data["business_id"],
+            platform="meta",
+            access_token=encrypt_token(access_token),
+            platform_account_id=ig_account_id,
+            scopes=META_SCOPES.split(","),
+            is_active=True,
+            created_at=datetime.utcnow()
+        )
+        db.add(integration)
+
     await db.execute(
         update(Business)
         .where(Business.id == state_data["business_id"])
         .values(onboarding_step=3)
     )
     await db.commit()
+
+    # Show different message depending on whether IG was found
+    if ig_account_id:
+        ig_status = "Instagram Business Account connected ✓"
+        ig_color = "#15803D"
+    else:
+        ig_status = "⚠️ No Instagram Business Account found — make sure your Instagram is set to Business and linked to your Facebook Page."
+        ig_color = "#D97706"
 
     business_id_copy = state_data["business_id"]
     async def send_email_3():
@@ -270,10 +338,11 @@ async def meta_callback(
                     )
     asyncio.create_task(send_email_3())
 
-    return HTMLResponse("""
+    return HTMLResponse(f"""
     <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
     <div style="font-size:48px">✅</div>
     <h2>Facebook & Instagram connected!</h2>
+    <p style="color:{ig_color};font-size:14px;margin-bottom:8px;">{ig_status}</p>
     <p style="color:#666">Check your email — Marlo is sending the next step.</p>
     <p style="color:#999;font-size:14px">You can close this tab.</p>
     </body></html>
@@ -281,7 +350,6 @@ async def meta_callback(
 
 @router.get("/skip-meta")
 async def skip_meta(business_id: str):
-    """User chose to skip Meta/Instagram — advance to step 3 and send email 3."""
     async def send_email_3():
         from database.session import AsyncSessionLocal
         from email_system.sender import email_sender
@@ -328,7 +396,6 @@ async def skip_meta(business_id: str):
 
 @router.get("/connect/mailchimp")
 async def connect_mailchimp(business_id: str):
-    """Start Mailchimp OAuth — if no credentials configured, skip to step 4."""
     if not MAILCHIMP_CLIENT_ID:
         return await _advance_to_step_4(business_id, skipped=True)
 
@@ -404,7 +471,6 @@ async def mailchimp_callback(
 
 @router.get("/skip-mailchimp")
 async def skip_mailchimp(business_id: str):
-    """User chose to skip Mailchimp — advance to step 4 and send email 4."""
     async def send_email_4():
         from database.session import AsyncSessionLocal
         from email_system.sender import email_sender
@@ -449,45 +515,8 @@ async def skip_mailchimp(business_id: str):
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
-async def _schedule_email4_reminder(business_id: str):
-    """
-    Wait 72 hours. If the business is still on step 4 (hasn't replied to email 4),
-    send a reminder email nudging them to reply.
-    """
-    await asyncio.sleep(72 * 60 * 60)  # 72 hours
-
-    from database.session import AsyncSessionLocal
-    from email_system.sender import email_sender
-    from sqlalchemy import select
-
-    async with AsyncSessionLocal() as db:
-        biz_result = await db.execute(select(Business).where(Business.id == business_id))
-        biz = biz_result.scalar_one_or_none()
-        if not biz:
-            return
-
-        # Only send reminder if still stuck on step 4
-        if biz.onboarding_step != 4:
-            return
-
-        user_result = await db.execute(select(User).where(User.id == biz.owner_id))
-        usr = user_result.scalar_one_or_none()
-        if not usr:
-            return
-
-        first_name = (usr.full_name or "").split()[0] or "there"
-        print(f"[Reminder] Sending email 4 reminder to {usr.email} — still on step 4 after 72h")
-
-        await email_sender.send_onboarding_step(
-            step=4,
-            business_id=business_id,
-            user_email=usr.email,
-            first_name=first_name,
-            business_name=biz.name,
-            db=db,
-            extra_data={"is_reminder": True}
-        )
-    """Update onboarding step to 4 and send email 4. Guard against duplicate triggers."""
+async def _advance_to_step_4(business_id: str, skipped: bool = False, connected: bool = False):
+    """Update onboarding step to 4 and send email 4."""
     async def send_email_4():
         from database.session import AsyncSessionLocal
         from email_system.sender import email_sender
@@ -537,3 +566,35 @@ async def _schedule_email4_reminder(business_id: str):
     <p style="color:#999;font-size:14px">You can close this tab.</p>
     </body></html>
     """)
+
+
+async def _schedule_email4_reminder(business_id: str):
+    """Wait 72 hours. If still on step 4, send reminder."""
+    await asyncio.sleep(72 * 60 * 60)
+
+    from database.session import AsyncSessionLocal
+    from email_system.sender import email_sender
+    from sqlalchemy import select
+
+    async with AsyncSessionLocal() as db:
+        biz_result = await db.execute(select(Business).where(Business.id == business_id))
+        biz = biz_result.scalar_one_or_none()
+        if not biz or biz.onboarding_step != 4:
+            return
+
+        user_result = await db.execute(select(User).where(User.id == biz.owner_id))
+        usr = user_result.scalar_one_or_none()
+        if not usr:
+            return
+
+        first_name = (usr.full_name or "").split()[0] or "there"
+        print(f"[Reminder] Sending email 4 reminder to {usr.email}")
+        await email_sender.send_onboarding_step(
+            step=4,
+            business_id=business_id,
+            user_email=usr.email,
+            first_name=first_name,
+            business_name=biz.name,
+            db=db,
+            extra_data={"is_reminder": True}
+        )
