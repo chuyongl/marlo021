@@ -83,8 +83,8 @@ def build_scheduled_post_time(biz, day_name: str) -> datetime:
         return datetime.now(timezone.utc) + timedelta(days=1)
 
 
-async def _build_image_guide(posts: list, business_dict: dict) -> list:
-    """Generate a unique, specific photo suggestion per post based on its caption."""
+async def _build_image_guide(posts: list, business_dict: dict, strategy_summary: str = "") -> list:
+    """Generate a high-level, human photo direction per post tied to the post's strategy."""
     from agent.brain import brain
     image_guide = []
     for post in posts:
@@ -92,31 +92,36 @@ async def _build_image_guide(posts: list, business_dict: dict) -> list:
         caption = post.get("caption", "")
         platform = post.get("platform", "instagram")
 
-        prompt = f"""You are a photography director for a small business's social media.
+        prompt = f"""You're helping a small business owner understand what kind of photo to take for a social media post.
 
-Business: {business_dict.get('name')}
-Industry: {business_dict.get('industry')}
-Target audience: {business_dict.get('target_audience')}
+This week's content strategy: {strategy_summary or "authentic, human content that builds trust"}
 
-This {platform} post is scheduled for {day}:
-"{caption[:300]}"
+Post theme (for context): "{caption[:200]}"
 
-Write ONE specific, actionable photo suggestion for this post in 1-2 sentences.
-- Be specific about what to show, who should be in it, what action is happening
-- Suggest the mood/lighting briefly
-- Make it feel tailored to this exact post's message
-- Return ONLY the suggestion text, nothing else"""
+Write ONE photo direction in 1 sentence that:
+- Describes a real human moment, emotion, or scene — not a product shot
+- Connects to the emotional theme or strategy of the post
+- Gives creative freedom — suggest a feeling or situation, not exact staging
+- Ends with a short reason why it works (e.g. "this builds trust", "this shows relatability")
+- Sounds like advice from a creative director, not an AI prompt
+
+Good examples:
+- "Catch someone mid-laugh while working — joy is more magnetic than professionalism."
+- "Show a quiet moment of focus at a messy desk — real work resonates more than polished setups."
+- "Capture the before: stress, clutter, overwhelm — contrast makes the payoff land harder."
+
+Return ONLY the one sentence, nothing else."""
 
         try:
             suggestion = await brain.generate_content(
-                content_type="photo suggestion",
+                content_type="photo direction",
                 business=business_dict,
                 context={},
                 instructions=prompt
             )
             description = suggestion.strip().strip('"')
         except Exception:
-            description = f"A candid photo showing {business_dict.get('name')} in action on {day}."
+            description = f"Show a real, unposed moment from your business day — authenticity always outperforms polish."
 
         image_guide.append({"day": day, "description": description})
 
@@ -152,7 +157,10 @@ async def weekly_content_generation():
                     local_hour    = get_local_hour(biz, utc_now)
                     local_weekday = get_local_weekday(biz, utc_now)
 
-                    if local_weekday != 6 or local_hour != 21:
+                    # Fire on user's chosen kickoff day at 9pm local, default Sunday
+                    kickoff_day = biz.briefing_time or "Sunday"
+                    kickoff_weekday = DAY_TO_WEEKDAY.get(kickoff_day, 6)
+                    if local_weekday != kickoff_weekday or local_hour != 21:
                         continue
 
                     week_start = utc_now - timedelta(days=(utc_now.weekday() + 1) % 7)
@@ -278,7 +286,7 @@ async def weekly_content_generation():
                         "expired":  len([a for a in past if a.status == "expired"]),
                     }
 
-                    image_guide = await _build_image_guide(posts, business_dict)
+                    image_guide = await _build_image_guide(posts, business_dict, strategy_summary)
 
                     first_day = posting_schedule[0]
                     first_action = next((a for a in stored_actions
@@ -315,7 +323,7 @@ async def weekly_content_generation():
                             ads_stored.approval_email_sent = True
                         await db.commit()
 
-                    logger.info(f"[Scheduler] Weekly kickoff sent for {biz.name} — {posts_count} posts: {posting_schedule}")
+                    logger.info(f"[Scheduler] Weekly kickoff sent for {biz.name} — {posts_count} posts: {posting_schedule} (kickoff day: {kickoff_day})")
 
                 except Exception as e:
                     logger.error(f"[Scheduler] Weekly gen error for {biz.id}: {e}", exc_info=True)
@@ -622,7 +630,7 @@ async def subscription_health_check():
 
 def start_scheduler():
     scheduler.add_job(weekly_content_generation, IntervalTrigger(hours=1),
-        id="weekly_content_generation", name="Weekly content gen (Sun 9pm local)",
+        id="weekly_content_generation", name="Weekly content gen (user's kickoff day 9pm local)",
         replace_existing=True, misfire_grace_time=600)
 
     scheduler.add_job(post_approval_and_expiry, IntervalTrigger(hours=1),
