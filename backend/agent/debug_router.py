@@ -53,7 +53,7 @@ Return ONLY the one sentence, nothing else."""
             )
             description = suggestion.strip().strip('"')
         except Exception:
-            description = f"Show a real, unposed moment from your business day — authenticity always outperforms polish."
+            description = "Show a real, unposed moment from your business day — authenticity always outperforms polish."
 
         image_guide.append({"day": day, "description": description})
 
@@ -90,6 +90,7 @@ async def trigger_kickoff(business_id: str):
         from agent.scheduler import get_posting_schedule, build_scheduled_post_time
         from email_system.sender import email_sender
         from database.models import EmailLog
+        from sqlalchemy import delete as sql_delete
         import uuid as _uuid
         from datetime import datetime, timezone
 
@@ -105,6 +106,15 @@ async def trigger_kickoff(business_id: str):
                 return {"error": "User not found"}
 
             first_name = (user.full_name or "").split()[0] or "there"
+
+            # ── Idempotency: clear existing pending actions before generating new ones ──
+            await db.execute(
+                sql_delete(AgentAction).where(
+                    AgentAction.business_id == biz.id,
+                    AgentAction.status == "pending",
+                )
+            )
+            await db.commit()
 
             integrations_result = await db.execute(
                 select(PlatformIntegration).where(
@@ -213,6 +223,7 @@ async def trigger_kickoff(business_id: str):
             if not first_action:
                 return {"error": "No posts generated"}
 
+            # Check if first kickoff already sent (using email logs, not actions)
             kickoff_check = await db.execute(
                 select(EmailLog).where(
                     EmailLog.business_id == biz.id,
