@@ -25,7 +25,7 @@ GOOGLE_SCOPES = " ".join([
     "https://www.googleapis.com/auth/webmasters.readonly",
     "openid", "email"
 ])
-META_SCOPES = "pages_show_list,pages_read_engagement,instagram_basic,instagram_content_publish,instagram_business_manage_insights,instagram_business_content_publish"
+META_SCOPES = "pages_show_list,pages_read_engagement,instagram_basic,instagram_content_publish,instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights"
 
 oauth_states: dict = {}
 
