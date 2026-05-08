@@ -5,10 +5,12 @@ from sqlalchemy import select, update
 from datetime import datetime
 from database.session import get_db
 from database.models import AgentAction, Business, User, ContentFeedback
-from agent.executor import executor
 import uuid
+import os
 
 router = APIRouter(prefix="/actions", tags=["approvals"])
+
+BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000")
 
 SUCCESS_PAGE = """<html><body style="font-family:-apple-system,sans-serif;text-align:center;
 padding:60px 20px;background:#F0FDF4;">
@@ -22,7 +24,7 @@ DECLINED_PAGE = """<html><body style="font-family:-apple-system,sans-serif;text-
 padding:60px 20px;background:#F9FAFB;">
 <div style="font-size:56px;margin-bottom:16px;">👍</div>
 <h2 style="color:#374151;margin:0 0 8px 0;">Got it — skipped.</h2>
-<p style="color:#6B7280;margin:0 0 24px 0;">Marlo won't take that action.</p>
+<p style="color:#6B7280;margin:0 0 24px 0;">Marlo won't post that.</p>
 {feedback_buttons}
 <p style="color:#9CA3AF;font-size:13px;margin-top:24px;">You can close this tab.</p>
 </body></html>"""
@@ -31,8 +33,8 @@ EXPIRED_PAGE = """<html><body style="font-family:-apple-system,sans-serif;text-a
 padding:60px 20px;background:#FFF7ED;">
 <div style="font-size:56px;margin-bottom:16px;">⏰</div>
 <h2 style="color:#C2410C;margin:0 0 8px 0;">This link has expired.</h2>
-<p style="color:#6B7280;">Approval links are valid for 48 hours.<br>
-Reply to your morning email to ask Marlo to resend it.</p>
+<p style="color:#6B7280;">Approval links expire after 48 hours.<br>
+Reply to any Marlo email to request a new one.</p>
 </body></html>"""
 
 UNSUBSCRIBE_PAGE = """<html><body style="font-family:-apple-system,sans-serif;text-align:center;
@@ -51,7 +53,8 @@ padding:60px 20px;background:#F9FAFB;">
 <p style="color:#9CA3AF;font-size:13px;">You can close this tab.</p>
 </body></html>"""
 
-def _feedback_buttons(action_id: str, base_url: str) -> str:
+
+def _feedback_buttons(action_id: str) -> str:
     reasons = [
         ("wrong_tone", "Wrong tone"),
         ("not_relevant", "Not relevant"),
@@ -60,7 +63,7 @@ def _feedback_buttons(action_id: str, base_url: str) -> str:
         ("other", "Other"),
     ]
     buttons = " ".join([
-        f'<a href="{base_url}/actions/feedback?action_id={action_id}&reason={code}" '
+        f'<a href="{BASE_URL}/actions/feedback?action_id={action_id}&reason={code}" '
         f'style="display:inline-block;background:#F3F4F6;color:#374151;padding:8px 16px;'
         f'border-radius:20px;text-decoration:none;font-size:13px;margin:4px;">{label}</a>'
         for code, label in reasons
@@ -71,6 +74,7 @@ def _feedback_buttons(action_id: str, base_url: str) -> str:
       </p>
       {buttons}
     </div>"""
+
 
 @router.get("/approve")
 async def approve_action(token: str, db: AsyncSession = Depends(get_db)):
@@ -86,31 +90,14 @@ async def approve_action(token: str, db: AsyncSession = Depends(get_db)):
     if action.token_expires_at and datetime.utcnow() > action.token_expires_at:
         return HTMLResponse(EXPIRED_PAGE)
 
-    if action.status != "pending_approval":
+    # Accept both "pending" and "pending_approval" as valid states
+    if action.status not in ("pending", "pending_approval"):
         return HTMLResponse(SUCCESS_PAGE.format(message="This action was already handled."))
 
-    biz_result = await db.execute(select(Business).where(Business.id == action.business_id))
-    business = biz_result.scalar_one_or_none()
-    monthly_budget = float(business.monthly_ad_budget or 300) if business else 300
-
-    exec_result = await executor.execute_action(
-        {
-            "type": action.action_type,
-            "parameters": action.action_parameters,
-            "reasoning": action.agent_reasoning,
-            "platform": (action.action_parameters or {}).get("platform", "")
-        },
-        str(action.business_id),
-        monthly_budget,
-        db,
-        override_approval=True
-    )
-
+    # Mark as executed — scheduler's execute_approved_posts will post at scheduled_post_time
     action.status = "executed"
     action.approved_at = datetime.utcnow()
-    action.outcome = exec_result
 
-    # Record feedback
     feedback = ContentFeedback(
         id=uuid.uuid4(),
         business_id=action.business_id,
@@ -124,15 +111,14 @@ async def approve_action(token: str, db: AsyncSession = Depends(get_db)):
     await db.commit()
 
     action_type = action.action_type or "action"
-    message = f"Marlo is on it! Your {action_type.replace('_', ' ')} is being handled."
+    friendly = action_type.replace("post_", "").replace("_", " ")
+    message = f"Approved! Your {friendly} post will go live at the scheduled time."
     return HTMLResponse(SUCCESS_PAGE.format(message=message))
+
 
 @router.get("/decline")
 async def decline_action(token: str, db: AsyncSession = Depends(get_db)):
     """One-click decline — no login required."""
-    import os
-    base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
-
     result = await db.execute(
         select(AgentAction).where(AgentAction.decline_token == token)
     )
@@ -144,10 +130,12 @@ async def decline_action(token: str, db: AsyncSession = Depends(get_db)):
     if action.token_expires_at and datetime.utcnow() > action.token_expires_at:
         return HTMLResponse(EXPIRED_PAGE)
 
+    if action.status not in ("pending", "pending_approval"):
+        return HTMLResponse(DECLINED_PAGE.format(feedback_buttons=""))
+
     action.status = "rejected"
     action.approved_at = datetime.utcnow()
 
-    # Record feedback (reason collected separately via /feedback endpoint)
     feedback = ContentFeedback(
         id=uuid.uuid4(),
         business_id=action.business_id,
@@ -160,8 +148,9 @@ async def decline_action(token: str, db: AsyncSession = Depends(get_db)):
     db.add(feedback)
     await db.commit()
 
-    buttons = _feedback_buttons(str(action.id), base_url)
+    buttons = _feedback_buttons(str(action.id))
     return HTMLResponse(DECLINED_PAGE.format(feedback_buttons=buttons))
+
 
 @router.get("/feedback")
 async def record_feedback(
@@ -169,7 +158,7 @@ async def record_feedback(
     reason: str,
     db: AsyncSession = Depends(get_db)
 ):
-    """Record the reason for a decline — called from optional feedback buttons."""
+    """Record the reason for a decline."""
     try:
         result = await db.execute(
             select(ContentFeedback)
@@ -185,9 +174,10 @@ async def record_feedback(
 
     return HTMLResponse(FEEDBACK_PAGE)
 
+
 @router.get("/unsubscribe")
 async def unsubscribe(token: str, db: AsyncSession = Depends(get_db)):
-    """One-click unsubscribe — required by CAN-SPAM law."""
+    """One-click unsubscribe — required by CAN-SPAM."""
     import base64
     try:
         business_id = base64.urlsafe_b64decode(token.encode()).decode()
