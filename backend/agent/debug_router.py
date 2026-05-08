@@ -15,6 +15,46 @@ router = APIRouter(prefix="/debug", tags=["debug"], include_in_schema=False)
 BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000")
 
 
+async def _build_image_guide(posts: list, business_dict: dict) -> list:
+    """Generate a unique, specific photo suggestion per post based on its caption."""
+    from agent.brain import brain
+    image_guide = []
+    for post in posts:
+        day = post.get("scheduled_day", "")
+        caption = post.get("caption", "")
+        platform = post.get("platform", "instagram")
+
+        prompt = f"""You are a photography director for a small business's social media.
+
+Business: {business_dict.get('name')}
+Industry: {business_dict.get('industry')}
+Target audience: {business_dict.get('target_audience')}
+
+This {platform} post is scheduled for {day}:
+"{caption[:300]}"
+
+Write ONE specific, actionable photo suggestion for this post in 1-2 sentences.
+- Be specific about what to show, who should be in it, what action is happening
+- Suggest the mood/lighting briefly
+- Make it feel tailored to this exact post's message
+- Return ONLY the suggestion text, nothing else"""
+
+        try:
+            suggestion = await brain.generate_content(
+                content_type="photo suggestion",
+                business=business_dict,
+                context={},
+                instructions=prompt
+            )
+            description = suggestion.strip().strip('"')
+        except Exception:
+            description = f"A candid photo showing {business_dict.get('name')} in action on {day}."
+
+        image_guide.append({"day": day, "description": description})
+
+    return image_guide
+
+
 @router.get("/businesses")
 async def list_businesses():
     try:
@@ -88,7 +128,6 @@ async def trigger_kickoff(business_id: str):
                 strategy = await strategy_agent.decide(
                     "weekly_content", {"business": business_dict}, business_id
                 )
-                # Only use key_message — avoids internal prompt language leaking to users
                 strategy_summary = strategy.get("key_message", f"Building authentic content for {biz.name}.")
             except Exception:
                 strategy = {}
@@ -158,11 +197,8 @@ async def trigger_kickoff(business_id: str):
 
             await db.commit()
 
-            visual = strategy.get("visual_direction", "") if isinstance(strategy, dict) else ""
-            image_guide = [{
-                "day": posting_schedule[i],
-                "description": visual or f"A photo showing {biz.name} in action — real photos always outperform AI-generated ones.",
-            } for i in range(posts_count)]
+            # Per-day image guide based on each post's caption
+            image_guide = await _build_image_guide(posts, business_dict)
 
             first_day = posting_schedule[0]
             first_action = next(
@@ -298,14 +334,21 @@ async def resend_kickoff(business_id: str):
                 )
                 strategy_summary = strategy.get("key_message", f"Building authentic content for {biz.name}.")
             except Exception:
-                strategy = {}
                 strategy_summary = f"Building authentic content for {biz.name}."
 
-            visual = strategy.get("visual_direction", "") if isinstance(strategy, dict) else ""
-            image_guide = [{
-                "day": d,
-                "description": visual or f"A photo showing {biz.name} in action.",
-            } for d in posting_schedule]
+            # Gather all pending posts for image guide
+            all_posts_result = await db.execute(
+                select(AgentAction).where(
+                    AgentAction.business_id == biz.id,
+                    AgentAction.action_type != "google_ads_campaign",
+                    AgentAction.status == "pending",
+                ).order_by(AgentAction.created_at.desc())
+            )
+            all_posts = [
+                {**(a.action_parameters or {}), "scheduled_day": a.scheduled_day}
+                for a in all_posts_result.scalars().all()
+            ]
+            image_guide = await _build_image_guide(all_posts, business_dict)
 
             await email_sender.send_first_kickoff(
                 business_id=business_id,

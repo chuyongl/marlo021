@@ -98,7 +98,7 @@ def metric_row(label: str, value: str, trend: str = "", positive: bool = True) -
 def weekly_cadence_diagram() -> str:
     """Chevron diagram showing the weekly cadence."""
     cell_style = "padding:10px 6px;text-align:center;vertical-align:middle;"
-    arrow_style = f"font-size:18px;color:#D1D5DB;padding:0 2px;vertical-align:middle;"
+    arrow_style = "font-size:18px;color:#D1D5DB;padding:0 2px;vertical-align:middle;"
     return f"""
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;border-collapse:collapse;">
       <tr>
@@ -315,22 +315,45 @@ def first_kickoff_template(
     image_guide: list,
     base_url: str,
 ) -> str:
-    # Day picker buttons
     days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    day_buttons_html = ""
+
+    # ── Kickoff day picker ────────────────────────────────────────────────────
+    kickoff_buttons_html = ""
     for day in days_of_week:
-        url = f"{base_url}/settings/kickoff-day?business_id={business_id}&day={day}"
+        url = f"{base_url}/businesses/settings/kickoff-day?business_id={business_id}&day={day}"
         is_current = day == first_post_day
         bg = LIME_COLOR if is_current else "#F3F4F6"
         color = "#111111" if is_current else MUTED_COLOR
-        day_buttons_html += (
+        kickoff_buttons_html += (
             f'<a href="{url}" style="display:inline-block;background:{bg};color:{color};'
             f'text-decoration:none;font-weight:600;font-size:13px;padding:10px 16px;'
             f'border-radius:8px;margin:4px 4px 4px 0;border:1px solid {BORDER_COLOR};">{day}</a>'
         )
 
+    # ── Posting schedule picker ───────────────────────────────────────────────
+    schedule_buttons_html = ""
+    for day in days_of_week:
+        is_selected = day in posting_schedule
+        if is_selected:
+            new_schedule = [d for d in posting_schedule if d != day]
+        else:
+            new_schedule = sorted(posting_schedule + [day], key=lambda d: days_of_week.index(d))
+        if not new_schedule:
+            new_schedule = [day]
+        days_param = ",".join(new_schedule)
+        url = f"{base_url}/businesses/settings/posting-schedule?business_id={business_id}&days={days_param}"
+        bg = LIME_COLOR if is_selected else "#F3F4F6"
+        color = "#111111" if is_selected else MUTED_COLOR
+        border = "2px solid #111111" if is_selected else f"1px solid {BORDER_COLOR}"
+        schedule_buttons_html += (
+            f'<a href="{url}" style="display:inline-block;background:{bg};color:{color};'
+            f'text-decoration:none;font-weight:600;font-size:13px;padding:10px 16px;'
+            f'border-radius:8px;margin:4px 4px 4px 0;border:{border};">{day}</a>'
+        )
+
     schedule_html = " → ".join([f'<strong>{d}</strong>' for d in posting_schedule])
 
+    # ── Image guide ───────────────────────────────────────────────────────────
     image_guide_html = ""
     for item in image_guide:
         image_guide_html += f"""
@@ -339,6 +362,7 @@ def first_kickoff_template(
           <p style="font-size:13px;color:{MUTED_COLOR};margin:0;line-height:1.5;">{item.get('description', '')}</p>
         </div>"""
 
+    # ── First post card ───────────────────────────────────────────────────────
     post_params = first_post or {}
     caption = post_params.get("caption", "")
     hashtags = post_params.get("hashtags", [])
@@ -359,6 +383,7 @@ def first_kickoff_template(
         if hashtags else ""
     )
 
+    # ── Google Ads card ───────────────────────────────────────────────────────
     ads_html = ""
     if google_campaign:
         keywords = google_campaign.get("keywords", [])
@@ -423,7 +448,14 @@ def first_kickoff_template(
     <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 12px 0;line-height:1.6;">
       Your kickoff day is when you receive the weekly plan. Currently set to <strong>{first_post_day}</strong>. Change it anytime:
     </p>
-    <div style="margin-bottom:24px;">{day_buttons_html}</div>
+    <div style="margin-bottom:28px;">{kickoff_buttons_html}</div>
+
+    <p style="font-size:14px;font-weight:600;color:{TEXT_COLOR};margin:0 0 8px 0;">📅 Choose your posting days</p>
+    <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 12px 0;line-height:1.6;">
+      Currently posting on <strong>{schedule_html}</strong>. Tap any day to add or remove it:
+    </p>
+    <div style="margin-bottom:8px;">{schedule_buttons_html}</div>
+    <p style="font-size:12px;color:{MUTED_COLOR};margin:0 0 28px 0;">Highlighted days are active. Changes take effect from next week's plan.</p>
 
     {section_divider()}
 

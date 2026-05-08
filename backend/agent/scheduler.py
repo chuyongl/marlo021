@@ -1,24 +1,6 @@
 """
 scheduler.py
 Marlo background scheduler — all time-based jobs.
-
-Weekly content flow (fully data-driven from business.posting_schedule):
-  Sunday 9pm local  → generate all posts + send kickoff email (first post approval)
-  Day before each post at 2pm local → send approval email, expire previous post
-  Last post day 6pm local → expire if still pending
-
-posting_schedule examples:
-  ["Monday", "Wednesday", "Friday"]         ← default 3x/week
-  ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]  ← daily weekdays
-  ["Monday"]                                 ← once a week
-  ["Monday", "Wednesday", "Friday", "Saturday", "Sunday"]   ← 5x/week
-
-Other jobs:
-  Every 30min → expire stale actions older than 3 days (safety net)
-  Every 15min → execute approved posts whose scheduled_post_time has passed
-  Every hour  → onboarding reminder (72h no reply to email 4)
-  Friday 2pm local → weekly analytics email (AI-powered insights)
-  Daily  2am UTC → subscription health check
 """
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -34,8 +16,6 @@ ALL_DAYS_ORDERED = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Sat
 DAY_TO_WEEKDAY  = {"Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3,
                    "Friday": 4, "Saturday": 5, "Sunday": 6}
 
-
-# ─── HELPERS ─────────────────────────────────────────────────────────────────
 
 def get_biz_tz(biz):
     from zoneinfo import ZoneInfo
@@ -63,7 +43,6 @@ def get_posting_schedule(biz) -> list:
         valid = [d for d in schedule if d in DAY_TO_WEEKDAY]
         if valid:
             return sorted(valid, key=lambda d: DAY_TO_WEEKDAY[d])
-
     n = biz.posts_per_week or 3
     defaults = {
         1: ["Monday"],
@@ -79,28 +58,15 @@ def get_posting_schedule(biz) -> list:
 def get_approval_windows(posting_schedule: list) -> list:
     if not posting_schedule:
         return []
-
     windows = []
     for i, day in enumerate(posting_schedule):
         day_weekday = DAY_TO_WEEKDAY[day]
         if i > 0:
             prev_day_weekday = (day_weekday - 1) % 7
             expire_day = posting_schedule[i - 1]
-            windows.append({
-                "weekday": prev_day_weekday,
-                "hour": 14,
-                "send_day": day,
-                "expire_day": expire_day,
-            })
-
+            windows.append({"weekday": prev_day_weekday, "hour": 14, "send_day": day, "expire_day": expire_day})
     last_day = posting_schedule[-1]
-    windows.append({
-        "weekday": DAY_TO_WEEKDAY[last_day],
-        "hour": 18,
-        "send_day": None,
-        "expire_day": last_day,
-    })
-
+    windows.append({"weekday": DAY_TO_WEEKDAY[last_day], "hour": 18, "send_day": None, "expire_day": last_day})
     return windows
 
 def build_scheduled_post_time(biz, day_name: str) -> datetime:
@@ -117,7 +83,47 @@ def build_scheduled_post_time(biz, day_name: str) -> datetime:
         return datetime.now(timezone.utc) + timedelta(days=1)
 
 
-# ─── 1. WEEKLY CONTENT GENERATION (Sunday 9pm local) ─────────────────────────
+async def _build_image_guide(posts: list, business_dict: dict) -> list:
+    """Generate a unique, specific photo suggestion per post based on its caption."""
+    from agent.brain import brain
+    image_guide = []
+    for post in posts:
+        day = post.get("scheduled_day", "")
+        caption = post.get("caption", "")
+        platform = post.get("platform", "instagram")
+
+        prompt = f"""You are a photography director for a small business's social media.
+
+Business: {business_dict.get('name')}
+Industry: {business_dict.get('industry')}
+Target audience: {business_dict.get('target_audience')}
+
+This {platform} post is scheduled for {day}:
+"{caption[:300]}"
+
+Write ONE specific, actionable photo suggestion for this post in 1-2 sentences.
+- Be specific about what to show, who should be in it, what action is happening
+- Suggest the mood/lighting briefly
+- Make it feel tailored to this exact post's message
+- Return ONLY the suggestion text, nothing else"""
+
+        try:
+            suggestion = await brain.generate_content(
+                content_type="photo suggestion",
+                business=business_dict,
+                context={},
+                instructions=prompt
+            )
+            description = suggestion.strip().strip('"')
+        except Exception:
+            description = f"A candid photo showing {business_dict.get('name')} in action on {day}."
+
+        image_guide.append({"day": day, "description": description})
+
+    return image_guide
+
+
+# ─── 1. WEEKLY CONTENT GENERATION ────────────────────────────────────────────
 
 async def weekly_content_generation():
     try:
@@ -188,7 +194,6 @@ async def weekly_content_generation():
                         strategy = await strategy_agent.decide(
                             "weekly_content", {"business": business_dict}, str(biz.id)
                         )
-                        # Only use key_message — avoids internal prompt language leaking to users
                         strategy_summary = strategy.get("key_message", f"Building authentic content for {biz.name}.")
                     except Exception:
                         strategy = {}
@@ -273,11 +278,7 @@ async def weekly_content_generation():
                         "expired":  len([a for a in past if a.status == "expired"]),
                     }
 
-                    visual = strategy.get("visual_direction", "") if isinstance(strategy, dict) else ""
-                    image_guide = [{
-                        "day": posting_schedule[i],
-                        "description": visual or f"A photo showing {biz.name} in action — real photos always outperform AI-generated ones.",
-                    } for i in range(posts_count)]
+                    image_guide = await _build_image_guide(posts, business_dict)
 
                     first_day = posting_schedule[0]
                     first_action = next((a for a in stored_actions
@@ -323,7 +324,7 @@ async def weekly_content_generation():
         logger.error(f"[Scheduler] weekly_content_generation outer error: {e}", exc_info=True)
 
 
-# ─── 2. POST APPROVAL EMAILS + EXPIRY (every hour) ───────────────────────────
+# ─── 2. POST APPROVAL EMAILS + EXPIRY ────────────────────────────────────────
 
 async def post_approval_and_expiry():
     try:
@@ -408,7 +409,7 @@ async def post_approval_and_expiry():
         logger.error(f"[Scheduler] post_approval_and_expiry outer error: {e}", exc_info=True)
 
 
-# ─── 3. EXECUTE APPROVED POSTS (every 15min) ─────────────────────────────────
+# ─── 3. EXECUTE APPROVED POSTS ────────────────────────────────────────────────
 
 async def execute_approved_posts():
     try:
@@ -440,7 +441,7 @@ async def execute_approved_posts():
         logger.error(f"[Scheduler] execute_approved_posts error: {e}")
 
 
-# ─── 4. EXPIRE STALE ACTIONS (every 30min) ───────────────────────────────────
+# ─── 4. EXPIRE STALE ACTIONS ─────────────────────────────────────────────────
 
 async def expire_stale_actions():
     try:
@@ -465,7 +466,7 @@ async def expire_stale_actions():
         logger.error(f"[Scheduler] expire_stale_actions error: {e}")
 
 
-# ─── 5. ONBOARDING REMINDER (every hour) ─────────────────────────────────────
+# ─── 5. ONBOARDING REMINDER ──────────────────────────────────────────────────
 
 async def onboarding_reminder():
     try:
@@ -558,7 +559,6 @@ async def weekly_analytics():
                     local_hour    = get_local_hour(biz, utc_now)
                     local_weekday = get_local_weekday(biz, utc_now)
 
-                    # Only fire Friday (4) 14:00-14:59 local
                     if local_weekday != 4 or local_hour != 14:
                         continue
 
@@ -588,7 +588,7 @@ async def weekly_analytics():
         logger.error(f"[Scheduler] weekly_analytics outer error: {e}", exc_info=True)
 
 
-# ─── 7. SUBSCRIPTION HEALTH CHECK (daily 2am UTC) ────────────────────────────
+# ─── 7. SUBSCRIPTION HEALTH CHECK ────────────────────────────────────────────
 
 async def subscription_health_check():
     try:
