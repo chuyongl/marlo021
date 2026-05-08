@@ -15,8 +15,8 @@ router = APIRouter(prefix="/debug", tags=["debug"], include_in_schema=False)
 BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000")
 
 
-async def _build_image_guide(posts: list, business_dict: dict) -> list:
-    """Generate a unique, specific photo suggestion per post based on its caption."""
+async def _build_image_guide(posts: list, business_dict: dict, strategy_summary: str = "") -> list:
+    """Generate a high-level, human photo direction per post tied to the post's strategy."""
     from agent.brain import brain
     image_guide = []
     for post in posts:
@@ -24,31 +24,36 @@ async def _build_image_guide(posts: list, business_dict: dict) -> list:
         caption = post.get("caption", "")
         platform = post.get("platform", "instagram")
 
-        prompt = f"""You are a photography director for a small business's social media.
+        prompt = f"""You're helping a small business owner understand what kind of photo to take for a social media post.
 
-Business: {business_dict.get('name')}
-Industry: {business_dict.get('industry')}
-Target audience: {business_dict.get('target_audience')}
+This week's content strategy: {strategy_summary or "authentic, human content that builds trust"}
 
-This {platform} post is scheduled for {day}:
-"{caption[:300]}"
+Post theme (for context): "{caption[:200]}"
 
-Write ONE specific, actionable photo suggestion for this post in 1-2 sentences.
-- Be specific about what to show, who should be in it, what action is happening
-- Suggest the mood/lighting briefly
-- Make it feel tailored to this exact post's message
-- Return ONLY the suggestion text, nothing else"""
+Write ONE photo direction in 1 sentence that:
+- Describes a real human moment, emotion, or scene — not a product shot
+- Connects to the emotional theme or strategy of the post
+- Gives creative freedom — suggest a feeling or situation, not exact staging
+- Ends with a short reason why it works (e.g. "this builds trust", "this shows relatability")
+- Sounds like advice from a creative director, not an AI prompt
+
+Good examples:
+- "Catch someone mid-laugh while working — joy is more magnetic than professionalism."
+- "Show a quiet moment of focus at a messy desk — real work resonates more than polished setups."
+- "Capture the before: stress, clutter, overwhelm — contrast makes the payoff land harder."
+
+Return ONLY the one sentence, nothing else."""
 
         try:
             suggestion = await brain.generate_content(
-                content_type="photo suggestion",
+                content_type="photo direction",
                 business=business_dict,
                 context={},
                 instructions=prompt
             )
             description = suggestion.strip().strip('"')
         except Exception:
-            description = f"A candid photo showing {business_dict.get('name')} in action on {day}."
+            description = f"Show a real, unposed moment from your business day — authenticity always outperforms polish."
 
         image_guide.append({"day": day, "description": description})
 
@@ -197,8 +202,7 @@ async def trigger_kickoff(business_id: str):
 
             await db.commit()
 
-            # Per-day image guide based on each post's caption
-            image_guide = await _build_image_guide(posts, business_dict)
+            image_guide = await _build_image_guide(posts, business_dict, strategy_summary)
 
             first_day = posting_schedule[0]
             first_action = next(
@@ -336,7 +340,6 @@ async def resend_kickoff(business_id: str):
             except Exception:
                 strategy_summary = f"Building authentic content for {biz.name}."
 
-            # Gather all pending posts for image guide
             all_posts_result = await db.execute(
                 select(AgentAction).where(
                     AgentAction.business_id == biz.id,
@@ -348,7 +351,7 @@ async def resend_kickoff(business_id: str):
                 {**(a.action_parameters or {}), "scheduled_day": a.scheduled_day}
                 for a in all_posts_result.scalars().all()
             ]
-            image_guide = await _build_image_guide(all_posts, business_dict)
+            image_guide = await _build_image_guide(all_posts, business_dict, strategy_summary)
 
             await email_sender.send_first_kickoff(
                 business_id=business_id,
