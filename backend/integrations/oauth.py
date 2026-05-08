@@ -25,7 +25,9 @@ GOOGLE_SCOPES = " ".join([
     "https://www.googleapis.com/auth/webmasters.readonly",
     "openid", "email"
 ])
-META_SCOPES = "pages_show_list,pages_read_engagement,instagram_basic,instagram_content_publish,instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights"
+
+# Use Facebook Login compatible scopes — instagram_business_* only works with Instagram Login
+META_SCOPES = "pages_show_list,pages_read_engagement,instagram_basic,instagram_content_publish,instagram_manage_insights"
 
 oauth_states: dict = {}
 
@@ -181,36 +183,37 @@ async def connect_meta(business_id: str):
 
 async def _get_instagram_account_id(access_token: str) -> str | None:
     """
-    After Meta OAuth, fetch the Instagram Business Account ID linked to the user's Facebook Pages.
-    Flow: User Token → /me/accounts (FB Pages) → page/{id}?fields=instagram_business_account
-    Returns the first Instagram Business Account ID found, or None.
+    After Meta OAuth, fetch the Instagram Business Account ID.
+    Uses /me/accounts with instagram_business_account field to get it in one request.
+    Requires: pages_show_list + instagram_basic permissions.
     """
     async with httpx.AsyncClient() as client:
-        # Step 1: Get Facebook Pages the user manages
-        pages_resp = await client.get(
+        # Single request: get FB pages + their linked Instagram accounts
+        resp = await client.get(
             "https://graph.facebook.com/v21.0/me/accounts",
-            params={"access_token": access_token, "fields": "id,name,instagram_business_account"}
+            params={
+                "access_token": access_token,
+                "fields": "id,name,instagram_business_account"
+            }
         )
-        pages_data = pages_resp.json()
+        data = resp.json()
 
-        if "error" in pages_data:
-            print(f"[Meta OAuth] Error fetching pages: {pages_data['error']}")
+        if "error" in data:
+            print(f"[Meta OAuth] /me/accounts error: {data['error']}")
             return None
 
-        pages = pages_data.get("data", [])
+        pages = data.get("data", [])
         if not pages:
-            print("[Meta OAuth] No Facebook Pages found for this user")
+            print("[Meta OAuth] No Facebook Pages found")
             return None
 
-        # Step 2: Find the first page that has an Instagram Business Account linked
         for page in pages:
-            ig_account = page.get("instagram_business_account")
-            if ig_account and ig_account.get("id"):
-                ig_id = ig_account["id"]
-                print(f"[Meta OAuth] Found Instagram Business Account ID: {ig_id} (from page: {page.get('name')})")
-                return ig_id
+            ig = page.get("instagram_business_account")
+            if ig and ig.get("id"):
+                print(f"[Meta OAuth] Found IG account ID: {ig['id']} (page: {page.get('name')})")
+                return ig["id"]
 
-        print("[Meta OAuth] No Instagram Business Account linked to any Facebook Page")
+        print("[Meta OAuth] No Instagram Business Account linked to any page")
         return None
 
 
@@ -248,7 +251,8 @@ async def meta_callback(
         response = await client.get(
             "https://graph.facebook.com/v21.0/oauth/access_token",
             params={
-                "client_id": meta_app_id, "client_secret": meta_app_secret,
+                "client_id": meta_app_id,
+                "client_secret": meta_app_secret,
                 "redirect_uri": f"{APP_BASE}/integrations/callback/meta",
                 "code": code
             }
@@ -267,14 +271,13 @@ async def meta_callback(
 
     access_token = tokens["access_token"]
 
-    # Step 2: Fetch Instagram Business Account ID
+    # Step 2: Fetch Instagram Business Account ID from linked Facebook Page
     ig_account_id = await _get_instagram_account_id(access_token)
 
     from security.encryption import encrypt_token
     from sqlalchemy import select, update
 
-    # Step 3: Store integration with ig_account_id
-    # Check if integration already exists (re-auth case)
+    # Step 3: Upsert integration (handle re-auth)
     existing_result = await db.execute(
         select(PlatformIntegration).where(
             PlatformIntegration.business_id == state_data["business_id"],
@@ -308,13 +311,10 @@ async def meta_callback(
     )
     await db.commit()
 
-    # Show different message depending on whether IG was found
     if ig_account_id:
-        ig_status = "Instagram Business Account connected ✓"
-        ig_color = "#15803D"
+        ig_line = f'<p style="color:#15803D;font-size:14px;">Instagram Business Account connected ✓ (ID: {ig_account_id})</p>'
     else:
-        ig_status = "⚠️ No Instagram Business Account found — make sure your Instagram is set to Business and linked to your Facebook Page."
-        ig_color = "#D97706"
+        ig_line = '<p style="color:#D97706;font-size:13px;">⚠️ No Instagram Business Account found. Make sure your Instagram is set to <strong>Business</strong> and linked to your Facebook Page via <a href="https://accountscenter.facebook.com">accountscenter.facebook.com</a></p>'
 
     business_id_copy = state_data["business_id"]
     async def send_email_3():
@@ -342,7 +342,7 @@ async def meta_callback(
     <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
     <div style="font-size:48px">✅</div>
     <h2>Facebook & Instagram connected!</h2>
-    <p style="color:{ig_color};font-size:14px;margin-bottom:8px;">{ig_status}</p>
+    {ig_line}
     <p style="color:#666">Check your email — Marlo is sending the next step.</p>
     <p style="color:#999;font-size:14px">You can close this tab.</p>
     </body></html>
