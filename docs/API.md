@@ -32,15 +32,16 @@ Create a business. Triggers onboarding email 1.
 Body: {
   "name": "string",
   "industry": "string",
-  "monthly_ad_budget": 300,
+  "monthly_ad_budget": 300,        // example only — user enters any number (e.g. 50, 500, 2000)
   "description": "optional",
   "tone_of_voice": "optional",
   "target_audience": "optional",
-  "timezone": "America/Los_Angeles",
-  "preferred_post_timezone": "America/Los_Angeles"
+  "timezone": "America/Los_Angeles",           // auto-detected from browser via Intl.DateTimeFormat()
+  "preferred_post_timezone": "America/Los_Angeles"  // same — not hardcoded, reflects user's actual location
 }
 Response: { "id": "uuid", "name": "string" }
 ```
+Note: all values above are examples only. `timezone` and `preferred_post_timezone` are auto-detected on the frontend using `Intl.DateTimeFormat().resolvedOptions().timeZone` — they reflect whatever timezone the user's browser reports at signup.
 
 ### GET /businesses/
 List businesses for current user.
