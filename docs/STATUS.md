@@ -4,44 +4,36 @@
 
 ---
 
-## What's Working ✅
+## Tested End-to-End ✅
+*Manually verified working in production*
 
-### Core Email Flow
-- All 4 onboarding emails send correctly
-- `first_kickoff` email (first week) ✅
-- `weekly_kickoff` email (recurring) ✅
-- `post_approval` email (per posting day, day before) ✅
-- `weekly_analytics` email (Friday 2pm local) ✅
-- 72-hour onboarding reminder ✅
-- One-click approve/skip (no login required) ✅
-- Unsubscribe (CAN-SPAM compliant) ✅
-- Decline feedback buttons ✅
+- All 4 onboarding emails send and render correctly
+- `first_kickoff` email sends with correct content
+- `weekly_kickoff` email sends (after first_kickoff logged)
+- Kickoff day picker — clicking day button updates DB, shows confirmation page
+- Posting days picker — clicking days updates DB, shows confirmation page
+- Approve button → status changes `pending` → `executed` (verified in DB)
+- AI generates 3 posts per week with captions + images
+- Per-day image guide renders differently per day
+- Strategy summary shows `key_message` (not internal prompt fields)
+- fal.ai image generation works
+- Stripe 14-day trial starts on signup
 
-### Content Generation
-- AI generates 3-7 posts/week based on posting schedule ✅
-- Strategy agent decides weekly theme ✅
-- Per-day image guide (creative director style) ✅
-- fal.ai image generation ✅
+---
 
-### User Settings (via email buttons)
-- Kickoff day picker (Mon-Sun) ✅
-- Posting days picker (toggle days) ✅
-- Both update DB immediately ✅
+## Code Written, Not Fully Tested ⚠️
+*Logic exists but not manually verified end-to-end*
 
-### Approval Flow
-- Approve → status: pending → executed ✅
-- Skip → status: pending → rejected ✅
-- Feedback collected on skips ✅
-
-### Scheduler
-- Fires on user's chosen kickoff day (not hardcoded Sunday) ✅
-- Approval emails sent day-before at 2pm local ✅
-- Stale actions expire after 3 days ✅
-
-### Billing
-- Stripe test mode ✅
-- 14-day free trial ✅
-- Subscription health check ✅
+- `post_approval` email — scheduler logic written, not triggered in testing
+- `weekly_analytics` email — endpoint exists, not verified in full flow
+- 72-hour onboarding reminder — scheduler logic written, never waited 72h to verify
+- Unsubscribe link — endpoint exists, not clicked and verified in DB
+- Decline feedback buttons — endpoint exists, not verified feedback saves to DB
+- Skip post → `rejected` status — endpoint exists, not explicitly tested
+- Stale action expiry (3-day) — logic written, not waited 3 days to verify
+- Approval emails sent day-before — scheduler logic written, not triggered in testing
+- Subscription health check — logic written, not tested with real canceled subscription
+- Google Ads campaign generation — code exists, never tested with real Google account
 
 ---
 
@@ -50,9 +42,7 @@
 ### Instagram Posting (main blocker)
 **Problem:** `platform_account_id` is NULL in `platform_integrations` table for Meta.
 
-**Root cause:** Current OAuth uses Facebook Login which requires Instagram to be connected to a Facebook Page at the API level (`/me/accounts` must return `instagram_business_account`). The `Marlo` Facebook Page and `marlo021.ai` Instagram are not linked at the Graph API level, even though they appear connected in Accounts Center.
-
-**Additional blocker:** Meta Business Suite shows "Business Account Not Allowed to Advertise" which blocks the Instagram connection flow entirely.
+**Root cause:** Current OAuth uses Facebook Login which requires Instagram to be connected to a Facebook Page at the API level. The `Marlo` Facebook Page and `marlo021.ai` Instagram are not linked at the Graph API level. Additionally, Meta Business Suite shows "Business Account Not Allowed to Advertise" which blocks the Instagram connection flow entirely.
 
 **Solution:** Switch to **Instagram Login API** (launched July 2024):
 - No Facebook Page required
