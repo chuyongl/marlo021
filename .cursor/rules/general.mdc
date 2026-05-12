@@ -1,0 +1,197 @@
+# Marlo021 Build Session Summary
+*May 8-12, 2026 — Full context for next session*
+
+---
+
+## Project Identity
+- **Product:** Marlo — AI marketing agent for small businesses, email-only interface
+- **Founder:** Anna (Chuyong Liu), Windows 11, VS Code, PowerShell
+- **Repo:** github.com/chuyongl/marlo021 (private)
+- **Live URL:** api.marlo021.ai (backend), marlo021.ai (frontend)
+- **Deployment:** Railway (auto-deploy from main branch)
+- **Test account:** `3512ed4f-9dae-499e-9f5d-fdb0d85269ef`
+
+---
+
+## What Was Completed This Session
+
+### Bug Fixes
+- `approval_router.py` — fixed status check: was `!= "pending_approval"`, now `not in ("pending", "pending_approval")`. Also removed broken `executor.execute_action()` call. Approve now correctly sets status → `executed`
+- `debug_router.py` — added idempotency: clears all pending actions before regenerating. Prevents duplicate actions
+- `scheduler.py` — kickoff fires on user's chosen day (`biz.briefing_time`) not hardcoded Sunday
+- `businesses/router.py` — added `/settings/posting-schedule` endpoint (was returning 404)
+- `scheduler.py` + `debug_router.py` — image guide prompt changed to creative director style, tied to strategy_summary
+- Two emails sent on trigger — fixed by checking email_logs for `first_kickoff` before deciding which email to send
+
+### New Features
+- `_build_image_guide()` — generates high-level human photo direction per post, e.g. "Catch someone mid-laugh while working — joy is more magnetic than professionalism."
+- `_get_instagram_account_id()` in `oauth.py` — fetches Instagram Business Account ID via `/me/accounts?fields=id,name,instagram_business_account` after Meta OAuth
+- Meta OAuth callback now upserts (handles re-auth), stores `platform_account_id`
+
+### Knowledge Base Created (`/docs` folder)
+All files committed to repo:
+- `docs/PRODUCT.md` — product vision, users, pricing, differentiators
+- `docs/ARCHITECTURE.md` — full stack, file structure, DB schema overview, data flows, scheduler jobs, env vars
+- `docs/STATUS.md` — tested vs untested features, blockers, recent fixes, debug commands
+- `docs/DECISIONS.md` — 8 ADRs explaining key decisions
+- `docs/TASKS.md` — current sprint, backlog, completed
+- `docs/API.md` — all endpoints with request/response formats
+- `docs/DATA_MODEL.md` — all DB tables with field explanations, key SQL queries
+- `docs/FLOWS.md` — 8 user flows step by step, edge cases
+- `docs/ERRORS.md` — known bugs, symptoms, fixes, debug guide
+
+### AI-Native Dev Infrastructure
+- `.cursor/rules/general.mdc` — session start/end protocol, git commit convention, file delivery rules
+- Still to create: `backend.mdc`, `frontend.mdc`, `testing.mdc`, `security.mdc`
+
+---
+
+## Current Blockers
+
+### Instagram Posting (main blocker)
+`platform_account_id = NULL` in `platform_integrations` for Meta.
+
+**Root cause confirmed via Graph API Explorer:**
+`/me/accounts?fields=id,name,instagram_business_account` returns `Marlo` Page but NO `instagram_business_account` field. The Page and Instagram are not linked at Graph API level despite appearing connected in Accounts Center.
+
+**Additional blocker:** Meta Business Suite shows "Business Account Not Allowed to Advertise" which blocks the Instagram connection UI.
+
+**Solution decided: Switch to Instagram Login API**
+- Launched July 2024
+- No Facebook Page required
+- OAuth URL: `instagram.com/oauth/authorize`
+- Scopes: `instagram_business_basic, instagram_business_content_publish, instagram_business_manage_insights`
+- API host: `graph.instagram.com`
+- Account ID from `/me` directly
+
+**Files to change:**
+1. `backend/integrations/oauth.py` — new `connect/instagram` + `callback/instagram` endpoints
+2. `backend/agent/executor.py` — use `graph.instagram.com` for posting
+3. Onboarding email template — "Connect Instagram" not "Connect Facebook"
+4. Meta Developer Console — add Instagram Login product
+
+---
+
+## Files Changed This Session
+
+| File | Path | Status |
+|---|---|---|
+| `approval_router_fixed.py` | `backend/agent/approval_router.py` | ✅ Committed |
+| `debug_router_v4.py` | `backend/agent/debug_router.py` | ✅ Committed |
+| `scheduler_v4.py` | `backend/agent/scheduler.py` | ✅ Committed |
+| `businesses_router_final.py` | `backend/businesses/router.py` | ✅ Committed |
+| `oauth_v2.py` | `backend/integrations/oauth.py` | ✅ Committed |
+| All docs | `docs/` | ✅ Committed (or in progress) |
+| `general.mdc` | `.cursor/rules/general.mdc` | ⏳ Being set up |
+
+---
+
+## Next Session — Do These In Order
+
+### 1. Finish .cursor/rules setup
+Create remaining mdc files:
+- `backend.mdc` — FastAPI/Python coding rules
+- `frontend.mdc` — React rules
+- `testing.mdc` — testing rules
+- `security.mdc` — security rules
+
+### 2. Instagram Login OAuth (main priority)
+In Meta Developer Console:
+- Add "Instagram" product (Instagram Login)
+- Add redirect URI: `https://api.marlo021.ai/integrations/callback/instagram`
+- Note the new App ID/Secret if different
+
+Then build new oauth endpoints. New flow:
+```python
+# connect
+GET /integrations/connect/instagram?business_id=xxx
+→ redirect to instagram.com/oauth/authorize?...
+
+# callback  
+GET /integrations/callback/instagram?code=xxx
+→ exchange code for token at graph.instagram.com/oauth/access_token
+→ GET graph.instagram.com/me?fields=id,username (get ig_account_id)
+→ store in platform_integrations.platform_account_id
+→ advance onboarding to step 3
+→ send email 3
+```
+
+### 3. Update executor.py for Instagram API
+```python
+# Change from:
+meta = MetaIntegration(access_token=..., ad_account_id=...)
+await meta.post_to_instagram(ig_account_id, image_url, caption)
+
+# To use graph.instagram.com:
+# POST graph.instagram.com/{ig_account_id}/media
+# POST graph.instagram.com/{ig_account_id}/media_publish
+```
+
+### 4. Test full flow
+- Connect marlo021.ai Instagram via new OAuth
+- Verify platform_account_id populated in DB
+- Reset + trigger kickoff
+- Approve post
+- Verify post appears on Instagram
+
+### 5. Privacy policy page
+Required for Meta app review. Simple HTML at `marlo021.ai/privacy`.
+
+---
+
+## Key Technical Facts to Remember
+
+### Approval flow (2-step)
+1. User clicks Approve → status: `pending` → `executed`
+2. Scheduler `execute_approved_posts` runs every 15 min → posts at `scheduled_post_time`
+**Never call executor at approval time.**
+
+### Datetime convention
+- `created_at` → `datetime.utcnow()` (naive, legacy)
+- `scheduled_post_time` → `datetime.now(timezone.utc)` (aware)
+- Never mix them in comparisons
+
+### Kickoff day
+Stored in `biz.briefing_time` as day name ("Sunday", "Monday" etc.)
+`get_posting_schedule(biz)` reads `biz.posting_schedule` array, falls back to defaults
+
+### strategy_summary
+Always use `strategy.get("key_message", ...)` — never full strategy dict
+
+### DB session in background tasks
+Always create new session: `async with AsyncSessionLocal() as db:`
+Never pass request's db session into `asyncio.create_task()`
+
+### Debug reset command
+```powershell
+Invoke-WebRequest -Method DELETE "https://api.marlo021.ai/debug/reset/3512ed4f-9dae-499e-9f5d-fdb0d85269ef"
+```
+
+---
+
+## Business Context
+
+### Market position
+"AI marketing + email interaction + micro-enterprise" — zero direct competitors as of May 2026.
+
+### Target beta users
+Seattle area restaurants or pet services. 3-5 users, free beta, exchange for feedback.
+
+### Pricing
+$99/month main tier, 14-day free trial. Consider $149-199 tier for Google Ads users later.
+
+### Biggest risks
+1. Meta API instability (quarterly breaking changes)
+2. SMB churn rate 4.8-8.1% — need strong onboarding
+3. CAC control — target content marketing / build-in-public for low CAC
+
+---
+
+## AI-Native Development Principles Established
+
+1. **Repo is the memory** — all decisions, bugs, fixes in `/docs`
+2. **Session protocol** — always read STATUS.md + TASKS.md at start, update at end
+3. **Every doc has a purpose** — see `docs/` for full list
+4. **Git commits are structured** — `feat/fix/docs/chore/refactor/test/style:`
+5. **Complete files only** — never diffs, Anna copies full files
+6. **Explain why before how** — Anna is learning while building
