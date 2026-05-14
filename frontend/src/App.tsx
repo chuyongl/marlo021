@@ -5,6 +5,7 @@ import { Setup } from './pages/Setup'
 import { Help } from './pages/Help'
 import { Blog } from './pages/Blog'
 import { BlogPost_HowMarloThinks as HowMarloThinks } from './pages/BlogPost_HowMarloThinks'
+import Privacy from './pages/Privacy'
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="/help" element={<Help />} />
         <Route path="/blog" element={<Blog />} />
         <Route path="/blog/how-marlo-thinks" element={<HowMarloThinks />} />
+        <Route path="/privacy" element={<Privacy />} />
       </Routes>
     </BrowserRouter>
   )
