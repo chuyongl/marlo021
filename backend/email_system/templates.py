@@ -167,7 +167,8 @@ def onboarding_email_1(business_name: str, first_name: str, business_id: str, ba
 
 
 def onboarding_email_2(first_name: str, business_id: str, base_url: str, frontend_url: str = "", skipped_google: bool = False) -> str:
-    connect_url = f"{base_url}/integrations/connect/meta?business_id={business_id}"
+    # Uses Instagram Login API — no Facebook Page required
+    connect_url = f"{base_url}/integrations/connect/instagram?business_id={business_id}"
     skip_url = f"{base_url}/integrations/skip-meta?business_id={business_id}"
 
     top_message = (
@@ -180,20 +181,19 @@ def onboarding_email_2(first_name: str, business_id: str, base_url: str, fronten
 
     content = top_message + f"""
     <div style="background:#F5F3FF;border-radius:8px;padding:20px;margin-bottom:24px;">
-      <p style="font-size:13px;font-weight:600;color:#7C3AED;margin:0 0 16px 0;">STEP 2 OF 4 — Connect Facebook &amp; Instagram</p>
+      <p style="font-size:13px;font-weight:600;color:#7C3AED;margin:0 0 16px 0;">STEP 2 OF 4 — Connect Instagram</p>
       <p style="font-size:13px;color:{MUTED_COLOR};margin:0 0 16px 0;line-height:1.6;">
-        Before clicking connect, make sure you have:<br><br>
-        <strong>1.</strong> A Facebook account<br>
-        <strong>2.</strong> A Facebook Page for your business — <a href="https://www.facebook.com/pages/create" style="color:#7C3AED;">create one free here</a><br>
-        <strong>3.</strong> Instagram set to Business account and linked to your Facebook Page via
-        <a href="https://accountscenter.facebook.com" style="color:#7C3AED;">accountscenter.facebook.com</a>
+        Connect your Instagram account so Marlo can post content on your behalf.<br><br>
+        <strong>Before clicking connect, make sure you have:</strong><br><br>
+        <strong>1.</strong> An Instagram account set to <strong>Business</strong> or <strong>Creator</strong><br>
+        <strong>2.</strong> You'll log in directly with your Instagram credentials — no Facebook required
       </p>
-      {approve_button("🟣 Connect Facebook & Instagram →", connect_url, "#7C3AED")}
+      {approve_button("🟣 Connect Instagram →", connect_url, "#7C3AED")}
     </div>
     <p style="font-size:13px;color:{MUTED_COLOR};margin:0;line-height:1.6;">
       Don't have Instagram yet? <a href="{skip_url}" style="color:{MUTED_COLOR};font-weight:600;">Skip Instagram for now →</a>
     </p>"""
-    preheader = "Skipped Google — let's connect Instagram next" if skipped_google else f"{first_name}, Google is connected — one more step"
+    preheader = "Skipped Google — let's connect Instagram next" if skipped_google else f"{first_name}, Google is connected — connect Instagram next"
     return base_template(content, preheader=preheader)
 
 
@@ -205,7 +205,7 @@ def onboarding_email_3(first_name: str, business_id: str, base_url: str, skipped
         f'<p style="font-size:16px;font-weight:600;color:{TEXT_COLOR};margin:0 0 8px 0;">No worries — you can connect Instagram anytime later.</p>'
         f'<p style="font-size:14px;color:{MUTED_COLOR};margin:0 0 24px 0;">One more optional connection and setup is complete.</p>'
     ) if skipped_meta else (
-        f'<p style="font-size:16px;font-weight:600;color:#16A34A;margin:0 0 8px 0;">✅ Facebook &amp; Instagram connected!</p>'
+        f'<p style="font-size:16px;font-weight:600;color:#16A34A;margin:0 0 8px 0;">✅ Instagram connected!</p>'
         f'<p style="font-size:14px;color:{MUTED_COLOR};margin:0 0 24px 0;">One more connection and you\'re done with setup.</p>'
     )
 
