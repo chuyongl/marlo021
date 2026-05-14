@@ -22,6 +22,9 @@ FRONTEND = os.getenv("FRONTEND_URL", "http://localhost:3000")
 INSTAGRAM_APP_ID = os.getenv("INSTAGRAM_APP_ID")
 INSTAGRAM_APP_SECRET = os.getenv("INSTAGRAM_APP_SECRET")
 
+# Hardcoded because Railway internally strips https → http, causing redirect_uri mismatch
+INSTAGRAM_REDIRECT_URI = "https://api.marlo021.ai/integrations/callback/instagram"
+
 GOOGLE_SCOPES = " ".join([
     "https://www.googleapis.com/auth/adwords",
     "https://www.googleapis.com/auth/analytics.readonly",
@@ -175,16 +178,15 @@ async def skip_google(business_id: str):
 async def connect_instagram(business_id: str):
     state = secrets.token_urlsafe(32)
     oauth_states[state] = {"business_id": business_id, "platform": "instagram"}
-    redirect_uri = f"{APP_BASE}/integrations/callback/instagram"
     params = {
         "client_id": INSTAGRAM_APP_ID,
-        "redirect_uri": redirect_uri,
+        "redirect_uri": INSTAGRAM_REDIRECT_URI,
         "response_type": "code",
         "scope": INSTAGRAM_SCOPES,
         "state": state,
     }
     auth_url = "https://www.instagram.com/oauth/authorize?" + urllib.parse.urlencode(params)
-    print(f"[Instagram Connect] redirect_uri={redirect_uri}")
+    print(f"[Instagram Connect] redirect_uri={INSTAGRAM_REDIRECT_URI}")
     print(f"[Instagram Connect] auth_url={auth_url}")
     return RedirectResponse(auth_url)
 
@@ -199,14 +201,11 @@ async def instagram_callback(
     error_message: str = None,
     db: AsyncSession = Depends(get_db)
 ):
-    # Log everything we received
     print(f"[Instagram Callback] Full URL: {request.url}")
     print(f"[Instagram Callback] code={code[:20] if code else None}...")
     print(f"[Instagram Callback] state={state}")
     print(f"[Instagram Callback] error={error}")
-    print(f"[Instagram Callback] error_code={error_code}")
     print(f"[Instagram Callback] error_message={error_message}")
-    print(f"[Instagram Callback] all params={dict(request.query_params)}")
 
     if error or error_code:
         print(f"[Instagram Callback] ERROR from Instagram: {error} / {error_code} / {error_message}")
@@ -225,7 +224,7 @@ async def instagram_callback(
 
     state_data = oauth_states.pop(state, None)
     if not state_data:
-        print(f"[Instagram Callback] State not found in oauth_states. Available states: {list(oauth_states.keys())}")
+        print(f"[Instagram Callback] State not found. Available: {list(oauth_states.keys())}")
         return HTMLResponse("""
         <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
         <div style="font-size:48px">❌</div>
@@ -235,8 +234,8 @@ async def instagram_callback(
         </body></html>
         """)
 
-    redirect_uri = f"{APP_BASE}/integrations/callback/instagram"
-    print(f"[Instagram Callback] Exchanging code, redirect_uri={redirect_uri}")
+    # Use hardcoded HTTPS redirect_uri — Railway strips https internally causing mismatch
+    print(f"[Instagram Callback] Exchanging code, redirect_uri={INSTAGRAM_REDIRECT_URI}")
 
     # Step 1: Exchange code for short-lived access token
     async with httpx.AsyncClient() as client:
@@ -246,7 +245,7 @@ async def instagram_callback(
                 "client_id": INSTAGRAM_APP_ID,
                 "client_secret": INSTAGRAM_APP_SECRET,
                 "grant_type": "authorization_code",
-                "redirect_uri": redirect_uri,
+                "redirect_uri": INSTAGRAM_REDIRECT_URI,
                 "code": code,
             }
         )
