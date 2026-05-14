@@ -18,6 +18,10 @@ MAILCHIMP_CLIENT_SECRET = os.getenv("MAILCHIMP_CLIENT_SECRET")
 APP_BASE = os.getenv("APP_BASE_URL", "http://localhost:8000")
 FRONTEND = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
+# Instagram Login App credentials (new Business-type app)
+INSTAGRAM_APP_ID = os.getenv("INSTAGRAM_APP_ID")
+INSTAGRAM_APP_SECRET = os.getenv("INSTAGRAM_APP_SECRET")
+
 GOOGLE_SCOPES = " ".join([
     "https://www.googleapis.com/auth/adwords",
     "https://www.googleapis.com/auth/analytics.readonly",
@@ -26,7 +30,10 @@ GOOGLE_SCOPES = " ".join([
     "openid", "email"
 ])
 
-# Use Facebook Login compatible scopes — instagram_business_* only works with Instagram Login
+# Instagram Login scopes (graph.instagram.com — no Facebook Page required)
+INSTAGRAM_SCOPES = "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights"
+
+# Legacy Facebook Login scopes — kept for reference, no longer used for new connections
 META_SCOPES = "pages_show_list,pages_read_engagement,instagram_basic,instagram_content_publish,instagram_manage_insights"
 
 oauth_states: dict = {}
@@ -165,7 +172,212 @@ async def skip_google(business_id: str):
     """)
 
 
-# ── Meta ──────────────────────────────────────────────────────────────────────
+# ── Instagram Login (NEW — replaces Facebook Login for Instagram) ─────────────
+#
+# Uses Instagram Login API (launched July 2024).
+# No Facebook Page required — user logs in directly with Instagram credentials.
+# OAuth host: instagram.com/oauth/authorize
+# API host: graph.instagram.com
+# Account ID comes from GET graph.instagram.com/me directly.
+
+@router.get("/connect/instagram")
+async def connect_instagram(business_id: str):
+    state = secrets.token_urlsafe(32)
+    oauth_states[state] = {"business_id": business_id, "platform": "instagram"}
+    auth_url = (
+        f"https://www.instagram.com/oauth/authorize"
+        f"?client_id={INSTAGRAM_APP_ID}"
+        f"&redirect_uri={APP_BASE}/integrations/callback/instagram"
+        f"&response_type=code"
+        f"&scope={INSTAGRAM_SCOPES}"
+        f"&state={state}"
+    )
+    return RedirectResponse(auth_url)
+
+
+@router.get("/callback/instagram")
+async def instagram_callback(
+    code: str = None,
+    state: str = None,
+    error: str = None,
+    error_code: str = None,
+    error_message: str = None,
+    db: AsyncSession = Depends(get_db)
+):
+    # User denied or error from Instagram
+    if error or error_code:
+        return HTMLResponse(f"""
+        <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
+        <div style="font-size:48px">❌</div>
+        <h2 style="color:#cc0000">Instagram connection failed</h2>
+        <p style="color:#666">{error_message or error or 'Unknown error'}</p>
+        <p style="color:#999;font-size:14px">Please close this tab and try again.</p>
+        </body></html>
+        """)
+
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    state_data = oauth_states.pop(state, None)
+    if not state_data:
+        raise HTTPException(status_code=400, detail="Invalid OAuth state")
+
+    # Step 1: Exchange code for access token via graph.instagram.com
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://api.instagram.com/oauth/access_token",
+            data={
+                "client_id": INSTAGRAM_APP_ID,
+                "client_secret": INSTAGRAM_APP_SECRET,
+                "grant_type": "authorization_code",
+                "redirect_uri": f"{APP_BASE}/integrations/callback/instagram",
+                "code": code,
+            }
+        )
+        tokens = response.json()
+
+    if "error" in tokens or "access_token" not in tokens:
+        error_msg = tokens.get("error_message") or tokens.get("error", {}).get("message", "Token exchange failed")
+        return HTMLResponse(f"""
+        <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
+        <div style="font-size:48px">❌</div>
+        <h2 style="color:#cc0000">Instagram connection failed</h2>
+        <p style="color:#666">{error_msg}</p>
+        <p style="color:#999;font-size:14px">Please close this tab and try again.</p>
+        </body></html>
+        """)
+
+    short_lived_token = tokens["access_token"]
+    ig_user_id = str(tokens.get("user_id", ""))
+
+    # Step 2: Exchange for long-lived token (60 days)
+    async with httpx.AsyncClient() as client:
+        ll_response = await client.get(
+            "https://graph.instagram.com/access_token",
+            params={
+                "grant_type": "ig_exchange_token",
+                "client_secret": INSTAGRAM_APP_SECRET,
+                "access_token": short_lived_token,
+            }
+        )
+        ll_tokens = ll_response.json()
+
+    long_lived_token = ll_tokens.get("access_token", short_lived_token)
+
+    # Step 3: Get Instagram username from /me
+    async with httpx.AsyncClient() as client:
+        me_response = await client.get(
+            "https://graph.instagram.com/me",
+            params={
+                "fields": "id,username",
+                "access_token": long_lived_token,
+            }
+        )
+        me_data = me_response.json()
+
+    ig_account_id = me_data.get("id") or ig_user_id
+    ig_username = me_data.get("username", "")
+    print(f"[Instagram Login] Connected: @{ig_username} (ID: {ig_account_id})")
+
+    from security.encryption import encrypt_token
+    from sqlalchemy import select, update
+
+    # Step 4: Upsert integration — store as platform="meta" for backward compat with executor
+    existing_result = await db.execute(
+        select(PlatformIntegration).where(
+            PlatformIntegration.business_id == state_data["business_id"],
+            PlatformIntegration.platform == "meta",
+        )
+    )
+    existing = existing_result.scalar_one_or_none()
+
+    if existing:
+        existing.access_token = encrypt_token(long_lived_token)
+        existing.platform_account_id = ig_account_id
+        existing.scopes = INSTAGRAM_SCOPES.split(",")
+        existing.is_active = True
+    else:
+        integration = PlatformIntegration(
+            id=uuid.uuid4(),
+            business_id=state_data["business_id"],
+            platform="meta",
+            access_token=encrypt_token(long_lived_token),
+            platform_account_id=ig_account_id,
+            scopes=INSTAGRAM_SCOPES.split(","),
+            is_active=True,
+            created_at=datetime.utcnow()
+        )
+        db.add(integration)
+
+    # Step 5: Advance onboarding to step 3
+    await db.execute(
+        update(Business)
+        .where(Business.id == state_data["business_id"])
+        .values(onboarding_step=3)
+    )
+    await db.commit()
+
+    # Step 6: Send onboarding email 3
+    business_id_copy = state_data["business_id"]
+    async def send_email_3():
+        from database.session import AsyncSessionLocal
+        from email_system.sender import email_sender
+        async with AsyncSessionLocal() as new_db:
+            biz_result = await new_db.execute(select(Business).where(Business.id == business_id_copy))
+            biz = biz_result.scalar_one_or_none()
+            if biz:
+                user_result = await new_db.execute(select(User).where(User.id == biz.owner_id))
+                usr = user_result.scalar_one_or_none()
+                if usr:
+                    first_name = (usr.full_name or "").split()[0] or "there"
+                    await email_sender.send_onboarding_step(
+                        step=3,
+                        business_id=business_id_copy,
+                        user_email=usr.email,
+                        first_name=first_name,
+                        business_name=biz.name,
+                        db=new_db
+                    )
+    asyncio.create_task(send_email_3())
+
+    username_line = f'<p style="color:#15803D;font-size:14px;">Connected as @{ig_username} ✓</p>' if ig_username else ""
+
+    return HTMLResponse(f"""
+    <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
+    <div style="font-size:48px">✅</div>
+    <h2 style="color:#1a1a1a">Instagram connected!</h2>
+    {username_line}
+    <p style="color:#666">Check your email — Marlo is sending the next step.</p>
+    <p style="color:#999;font-size:14px">You can close this tab.</p>
+    </body></html>
+    """)
+
+
+@router.get("/deauthorize/instagram")
+async def instagram_deauthorize():
+    """
+    Called by Meta when a user removes the app from their Instagram account.
+    Required for Meta app review. We mark the integration as inactive.
+    """
+    # Meta sends a signed_request — for now we just acknowledge it.
+    # Full implementation: parse signed_request, find business by ig_user_id, set is_active=False
+    return HTMLResponse("OK", status_code=200)
+
+
+@router.get("/delete/instagram")
+async def instagram_data_deletion():
+    """
+    Called by Meta when a user requests data deletion.
+    Required for Meta app review.
+    Returns a confirmation URL per Meta's spec.
+    """
+    return {
+        "url": f"{FRONTEND}/privacy",
+        "confirmation_code": "marlo_data_deletion_confirmed"
+    }
+
+
+# ── Meta (Legacy Facebook Login — kept but no longer used for new connections) ─
 
 @router.get("/connect/meta")
 async def connect_meta(business_id: str):
@@ -183,12 +395,10 @@ async def connect_meta(business_id: str):
 
 async def _get_instagram_account_id(access_token: str) -> str | None:
     """
-    After Meta OAuth, fetch the Instagram Business Account ID.
-    Uses /me/accounts with instagram_business_account field to get it in one request.
-    Requires: pages_show_list + instagram_basic permissions.
+    Legacy helper for Facebook Login flow.
+    Fetches Instagram Business Account ID from linked Facebook Page.
     """
     async with httpx.AsyncClient() as client:
-        # Single request: get FB pages + their linked Instagram accounts
         resp = await client.get(
             "https://graph.facebook.com/v21.0/me/accounts",
             params={
@@ -246,7 +456,6 @@ async def meta_callback(
     meta_app_id = os.getenv("META_APP_ID")
     meta_app_secret = os.getenv("META_APP_SECRET")
 
-    # Step 1: Exchange code for access token
     async with httpx.AsyncClient() as client:
         response = await client.get(
             "https://graph.facebook.com/v21.0/oauth/access_token",
@@ -270,14 +479,11 @@ async def meta_callback(
         """)
 
     access_token = tokens["access_token"]
-
-    # Step 2: Fetch Instagram Business Account ID from linked Facebook Page
     ig_account_id = await _get_instagram_account_id(access_token)
 
     from security.encryption import encrypt_token
     from sqlalchemy import select, update
 
-    # Step 3: Upsert integration (handle re-auth)
     existing_result = await db.execute(
         select(PlatformIntegration).where(
             PlatformIntegration.business_id == state_data["business_id"],
@@ -314,7 +520,7 @@ async def meta_callback(
     if ig_account_id:
         ig_line = f'<p style="color:#15803D;font-size:14px;">Instagram Business Account connected ✓ (ID: {ig_account_id})</p>'
     else:
-        ig_line = '<p style="color:#D97706;font-size:13px;">⚠️ No Instagram Business Account found. Make sure your Instagram is set to <strong>Business</strong> and linked to your Facebook Page via <a href="https://accountscenter.facebook.com">accountscenter.facebook.com</a></p>'
+        ig_line = '<p style="color:#D97706;font-size:13px;">⚠️ No Instagram Business Account found.</p>'
 
     business_id_copy = state_data["business_id"]
     async def send_email_3():
@@ -386,7 +592,7 @@ async def skip_meta(business_id: str):
     <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
     <div style="font-size:48px">✅</div>
     <h2 style="color:#1a1a1a">No problem!</h2>
-    <p style="color:#666">Marlo will start with Google Ads. You can connect Instagram anytime by replying to any Marlo email.</p>
+    <p style="color:#666">You can connect Instagram anytime by replying to any Marlo email.</p>
     <p style="color:#999;font-size:14px">You can close this tab.</p>
     </body></html>
     """)

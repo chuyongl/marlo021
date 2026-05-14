@@ -138,7 +138,7 @@ class AgentExecutor:
         else:
             return {"status": "no_handler", "action_type": action.action_type}
 
-        # Get ig_account_id from Meta integration
+        # Get ig_account_id from Meta integration (platform stored as "meta" regardless of login method)
         if action.action_type == "post_instagram":
             int_result = await db.execute(
                 select(PlatformIntegration).where(
@@ -182,14 +182,27 @@ class AgentExecutor:
             )
             return {"success": success, "new_budget": params["new_daily_budget"]}
 
-        elif action_type == "create_post" and platform == "instagram" and integration:
+        elif action_type == "create_post" and platform == "instagram":
+            # Instagram posting via Instagram Login API (graph.instagram.com)
+            # Integration is stored as platform="meta" — look it up directly by business_id
+            ig_int_result = await db.execute(
+                select(PlatformIntegration)
+                .where(PlatformIntegration.business_id == business_id)
+                .where(PlatformIntegration.platform == "meta")
+                .where(PlatformIntegration.is_active == True)
+            )
+            ig_integration = ig_int_result.scalar_one_or_none()
+
+            if not ig_integration:
+                return {"status": "skipped", "reason": "No active Instagram integration found"}
+
             from integrations.meta import MetaIntegration
             meta = MetaIntegration(
-                access_token=integration.access_token,
-                ad_account_id=integration.platform_account_id
+                access_token=ig_integration.access_token,
+                ad_account_id=ig_integration.platform_account_id
             )
             result = await meta.post_to_instagram(
-                ig_account_id=params["ig_account_id"],
+                ig_account_id=params["ig_account_id"] or ig_integration.platform_account_id,
                 image_url=params["image_url"],
                 caption=params["caption"]
             )
