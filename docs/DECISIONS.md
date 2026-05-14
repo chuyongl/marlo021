@@ -77,24 +77,33 @@ Each decision recorded here explains WHAT we chose and WHY. Future developers (h
 
 ---
 
-## ADR-006: Facebook Login → Instagram Login migration
+## ADR-006: Instagram Login API instead of Facebook Login
 
-**Decision:** Migrate Meta OAuth from Facebook Login to Instagram Login API.
+**Decision:** Use Instagram Login API (launched July 2024) for all Instagram connections. Facebook Login flow is kept in code but no longer used for new connections.
 
 **Why:**
-- Facebook Login requires Instagram to be connected to a Facebook Page
-- This creates massive friction for non-technical users (they don't have Pages, or Pages have ad violations)
-- Instagram Login (launched July 2024) requires only an Instagram Business/Creator account
-- User experience: "Log in with Instagram" vs "Connect Facebook, then select Page, then select Instagram"
-- For our target market (non-technical SMB owners), Facebook Login has ~10% completion rate; Instagram Login should be ~80%
+- Facebook Login requires Instagram to be connected to a Facebook Page at the Graph API level
+- This creates impossible friction for non-technical users — they don't have Pages, or Pages have ad policy violations
+- Instagram Login requires only an Instagram Business/Creator account — no Facebook Page needed
+- User experience: "Log in with Instagram" (one step) vs "Connect Facebook → select Page → select Instagram" (three steps)
+- Estimated completion rate: Facebook Login ~10%, Instagram Login ~80% for our target market
 
-**What changes:**
+**What changed (May 13, 2026):**
+- Created new Business-type Meta app (App ID: `918827927853545`, Instagram App ID: `1004448018806665`)
+- New endpoints: `GET /integrations/connect/instagram` and `GET /integrations/callback/instagram`
 - OAuth URL: `instagram.com/oauth/authorize` (not `facebook.com/dialog/oauth`)
-- Scopes: `instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights`
-- API host: `graph.instagram.com` for posting
-- No Facebook Page required — account ID comes from `/me` directly
+- Token exchange: `api.instagram.com/oauth/access_token` → then exchange for long-lived token via `graph.instagram.com/access_token`
+- Account ID: fetched from `graph.instagram.com/me` directly (no Facebook Page lookup)
+- Integration stored as `platform="meta"` in DB for backward compatibility with executor
+- Posting still uses `MetaIntegration` class but via `graph.instagram.com` host
+- Old Facebook Login endpoints (`/connect/meta`, `/callback/meta`) kept for backward compat but not linked from any email
 
-**Status:** IN PROGRESS as of May 8, 2026.
+**Credentials in Railway:**
+- `INSTAGRAM_APP_ID` — new app
+- `INSTAGRAM_APP_SECRET` — new app
+- `META_APP_ID` / `META_APP_SECRET` — old app, kept but unused for new connections
+
+**Status:** Code complete and deployed May 13, 2026. End-to-end test pending.
 
 ---
 
@@ -121,3 +130,25 @@ Each decision recorded here explains WHAT we chose and WHY. Future developers (h
 - Two-step: user approves early → Marlo posts at the right time
 
 **Important:** `executor.py` has an `execute_action()` method that was previously called at approval time. This was removed. Only `executor.run()` is called by the scheduler. Do not re-add immediate execution at approval.
+
+---
+
+## ADR-009: Privacy policy as React page, not static HTML
+
+**Decision:** Privacy policy lives at `frontend/src/pages/Privacy.tsx`, served at `marlo021.ai/privacy`.
+
+**Why:**
+- Consistent with the rest of the frontend stack (React + Tailwind)
+- Matches Marlo brand (black background, lime green accent)
+- Required for Meta app review — must be a real, publicly accessible URL
+- `docs/privacy.html` (old placeholder) has been deleted — it was never deployed
+
+**Content requirements met for Meta app review:**
+- Instagram permissions explained (`instagram_business_basic`, `instagram_business_content_publish`, `instagram_business_manage_insights`)
+- Data collection, sharing, retention, deletion described
+- User rights (access, correction, deletion, portability) listed
+- Contact email: `privacy@marlo021.ai`
+- Deauthorize callback URL: `https://api.marlo021.ai/integrations/deauthorize/instagram`
+- Data deletion URL: `https://api.marlo021.ai/integrations/delete/instagram`
+
+**Status:** Live at `https://marlo021.ai/privacy` as of May 13, 2026.
