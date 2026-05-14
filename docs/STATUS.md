@@ -19,6 +19,7 @@
 - fal.ai image generation works
 - Stripe 14-day trial starts on signup
 - Privacy policy page live at `marlo021.ai/privacy`
+- Terms of Service page live at `marlo021.ai/terms`
 
 ---
 
@@ -67,23 +68,26 @@
 
 ## What's Pending (not blocked, just not done) ⏳
 
-- Upload app icon to new Meta app (1024x1024, failed yesterday due to Meta bug — retry)
+- Upload app icon to new Meta app (1024x1024 — failed May 13 due to Meta upload bug, retry)
+- Fill Terms of Service URL in both Meta apps: `https://marlo021.ai/terms`
 - Stripe switch to live mode
 - Meta app submission for `instagram_business_content_publish` Advanced Access
 - Find 3-5 beta users (target: Seattle restaurants or pet services)
 
 ---
 
-## Recent Fixes (May 13, 2026)
+## Recent Changes (May 13, 2026)
 
-| Fix | File | Description |
+| Change | File | Description |
 |---|---|---|
 | Privacy page | `frontend/src/pages/Privacy.tsx` | New page at /privacy, Tailwind CSS, Meta app review compliant |
-| Privacy route | `frontend/src/App.tsx` | Added `/privacy` route |
+| Terms page | `frontend/src/pages/Terms.tsx` | New page at /terms, same brand style as Privacy |
+| Routes | `frontend/src/App.tsx` | Added /privacy and /terms routes |
 | Instagram Login OAuth | `backend/integrations/oauth.py` | New connect/callback/deauthorize/delete endpoints |
 | executor Instagram | `backend/agent/executor.py` | Instagram posting now uses graph.instagram.com |
 | Onboarding email 2 | `backend/email_system/templates.py` | "Connect Instagram" replaces "Connect Facebook & Instagram" |
 | Email subject lines | `backend/email_system/sender.py` | Subject lines updated to reflect Instagram Login flow |
+| Deleted | `docs/privacy.html`, `docs/terms.html` | Old placeholder files removed |
 
 ## Recent Fixes (May 8, 2026)
 

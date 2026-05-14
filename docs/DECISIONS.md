@@ -133,22 +133,23 @@ Each decision recorded here explains WHAT we chose and WHY. Future developers (h
 
 ---
 
-## ADR-009: Privacy policy as React page, not static HTML
+## ADR-009: Legal pages as React components, not static HTML
 
-**Decision:** Privacy policy lives at `frontend/src/pages/Privacy.tsx`, served at `marlo021.ai/privacy`.
+**Decision:** Privacy Policy and Terms of Service live as React pages in the frontend, not static HTML files.
 
 **Why:**
 - Consistent with the rest of the frontend stack (React + Tailwind)
 - Matches Marlo brand (black background, lime green accent)
-- Required for Meta app review — must be a real, publicly accessible URL
-- `docs/privacy.html` (old placeholder) has been deleted — it was never deployed
+- Both pages required for Meta app review — must be real, publicly accessible URLs
+- Old placeholders (`docs/privacy.html`, `docs/terms.html`) were never deployed and have been deleted
 
-**Content requirements met for Meta app review:**
-- Instagram permissions explained (`instagram_business_basic`, `instagram_business_content_publish`, `instagram_business_manage_insights`)
-- Data collection, sharing, retention, deletion described
-- User rights (access, correction, deletion, portability) listed
-- Contact email: `privacy@marlo021.ai`
-- Deauthorize callback URL: `https://api.marlo021.ai/integrations/deauthorize/instagram`
-- Data deletion URL: `https://api.marlo021.ai/integrations/delete/instagram`
+**Pages:**
+- Privacy Policy → `frontend/src/pages/Privacy.tsx` → `https://marlo021.ai/privacy`
+- Terms of Service → `frontend/src/pages/Terms.tsx` → `https://marlo021.ai/terms`
 
-**Status:** Live at `https://marlo021.ai/privacy` as of May 13, 2026.
+**Meta app fields to fill (both apps):**
+- Privacy Policy URL: `https://marlo021.ai/privacy`
+- Terms of Service URL: `https://marlo021.ai/terms`
+- Location: App settings → Basic in Meta Developer Console
+
+**Status:** Both pages live as of May 13, 2026.

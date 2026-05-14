@@ -31,6 +31,7 @@
 **Steps:**
 - [ ] Go to `developers.facebook.com/apps/918827927853545/settings/basic/`
 - [ ] Upload `logo1024.jpg` as app icon
+- [ ] Fill Terms of Service URL: `https://marlo021.ai/terms` (Privacy URL already filled)
 - [ ] Save
 
 ### [P0] Meta app review submission
@@ -85,6 +86,7 @@
 | Date | Task |
 |---|---|
 | May 13 | Privacy policy page live at marlo021.ai/privacy |
+| May 13 | Terms of Service page live at marlo021.ai/terms |
 | May 13 | New Business-type Meta app created (App ID: 918827927853545) |
 | May 13 | Instagram Login product added to new Meta app |
 | May 13 | Redirect URI configured in Meta Developer Console |
@@ -93,6 +95,7 @@
 | May 13 | Onboarding email 2 updated — "Connect Instagram" no Facebook required |
 | May 13 | Email subject lines updated to reflect Instagram Login flow |
 | May 13 | INSTAGRAM_APP_ID + INSTAGRAM_APP_SECRET added to Railway |
+| May 13 | Deleted docs/privacy.html and docs/terms.html (old placeholders) |
 | May 8 | Fix approval_router status check (pending vs pending_approval) |
 | May 8 | Fix debug_router idempotency (clear pending before regenerating) |
 | May 8 | Scheduler reads user's kickoff day (not hardcoded Sunday) |
