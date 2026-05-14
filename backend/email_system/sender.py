@@ -90,7 +90,7 @@ class EmailSender:
             subject = (
                 "Skipped Google — let's connect Instagram next (Step 2 of 4)"
                 if skipped_platform == "google"
-                else "✅ Google connected! Now let's do Instagram (Step 2 of 4)"
+                else "✅ Google connected! Now let's connect Instagram (Step 2 of 4)"
             )
             email_type = "onboarding_2"
 
