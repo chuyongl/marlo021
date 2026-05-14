@@ -33,7 +33,9 @@ GOOGLE_SCOPES = " ".join([
     "openid", "email"
 ])
 
-INSTAGRAM_SCOPES = "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights"
+# Must match Meta Console embed URL exactly — includes manage_messages and manage_comments
+INSTAGRAM_SCOPES = "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish,instagram_business_manage_insights"
+
 META_SCOPES = "pages_show_list,pages_read_engagement,instagram_basic,instagram_content_publish,instagram_manage_insights"
 
 oauth_states: dict = {}
@@ -187,7 +189,7 @@ async def connect_instagram(business_id: str):
     }
     auth_url = "https://www.instagram.com/oauth/authorize?" + urllib.parse.urlencode(params)
     print(f"[Instagram Connect] redirect_uri={INSTAGRAM_REDIRECT_URI}")
-    print(f"[Instagram Connect] auth_url={auth_url}")
+    print(f"[Instagram Connect] scope={INSTAGRAM_SCOPES}")
     return RedirectResponse(auth_url)
 
 
@@ -203,12 +205,9 @@ async def instagram_callback(
 ):
     print(f"[Instagram Callback] Full URL: {request.url}")
     print(f"[Instagram Callback] code={code[:20] if code else None}...")
-    print(f"[Instagram Callback] state={state}")
-    print(f"[Instagram Callback] error={error}")
-    print(f"[Instagram Callback] error_message={error_message}")
+    print(f"[Instagram Callback] error={error} / {error_code} / {error_message}")
 
     if error or error_code:
-        print(f"[Instagram Callback] ERROR from Instagram: {error} / {error_code} / {error_message}")
         return HTMLResponse(f"""
         <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
         <div style="font-size:48px">❌</div>
@@ -219,7 +218,6 @@ async def instagram_callback(
         """)
 
     if not code or not state:
-        print(f"[Instagram Callback] Missing code or state")
         raise HTTPException(status_code=400, detail="Missing code or state")
 
     state_data = oauth_states.pop(state, None)
@@ -234,7 +232,6 @@ async def instagram_callback(
         </body></html>
         """)
 
-    # Use hardcoded HTTPS redirect_uri — Railway strips https internally causing mismatch
     print(f"[Instagram Callback] Exchanging code, redirect_uri={INSTAGRAM_REDIRECT_URI}")
 
     # Step 1: Exchange code for short-lived access token
@@ -255,7 +252,6 @@ async def instagram_callback(
 
     if "error" in tokens or "access_token" not in tokens:
         error_msg = tokens.get("error_message") or tokens.get("error", {}).get("message", "Token exchange failed")
-        print(f"[Instagram Callback] Token exchange FAILED: {tokens}")
         return HTMLResponse(f"""
         <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
         <div style="font-size:48px">❌</div>
