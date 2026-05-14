@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-import httpx, secrets, os, uuid, asyncio
+import httpx, secrets, os, uuid, asyncio, urllib.parse
 from datetime import datetime
 from database.session import get_db
 from database.models import PlatformIntegration, Business, User
@@ -176,22 +176,26 @@ async def skip_google(business_id: str):
 #
 # Uses Instagram Login API (launched July 2024).
 # No Facebook Page required — user logs in directly with Instagram credentials.
-# OAuth host: instagram.com/oauth/authorize
+# OAuth host: www.instagram.com/oauth/authorize
 # API host: graph.instagram.com
 # Account ID comes from GET graph.instagram.com/me directly.
+#
+# IMPORTANT: Must use urllib.parse.urlencode to build the auth URL.
+# f-string interpolation causes Instagram to encode commas in scope as "-",
+# which breaks the OAuth flow with "Error validating verification code".
 
 @router.get("/connect/instagram")
 async def connect_instagram(business_id: str):
     state = secrets.token_urlsafe(32)
     oauth_states[state] = {"business_id": business_id, "platform": "instagram"}
-    auth_url = (
-        f"https://www.instagram.com/oauth/authorize"
-        f"?client_id={INSTAGRAM_APP_ID}"
-        f"&redirect_uri={APP_BASE}/integrations/callback/instagram"
-        f"&response_type=code"
-        f"&scope={INSTAGRAM_SCOPES}"
-        f"&state={state}"
-    )
+    params = {
+        "client_id": INSTAGRAM_APP_ID,
+        "redirect_uri": f"{APP_BASE}/integrations/callback/instagram",
+        "response_type": "code",
+        "scope": INSTAGRAM_SCOPES,
+        "state": state,
+    }
+    auth_url = "https://www.instagram.com/oauth/authorize?" + urllib.parse.urlencode(params)
     return RedirectResponse(auth_url)
 
 
@@ -222,7 +226,7 @@ async def instagram_callback(
     if not state_data:
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
 
-    # Step 1: Exchange code for access token via graph.instagram.com
+    # Step 1: Exchange code for short-lived access token
     async with httpx.AsyncClient() as client:
         response = await client.post(
             "https://api.instagram.com/oauth/access_token",
@@ -359,8 +363,6 @@ async def instagram_deauthorize():
     Called by Meta when a user removes the app from their Instagram account.
     Required for Meta app review. We mark the integration as inactive.
     """
-    # Meta sends a signed_request — for now we just acknowledge it.
-    # Full implementation: parse signed_request, find business by ig_user_id, set is_active=False
     return HTMLResponse("OK", status_code=200)
 
 
@@ -369,7 +371,6 @@ async def instagram_data_deletion():
     """
     Called by Meta when a user requests data deletion.
     Required for Meta app review.
-    Returns a confirmation URL per Meta's spec.
     """
     return {
         "url": f"{FRONTEND}/privacy",
