@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse, HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 import httpx, secrets, os, uuid, asyncio, urllib.parse
@@ -30,10 +30,7 @@ GOOGLE_SCOPES = " ".join([
     "openid", "email"
 ])
 
-# Instagram Login scopes (graph.instagram.com — no Facebook Page required)
 INSTAGRAM_SCOPES = "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights"
-
-# Legacy Facebook Login scopes — kept for reference, no longer used for new connections
 META_SCOPES = "pages_show_list,pages_read_engagement,instagram_basic,instagram_content_publish,instagram_manage_insights"
 
 oauth_states: dict = {}
@@ -172,35 +169,29 @@ async def skip_google(business_id: str):
     """)
 
 
-# ── Instagram Login (NEW — replaces Facebook Login for Instagram) ─────────────
-#
-# Uses Instagram Login API (launched July 2024).
-# No Facebook Page required — user logs in directly with Instagram credentials.
-# OAuth host: www.instagram.com/oauth/authorize
-# API host: graph.instagram.com
-# Account ID comes from GET graph.instagram.com/me directly.
-#
-# IMPORTANT: Must use urllib.parse.urlencode to build the auth URL.
-# f-string interpolation causes Instagram to encode commas in scope as "-",
-# which breaks the OAuth flow with "Error validating verification code".
+# ── Instagram Login ───────────────────────────────────────────────────────────
 
 @router.get("/connect/instagram")
 async def connect_instagram(business_id: str):
     state = secrets.token_urlsafe(32)
     oauth_states[state] = {"business_id": business_id, "platform": "instagram"}
+    redirect_uri = f"{APP_BASE}/integrations/callback/instagram"
     params = {
         "client_id": INSTAGRAM_APP_ID,
-        "redirect_uri": f"{APP_BASE}/integrations/callback/instagram",
+        "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": INSTAGRAM_SCOPES,
         "state": state,
     }
     auth_url = "https://www.instagram.com/oauth/authorize?" + urllib.parse.urlencode(params)
+    print(f"[Instagram Connect] redirect_uri={redirect_uri}")
+    print(f"[Instagram Connect] auth_url={auth_url}")
     return RedirectResponse(auth_url)
 
 
 @router.get("/callback/instagram")
 async def instagram_callback(
+    request: Request,
     code: str = None,
     state: str = None,
     error: str = None,
@@ -208,8 +199,17 @@ async def instagram_callback(
     error_message: str = None,
     db: AsyncSession = Depends(get_db)
 ):
-    # User denied or error from Instagram
+    # Log everything we received
+    print(f"[Instagram Callback] Full URL: {request.url}")
+    print(f"[Instagram Callback] code={code[:20] if code else None}...")
+    print(f"[Instagram Callback] state={state}")
+    print(f"[Instagram Callback] error={error}")
+    print(f"[Instagram Callback] error_code={error_code}")
+    print(f"[Instagram Callback] error_message={error_message}")
+    print(f"[Instagram Callback] all params={dict(request.query_params)}")
+
     if error or error_code:
+        print(f"[Instagram Callback] ERROR from Instagram: {error} / {error_code} / {error_message}")
         return HTMLResponse(f"""
         <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
         <div style="font-size:48px">❌</div>
@@ -220,11 +220,23 @@ async def instagram_callback(
         """)
 
     if not code or not state:
+        print(f"[Instagram Callback] Missing code or state")
         raise HTTPException(status_code=400, detail="Missing code or state")
 
     state_data = oauth_states.pop(state, None)
     if not state_data:
-        raise HTTPException(status_code=400, detail="Invalid OAuth state")
+        print(f"[Instagram Callback] State not found in oauth_states. Available states: {list(oauth_states.keys())}")
+        return HTMLResponse("""
+        <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
+        <div style="font-size:48px">❌</div>
+        <h2 style="color:#cc0000">Instagram connection failed</h2>
+        <p style="color:#666">Session expired. Please try again.</p>
+        <p style="color:#999;font-size:14px">Please close this tab and try again.</p>
+        </body></html>
+        """)
+
+    redirect_uri = f"{APP_BASE}/integrations/callback/instagram"
+    print(f"[Instagram Callback] Exchanging code, redirect_uri={redirect_uri}")
 
     # Step 1: Exchange code for short-lived access token
     async with httpx.AsyncClient() as client:
@@ -234,14 +246,17 @@ async def instagram_callback(
                 "client_id": INSTAGRAM_APP_ID,
                 "client_secret": INSTAGRAM_APP_SECRET,
                 "grant_type": "authorization_code",
-                "redirect_uri": f"{APP_BASE}/integrations/callback/instagram",
+                "redirect_uri": redirect_uri,
                 "code": code,
             }
         )
         tokens = response.json()
 
+    print(f"[Instagram Callback] Token exchange response: {tokens}")
+
     if "error" in tokens or "access_token" not in tokens:
         error_msg = tokens.get("error_message") or tokens.get("error", {}).get("message", "Token exchange failed")
+        print(f"[Instagram Callback] Token exchange FAILED: {tokens}")
         return HTMLResponse(f"""
         <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#f9f9f9">
         <div style="font-size:48px">❌</div>
@@ -253,6 +268,7 @@ async def instagram_callback(
 
     short_lived_token = tokens["access_token"]
     ig_user_id = str(tokens.get("user_id", ""))
+    print(f"[Instagram Callback] Got short-lived token, user_id={ig_user_id}")
 
     # Step 2: Exchange for long-lived token (60 days)
     async with httpx.AsyncClient() as client:
@@ -266,6 +282,7 @@ async def instagram_callback(
         )
         ll_tokens = ll_response.json()
 
+    print(f"[Instagram Callback] Long-lived token response: {ll_tokens}")
     long_lived_token = ll_tokens.get("access_token", short_lived_token)
 
     # Step 3: Get Instagram username from /me
@@ -279,6 +296,7 @@ async def instagram_callback(
         )
         me_data = me_response.json()
 
+    print(f"[Instagram Callback] /me response: {me_data}")
     ig_account_id = me_data.get("id") or ig_user_id
     ig_username = me_data.get("username", "")
     print(f"[Instagram Login] Connected: @{ig_username} (ID: {ig_account_id})")
@@ -286,7 +304,6 @@ async def instagram_callback(
     from security.encryption import encrypt_token
     from sqlalchemy import select, update
 
-    # Step 4: Upsert integration — store as platform="meta" for backward compat with executor
     existing_result = await db.execute(
         select(PlatformIntegration).where(
             PlatformIntegration.business_id == state_data["business_id"],
@@ -313,7 +330,6 @@ async def instagram_callback(
         )
         db.add(integration)
 
-    # Step 5: Advance onboarding to step 3
     await db.execute(
         update(Business)
         .where(Business.id == state_data["business_id"])
@@ -321,7 +337,6 @@ async def instagram_callback(
     )
     await db.commit()
 
-    # Step 6: Send onboarding email 3
     business_id_copy = state_data["business_id"]
     async def send_email_3():
         from database.session import AsyncSessionLocal
@@ -359,26 +374,18 @@ async def instagram_callback(
 
 @router.get("/deauthorize/instagram")
 async def instagram_deauthorize():
-    """
-    Called by Meta when a user removes the app from their Instagram account.
-    Required for Meta app review. We mark the integration as inactive.
-    """
     return HTMLResponse("OK", status_code=200)
 
 
 @router.get("/delete/instagram")
 async def instagram_data_deletion():
-    """
-    Called by Meta when a user requests data deletion.
-    Required for Meta app review.
-    """
     return {
         "url": f"{FRONTEND}/privacy",
         "confirmation_code": "marlo_data_deletion_confirmed"
     }
 
 
-# ── Meta (Legacy Facebook Login — kept but no longer used for new connections) ─
+# ── Meta (Legacy) ─────────────────────────────────────────────────────────────
 
 @router.get("/connect/meta")
 async def connect_meta(business_id: str):
@@ -395,10 +402,6 @@ async def connect_meta(business_id: str):
 
 
 async def _get_instagram_account_id(access_token: str) -> str | None:
-    """
-    Legacy helper for Facebook Login flow.
-    Fetches Instagram Business Account ID from linked Facebook Page.
-    """
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             "https://graph.facebook.com/v21.0/me/accounts",
@@ -408,23 +411,14 @@ async def _get_instagram_account_id(access_token: str) -> str | None:
             }
         )
         data = resp.json()
-
         if "error" in data:
             print(f"[Meta OAuth] /me/accounts error: {data['error']}")
             return None
-
         pages = data.get("data", [])
-        if not pages:
-            print("[Meta OAuth] No Facebook Pages found")
-            return None
-
         for page in pages:
             ig = page.get("instagram_business_account")
             if ig and ig.get("id"):
-                print(f"[Meta OAuth] Found IG account ID: {ig['id']} (page: {page.get('name')})")
                 return ig["id"]
-
-        print("[Meta OAuth] No Instagram Business Account linked to any page")
         return None
 
 
@@ -723,7 +717,6 @@ async def skip_mailchimp(business_id: str):
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
 async def _advance_to_step_4(business_id: str, skipped: bool = False, connected: bool = False):
-    """Update onboarding step to 4 and send email 4."""
     async def send_email_4():
         from database.session import AsyncSessionLocal
         from email_system.sender import email_sender
@@ -776,7 +769,6 @@ async def _advance_to_step_4(business_id: str, skipped: bool = False, connected:
 
 
 async def _schedule_email4_reminder(business_id: str):
-    """Wait 72 hours. If still on step 4, send reminder."""
     await asyncio.sleep(72 * 60 * 60)
 
     from database.session import AsyncSessionLocal
@@ -795,7 +787,6 @@ async def _schedule_email4_reminder(business_id: str):
             return
 
         first_name = (usr.full_name or "").split()[0] or "there"
-        print(f"[Reminder] Sending email 4 reminder to {usr.email}")
         await email_sender.send_onboarding_step(
             step=4,
             business_id=business_id,
