@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from fastapi.responses import FileResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -8,6 +9,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 import os
 import sentry_sdk
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 load_dotenv(dotenv_path="../.env")
 
@@ -20,6 +22,9 @@ sentry_sdk.init(
 limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(title="Marlo API", version="0.1.0")
+
+# Trust Railway's proxy headers so request.url uses https not http
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
