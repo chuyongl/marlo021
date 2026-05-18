@@ -16,9 +16,11 @@ class AnalyticsAgent:
         from database.models import AgentAction, PlatformIntegration, Business, User
         from database.models import CampaignMetric
         from sqlalchemy import select
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
-        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+        # Use naive UTC datetime to match created_at column (which uses datetime.utcnow())
+        # ADR-005: created_at is naive, so comparisons must use naive datetimes
+        week_ago = datetime.utcnow() - timedelta(days=7)
 
         # Load business
         biz_result = await db.execute(select(Business).where(Business.id == business_id))
@@ -81,7 +83,6 @@ class AnalyticsAgent:
                 account = raw_insights.get("account_insights", {})
                 recent_media = raw_insights.get("recent_posts", {}).get("data", [])
 
-                # Aggregate account metrics
                 total_reach = 0
                 total_impressions = 0
                 for entry in account.get("data", []):
@@ -90,7 +91,6 @@ class AnalyticsAgent:
                     elif entry.get("name") == "impressions":
                         total_impressions += sum(v.get("value", 0) for v in entry.get("values", []))
 
-                # Per-post engagement
                 post_details = []
                 for post in recent_media[:7]:
                     post_insights = {}
@@ -234,7 +234,6 @@ Be specific and data-driven. If data is missing for a field, say so honestly rat
                 "one_thing_to_watch": "Post engagement rate on the first week of content"
             }
 
-        # Attach raw stats for template rendering
         insights["_raw"] = {
             "posting_stats": posting_stats,
             "instagram": instagram_data,
