@@ -90,7 +90,6 @@ async def _build_image_guide(posts: list, business_dict: dict, strategy_summary:
     for post in posts:
         day = post.get("scheduled_day", "")
         caption = post.get("caption", "")
-        platform = post.get("platform", "instagram")
 
         prompt = f"""You're helping a small business owner understand what kind of photo to take for a social media post.
 
@@ -121,7 +120,7 @@ Return ONLY the one sentence, nothing else."""
             )
             description = suggestion.strip().strip('"')
         except Exception:
-            description = f"Show a real, unposed moment from your business day — authenticity always outperforms polish."
+            description = "Show a real, unposed moment from your business day — authenticity always outperforms polish."
 
         image_guide.append({"day": day, "description": description})
 
@@ -142,6 +141,8 @@ async def weekly_content_generation():
         import uuid as _uuid
 
         utc_now = datetime.now(timezone.utc)
+        # Use naive UTC for created_at comparisons (ADR-005: created_at is naive)
+        utc_now_naive = datetime.utcnow()
 
         async with AsyncSessionLocal() as db:
             result = await db.execute(
@@ -157,13 +158,13 @@ async def weekly_content_generation():
                     local_hour    = get_local_hour(biz, utc_now)
                     local_weekday = get_local_weekday(biz, utc_now)
 
-                    # Fire on user's chosen kickoff day at 9pm local, default Sunday
                     kickoff_day = biz.briefing_time or "Sunday"
                     kickoff_weekday = DAY_TO_WEEKDAY.get(kickoff_day, 6)
                     if local_weekday != kickoff_weekday or local_hour != 21:
                         continue
 
-                    week_start = utc_now - timedelta(days=(utc_now.weekday() + 1) % 7)
+                    # Use naive datetime for created_at comparison
+                    week_start = utc_now_naive - timedelta(days=(utc_now_naive.weekday() + 1) % 7)
                     existing = await db.execute(
                         select(AgentAction).where(
                             AgentAction.business_id == biz.id,
@@ -271,12 +272,14 @@ async def weekly_content_generation():
 
                     await db.commit()
 
-                    week_ago = utc_now - timedelta(days=7)
+                    # Use naive datetime for created_at comparison
+                    week_ago_naive = utc_now_naive - timedelta(days=7)
+                    yesterday_naive = utc_now_naive - timedelta(days=1)
                     past_result = await db.execute(
                         select(AgentAction).where(
                             AgentAction.business_id == biz.id,
-                            AgentAction.created_at >= week_ago,
-                            AgentAction.created_at < utc_now - timedelta(days=1),
+                            AgentAction.created_at >= week_ago_naive,
+                            AgentAction.created_at < yesterday_naive,
                         )
                     )
                     past = past_result.scalars().all()
@@ -457,7 +460,8 @@ async def expire_stale_actions():
         from database.models import AgentAction
         from sqlalchemy import update, and_
 
-        cutoff = datetime.now(timezone.utc) - timedelta(days=3)
+        # Use naive UTC for created_at comparison (ADR-005: created_at is naive)
+        cutoff = datetime.utcnow() - timedelta(days=3)
         async with AsyncSessionLocal() as db:
             result = await db.execute(
                 update(AgentAction)
@@ -615,10 +619,17 @@ async def subscription_health_check():
             for biz in result.scalars().all():
                 try:
                     sub = await stripe_client.get_subscription(biz.subscription_id)
-                    if sub and sub.get("status") in ("canceled", "unpaid", "incomplete_expired"):
+                    if not sub:
+                        continue
+                    # Handle both Stripe SDK objects and dicts
+                    try:
+                        status = sub["status"] if isinstance(sub, dict) else getattr(sub, "status", None)
+                    except Exception:
+                        status = None
+                    if status in ("canceled", "unpaid", "incomplete_expired"):
                         biz.subscription_id = None
                         await db.commit()
-                        logger.info(f"[Scheduler] Deactivated {biz.name} (Stripe: {sub.get('status')})")
+                        logger.info(f"[Scheduler] Deactivated {biz.name} (Stripe: {status})")
                 except Exception as e:
                     logger.error(f"[Scheduler] Subscription health error for {biz.id}: {e}")
 
