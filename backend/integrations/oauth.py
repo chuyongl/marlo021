@@ -33,7 +33,7 @@ GOOGLE_SCOPES = " ".join([
     "openid", "email"
 ])
 
-# Must match Meta Console embed URL exactly — includes manage_messages and manage_comments
+# Must match Meta Console embed URL exactly
 INSTAGRAM_SCOPES = "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish,instagram_business_manage_insights"
 
 META_SCOPES = "pages_show_list,pages_read_engagement,instagram_basic,instagram_content_publish,instagram_manage_insights"
@@ -204,7 +204,7 @@ async def instagram_callback(
     db: AsyncSession = Depends(get_db)
 ):
     print(f"[Instagram Callback] Full URL: {request.url}")
-    print(f"[Instagram Callback] code={code[:20] if code else None}...")
+    print(f"[Instagram Callback] raw code={code[:30] if code else None}...")
     print(f"[Instagram Callback] error={error} / {error_code} / {error_message}")
 
     if error or error_code:
@@ -219,6 +219,10 @@ async def instagram_callback(
 
     if not code or not state:
         raise HTTPException(status_code=400, detail="Missing code or state")
+
+    # Clean code — Instagram sometimes appends #_ or other fragments
+    code = code.split("#")[0].strip()
+    print(f"[Instagram Callback] cleaned code={code[:30]}...")
 
     state_data = oauth_states.pop(state, None)
     if not state_data:
