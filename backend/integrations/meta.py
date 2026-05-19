@@ -1,4 +1,5 @@
 import httpx
+import asyncio
 from datetime import datetime, timedelta
 
 class MetaIntegration:
@@ -10,7 +11,6 @@ class MetaIntegration:
         try:
             self.access_token = decrypt_token(access_token)
         except Exception:
-            # If decryption fails, assume it's already plaintext (e.g. in tests)
             self.access_token = access_token
         self.ad_account_id = (ad_account_id or "").replace("act_", "")
 
@@ -58,7 +58,7 @@ class MetaIntegration:
     async def post_to_instagram(self, ig_account_id: str, image_url: str, caption: str) -> dict:
         """
         Post to Instagram using Instagram Login API (graph.instagram.com).
-        Requires a long-lived token from Instagram Login flow.
+        Two-step process: create container → wait for ready → publish.
         """
         if not image_url:
             return {"error": "No image_url provided — Instagram requires an image to post"}
@@ -70,7 +70,8 @@ class MetaIntegration:
         print(f"[MetaIntegration] image_url={image_url}")
         print(f"[MetaIntegration] caption={caption[:80]}...")
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+
             # Step 1: Create media container
             container_resp = await client.post(
                 f"{self.IG_BASE_URL}/{ig_account_id}/media",
@@ -86,12 +87,34 @@ class MetaIntegration:
             if "id" not in container_data:
                 return {"error": "Container creation failed", "details": container_data}
 
-            # Step 2: Publish the container
+            creation_id = container_data["id"]
+
+            # Step 2: Poll until container is ready (max 30 seconds)
+            for attempt in range(6):
+                await asyncio.sleep(5)
+                status_resp = await client.get(
+                    f"{self.IG_BASE_URL}/{creation_id}",
+                    params={
+                        "access_token": self.access_token,
+                        "fields": "status_code",
+                    }
+                )
+                status_data = status_resp.json()
+                status_code = status_data.get("status_code", "")
+                print(f"[MetaIntegration] Container status ({attempt+1}/6): {status_code}")
+
+                if status_code == "FINISHED":
+                    break
+                elif status_code == "ERROR":
+                    return {"error": "Container processing failed", "details": status_data}
+                # else IN_PROGRESS or PUBLISHED — keep waiting
+
+            # Step 3: Publish
             publish_resp = await client.post(
                 f"{self.IG_BASE_URL}/{ig_account_id}/media_publish",
                 params={
                     "access_token": self.access_token,
-                    "creation_id": container_data["id"],
+                    "creation_id": creation_id,
                 }
             )
             publish_data = publish_resp.json()
