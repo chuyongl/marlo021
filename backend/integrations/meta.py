@@ -3,10 +3,16 @@ from datetime import datetime, timedelta
 
 class MetaIntegration:
     BASE_URL = "https://graph.facebook.com/v21.0"
+    IG_BASE_URL = "https://graph.instagram.com/v21.0"
 
     def __init__(self, access_token: str, ad_account_id: str):
-        self.access_token = access_token
-        self.ad_account_id = ad_account_id.replace("act_", "")
+        from security.encryption import decrypt_token
+        try:
+            self.access_token = decrypt_token(access_token)
+        except Exception:
+            # If decryption fails, assume it's already plaintext (e.g. in tests)
+            self.access_token = access_token
+        self.ad_account_id = (ad_account_id or "").replace("act_", "")
 
     async def get_campaign_insights(self, days_back: int = 7) -> list:
         async with httpx.AsyncClient() as client:
@@ -50,32 +56,53 @@ class MetaIntegration:
         return campaigns
 
     async def post_to_instagram(self, ig_account_id: str, image_url: str, caption: str) -> dict:
-        async with httpx.AsyncClient() as client:
-            container = await client.post(
-                f"{self.BASE_URL}/{ig_account_id}/media",
+        """
+        Post to Instagram using Instagram Login API (graph.instagram.com).
+        Requires a long-lived token from Instagram Login flow.
+        """
+        if not image_url:
+            return {"error": "No image_url provided — Instagram requires an image to post"}
+
+        if not ig_account_id:
+            return {"error": "No ig_account_id provided"}
+
+        print(f"[MetaIntegration] Posting to Instagram account {ig_account_id}")
+        print(f"[MetaIntegration] image_url={image_url}")
+        print(f"[MetaIntegration] caption={caption[:80]}...")
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Step 1: Create media container
+            container_resp = await client.post(
+                f"{self.IG_BASE_URL}/{ig_account_id}/media",
                 params={
                     "access_token": self.access_token,
                     "image_url": image_url,
-                    "caption": caption
+                    "caption": caption,
                 }
             )
-            container_data = container.json()
+            container_data = container_resp.json()
+            print(f"[MetaIntegration] Container response: {container_data}")
+
             if "id" not in container_data:
                 return {"error": "Container creation failed", "details": container_data}
 
-            publish = await client.post(
-                f"{self.BASE_URL}/{ig_account_id}/media_publish",
+            # Step 2: Publish the container
+            publish_resp = await client.post(
+                f"{self.IG_BASE_URL}/{ig_account_id}/media_publish",
                 params={
                     "access_token": self.access_token,
-                    "creation_id": container_data["id"]
+                    "creation_id": container_data["id"],
                 }
             )
-        return publish.json()
+            publish_data = publish_resp.json()
+            print(f"[MetaIntegration] Publish response: {publish_data}")
+
+        return publish_data
 
     async def get_instagram_insights(self, ig_account_id: str, days_back: int = 7) -> dict:
         async with httpx.AsyncClient() as client:
             account = await client.get(
-                f"{self.BASE_URL}/{ig_account_id}/insights",
+                f"{self.IG_BASE_URL}/{ig_account_id}/insights",
                 params={
                     "access_token": self.access_token,
                     "metric": "reach,impressions,follower_count,profile_views",
@@ -85,7 +112,7 @@ class MetaIntegration:
                 }
             )
             media = await client.get(
-                f"{self.BASE_URL}/{ig_account_id}/media",
+                f"{self.IG_BASE_URL}/{ig_account_id}/media",
                 params={
                     "access_token": self.access_token,
                     "fields": "id,caption,media_type,timestamp,like_count,comments_count,"
