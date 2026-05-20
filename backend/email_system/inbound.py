@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Request, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from database.session import AsyncSessionLocal
-from database.models import Business, User, EmailLog, UserPhoto
-from sqlalchemy import select
-import json, base64, uuid, os
+from database.models import Business, User, EmailLog, UserPhoto, AgentAction
+from sqlalchemy import select, desc
+import base64, uuid, os, asyncio
 from datetime import datetime
 import httpx
 
@@ -11,18 +11,14 @@ router = APIRouter(prefix="/email", tags=["email-inbound"])
 
 
 def clean_subject(text: str, max_len: int = 60) -> str:
-    """Strip newlines and extra whitespace from email subject lines."""
     return " ".join(text[:max_len * 2].split())[:max_len]
 
 
 @router.post("/inbound")
 async def receive_inbound_email(request: Request, background_tasks: BackgroundTasks):
     payload = await request.json()
-
-    from_email = payload.get("From", "").lower()
     text_body = payload.get("TextBody", "")
     attachments = payload.get("Attachments", [])
-
     to_full = payload.get("OriginalRecipient", payload.get("To", ""))
     business_id = extract_business_id_from_to(to_full)
 
@@ -32,7 +28,7 @@ async def receive_inbound_email(request: Request, background_tasks: BackgroundTa
     background_tasks.add_task(
         process_inbound_email,
         business_id=business_id,
-        from_email=from_email,
+        from_email=payload.get("From", "").lower(),
         text_body=text_body.strip(),
         attachments=attachments
     )
@@ -40,9 +36,6 @@ async def receive_inbound_email(request: Request, background_tasks: BackgroundTa
 
 
 def extract_business_id_from_to(to_address: str) -> str:
-    """Extract business ID from reply+BUSINESS_ID@domain format.
-    Returns empty string if not found or not a valid UUID.
-    """
     try:
         local_part = to_address.split("@")[0]
         if "+" in local_part:
@@ -54,12 +47,7 @@ def extract_business_id_from_to(to_address: str) -> str:
     return ""
 
 
-async def process_inbound_email(
-    business_id: str,
-    from_email: str,
-    text_body: str,
-    attachments: list
-):
+async def process_inbound_email(business_id: str, from_email: str, text_body: str, attachments: list):
     async with AsyncSessionLocal() as db:
         biz_result = await db.execute(select(Business).where(Business.id == business_id))
         business = biz_result.scalar_one_or_none()
@@ -71,239 +59,39 @@ async def process_inbound_email(
         if not user:
             return
 
-        image_attachments = [
-            a for a in attachments
-            if a.get("ContentType", "").startswith("image/")
-        ]
+        image_attachments = [a for a in attachments if a.get("ContentType", "").startswith("image/")]
 
         if image_attachments:
-            await handle_photo_upload(
-                business=business,
-                user=user,
-                attachments=image_attachments,
-                message_text=text_body,
-                db=db
-            )
+            await handle_photo_upload(business=business, user=user, attachments=image_attachments, message_text=text_body, db=db)
         else:
-            await handle_text_reply(
-                business=business,
-                user=user,
-                message=text_body,
-                db=db
-            )
+            await handle_text_reply(business=business, user=user, message=text_body, db=db)
 
 
 async def handle_text_reply(business, user, message: str, db: AsyncSession):
-    """Process a plain-text reply — route to onboarding handler or main agent."""
-    from email_system.sender import email_sender
-
-    first_name = (user.full_name or "there").split()[0]
-
-    # Step 4: collect business info
+    # Onboarding step 4
     if business.onboarding_step == 4:
         from email_system.onboarding_handler import process_onboarding_reply
         await process_onboarding_reply(str(business.id), message, db)
         return
 
-    # Steps 1-3: still in onboarding — answer setup questions with lightweight AI
+    # Steps 1-3
     if business.onboarding_step < 4:
-        await handle_onboarding_question(
-            business=business,
-            user=user,
-            first_name=first_name,
-            message=message,
-            db=db
-        )
+        await handle_onboarding_question(business=business, user=user, message=message, db=db)
         return
 
-    # Step 5+: fully onboarded
-    lower_msg = message.lower()
-
-    # Check for cancellation request
-    if "cancel my marlo021 subscription" in lower_msg:
+    # Cancellation
+    if "cancel my marlo021 subscription" in message.lower():
         await handle_cancellation(business=business, user=user, db=db)
         return
 
-    # Check for post revision instruction
-    revision_days = ["monday", "wednesday", "friday", "tuesday", "thursday", "saturday", "sunday"]
-    is_revision = any(
-        f"change {day}" in lower_msg or f"edit {day}" in lower_msg or f"rewrite {day}" in lower_msg
-        for day in revision_days
-    )
-    if is_revision:
-        await handle_post_revision(business=business, user=user, message=message, db=db)
-        return
-
-    # Full agent brain
-    from agent.brain import brain
-    from agent.executor import executor
-
-    try:
-        from agent.context_builder import context_builder
-        context = await context_builder.build_full_context(str(business.id), db)
-    except (ImportError, Exception):
-        context = {
-            "business_name": business.name,
-            "industry": business.industry,
-            "description": business.description or "",
-            "target_audience": business.target_audience or "",
-            "tone_of_voice": business.tone_of_voice or "",
-            "monthly_ad_budget": str(business.monthly_ad_budget or 300),
-        }
-
-    result = await brain.think(
-        user_message=message,
-        context=context,
-        business_id=str(business.id),
-        db=db
-    )
-
-    monthly_budget = float(business.monthly_ad_budget or 300)
-    pending_actions = []
-
-    for action in result.get("actions", []):
-        if action.get("requires_approval") or action.get("risk_level") in ("medium", "high"):
-            enriched = await executor.create_pending_action_with_tokens(
-                action, str(business.id), db
-            )
-            pending_actions.append(enriched)
-        else:
-            await executor.execute_action(action, str(business.id), monthly_budget, db)
-
-    summary = result.get("summary", "Done!")
-
-    if pending_actions:
-        from email_system.templates import base_template, approve_button, decline_button
-        base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
-        actions_html = f'<p style="font-size:15px;color:#1F2937;margin:0 0 20px 0;">{summary}</p>'
-        for a in pending_actions:
-            approve_url = f"{base_url}/actions/approve?token={a['approval_token']}"
-            decline_url = f"{base_url}/actions/decline?token={a['decline_token']}"
-            actions_html += f"""
-            <div style="margin-bottom:20px;">
-              <p style="font-size:14px;font-weight:600;color:#1F2937;margin:0 0 6px 0;">{a['title']}</p>
-              <p style="font-size:13px;color:#6B7280;margin:0 0 12px 0;">{a['description']}</p>
-              {approve_button("✓ Approve", approve_url)}
-              {decline_button("✗ Decline", decline_url)}
-            </div>"""
-        from email_system.templates import base_template
-        html = base_template(actions_html)
-        subject = f"Re: {clean_subject(summary)}"
-    else:
-        from email_system.templates import base_template
-        html = base_template(f'<p style="font-size:15px;color:#1F2937;">{summary}</p>')
-        subject = f"Re: {clean_subject(summary, 50)}"
-
-    await email_sender.send(
-        to_email=user.email,
-        subject=subject,
-        html_body=html,
-        email_type="reply_response",
-        business_id=str(business.id),
-        db=db,
-        reply_to=f"reply+{business.id}@reply.marlo021.ai"
-    )
+    # Main conversational reply
+    await handle_conversational_reply(business=business, user=user, message=message, db=db)
 
 
-async def handle_cancellation(business, user, db: AsyncSession):
-    """Handle subscription cancellation request."""
-    from email_system.sender import email_sender
-    from email_system.templates import base_template
-
-    first_name = (user.full_name or "there").split()[0]
-
-    # TODO: call Stripe API to cancel subscription when billing is set up
-    # For now, just log and send confirmation
-    print(f"[Cancellation] Business {business.id} requested cancellation")
-
-    html = base_template(f"""
-    <p style="font-size:16px;font-weight:600;color:#1F2937;margin:0 0 8px 0;">
-      We've received your cancellation request, {first_name}.
-    </p>
-    <p style="font-size:14px;color:#6B7280;margin:0 0 16px 0;line-height:1.7;">
-      Your Marlo021 subscription will be cancelled. You'll continue to have access
-      until the end of your current billing period.
-    </p>
-    <p style="font-size:14px;color:#6B7280;margin:0 0 16px 0;line-height:1.7;">
-      We'll send you a confirmation email within 24 hours.
-      If you change your mind, just reply to this email within the next 24 hours
-      and we'll keep your account active.
-    </p>
-    <p style="font-size:13px;color:#9CA3AF;margin:0;">
-      Thank you for trying Marlo. We hope to see you again.
-    </p>
-    """)
-
-    await email_sender.send(
-        to_email=user.email,
-        subject="Your Marlo021 subscription cancellation",
-        html_body=html,
-        email_type="cancellation",
-        business_id=str(business.id),
-        db=db,
-        reply_to=f"reply+{business.id}@reply.marlo021.ai"
-    )
-
-
-async def handle_onboarding_question(business, user, first_name: str, message: str, db: AsyncSession):
-    """Handle replies during onboarding steps 1-3 with lightweight AI."""
-    from agent.brain import brain
-    from email_system.sender import email_sender
-    from email_system.templates import base_template
-
-    frontend_url = os.getenv("FRONTEND_URL", "https://marlo021.ai")
-    step = business.onboarding_step
-
-    step_context = {
-        1: "The user is setting up Marlo and has just signed up. They need to connect Google Ads next.",
-        2: "The user has connected Google. They now need to connect Facebook & Instagram.",
-        3: "The user has connected Google and Instagram. They now need to connect Mailchimp.",
-    }.get(step, "The user is in the middle of setting up Marlo.")
-
-    system_prompt = f"""You are Marlo, a friendly AI marketing assistant helping a small business owner set up their account.
-
-{step_context}
-
-The user has replied to a setup email with a question or message. Answer helpfully and concisely.
-Keep your reply short (2-4 sentences max). Be warm and encouraging.
-If they're asking about why they need a Facebook Page, explain: Meta requires Instagram Business accounts to be linked to a Facebook Page before any third-party tool can post. The Page just needs to exist — it doesn't need posts or followers.
-If they're asking why they need a Business Instagram account: Instagram only allows third-party tools to post to Business or Creator accounts, not personal ones. Switching is free and keeps all their posts and followers.
-If they seem stuck or frustrated, reassure them and point them to: {frontend_url}/help
-Always end with a clear next action for them to take."""
-
-    result = await brain.think(
-        user_message=message,
-        context={"system_override": system_prompt},
-        business_id=str(business.id),
-        db=None,
-        model="claude-haiku-4-5-20251001"
-    )
-
-    reply_text = result.get("summary", "Happy to help! If you're stuck, just reply with your question and I'll walk you through it.")
-
-    html = base_template(f"""
-    <p style="font-size:15px;color:#1F2937;margin:0 0 16px 0;">Hi {first_name}!</p>
-    <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 16px 0;">{reply_text}</p>
-    <p style="font-size:13px;color:#6B7280;margin:0;">
-      Still stuck? Visit <a href="{frontend_url}/help" style="color:#2563EB;">{frontend_url}/help</a>
-      or just reply again and I'll help.
-    </p>
-    """)
-
-    await email_sender.send(
-        to_email=user.email,
-        subject="Re: your Marlo setup question",
-        html_body=html,
-        email_type="onboarding_reply",
-        business_id=str(business.id),
-        db=db,
-        reply_to=f"reply+{business.id}@reply.marlo021.ai"
-    )
-
-
-async def handle_post_revision(business, user, message: str, db: AsyncSession):
-    """Handle 'Change Monday post: make it funnier' style revision requests."""
-    from agent.brain import brain
+async def handle_conversational_reply(business, user, message: str, db: AsyncSession):
+    from agent.reply_handler import handle_reply
+    from agent.user_memory import load_memory, update_memory_async, initialize_memory_from_business
+    from agent.vendor_profiles import detect_vendor_type_from_industry
     from email_system.sender import email_sender
     from email_system.templates import base_template, approve_button, decline_button
 
@@ -318,191 +106,316 @@ async def handle_post_revision(business, user, message: str, db: AsyncSession):
         "description": business.description or "",
     }
 
-    revision_prompt = f"""A business owner wants to revise an Instagram post.
+    # Load or initialize memory
+    memory = load_memory(business)
+    if not memory.get("vendor_type"):
+        memory = await initialize_memory_from_business(business)
 
-Business: {business.name}
-Industry: {business_dict['industry']}
-Brand tone: {business_dict['tone_of_voice']}
-Target audience: {business_dict['target_audience']}
+    vendor_type = memory.get("vendor_type") or detect_vendor_type_from_industry(business.industry or "")
 
-Their revision request: "{message}"
+    # Find most recent pending post action
+    pending_action_dict = None
+    pending_action = None
+    try:
+        action_result = await db.execute(
+            select(AgentAction)
+            .where(
+                AgentAction.business_id == business.id,
+                AgentAction.status == "pending",
+                AgentAction.action_type.in_(["post_instagram", "post_facebook"]),
+            )
+            .order_by(desc(AgentAction.created_at))
+            .limit(1)
+        )
+        pending_action = action_result.scalar_one_or_none()
+        if pending_action:
+            pending_action_dict = {
+                "scheduled_day": pending_action.scheduled_day,
+                "action_parameters": pending_action.action_parameters,
+                "id": str(pending_action.id),
+                "approval_token": pending_action.approval_token,
+                "decline_token": pending_action.decline_token,
+            }
+    except Exception as e:
+        print(f"[Inbound] Error loading pending action: {e}")
 
-Write a revised ready-to-post Instagram caption that addresses their feedback.
-Then write 8-10 relevant hashtags separately.
-
-Return ONLY this format:
-CAPTION:
-[the caption here]
-
-HASHTAGS:
-[hashtags here]"""
-
-    raw = await brain.generate_content(
-        content_type="revised Instagram post",
+    # Call reply handler
+    result = await handle_reply(
+        user_message=message,
         business=business_dict,
-        context={},
-        instructions=revision_prompt
+        memory=memory,
+        vendor_type=vendor_type,
+        pending_action=pending_action_dict,
     )
 
-    caption = raw.strip()
-    hashtags_text = ""
-    if "HASHTAGS:" in raw.upper():
-        caption_part = raw[:raw.upper().find("HASHTAGS:")].strip()
-        if "CAPTION:" in caption_part.upper():
-            caption = caption_part[caption_part.upper().find("CAPTION:") + 8:].strip()
-        else:
-            caption = caption_part.strip()
-        hashtags_text = raw[raw.upper().find("HASHTAGS:") + 9:].strip()
-    elif "CAPTION:" in raw.upper():
-        caption = raw[raw.upper().find("CAPTION:") + 8:].strip()
+    response_text = result["response_text"]
+    revised_post = result.get("revised_post")
+    action_type = result.get("action_type", "conversation")
 
-    from agent.executor import executor
-    action = {
-        "type": "create_post",
-        "platform": "instagram",
-        "parameters": {
-            "caption": f"{caption}\n\n{hashtags_text}" if hashtags_text else caption,
+    # Async memory update — runs after we send the email, doesn't block
+    asyncio.create_task(update_memory_async(
+        business_id=str(business.id),
+        user_message=message,
+        assistant_response=result.get("raw_ai_response", response_text),
+        current_memory=memory,
+    ))
+
+    # Build email based on action type
+    if revised_post and action_type in ("post_revision", "new_post") and pending_action:
+        # Update existing pending action
+        params = dict(pending_action.action_parameters or {})
+        params["caption"] = revised_post["full_caption"]
+        params["hashtags"] = revised_post["hashtags"]
+        pending_action.action_parameters = params
+        await db.commit()
+
+        approve_url = f"{base_url}/actions/approve?token={pending_action.approval_token}"
+        decline_url = f"{base_url}/actions/decline?token={pending_action.decline_token}"
+
+        html = base_template(f"""
+        <p style="font-size:15px;color:#1F2937;margin:0 0 20px 0;">Here's your revised post:</p>
+        <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:20px;margin-bottom:20px;">
+          <p style="font-size:12px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:0.08em;margin:0 0 12px 0;">
+            📸 {pending_action.scheduled_day} post
+          </p>
+          <p style="font-size:14px;color:#1F2937;line-height:1.8;margin:0 0 8px 0;white-space:pre-wrap;">{revised_post['caption']}</p>
+          {f'<p style="font-size:12px;color:#9CA3AF;margin:0 0 16px 0;">{" ".join(revised_post["hashtags"][:10])}</p>' if revised_post.get("hashtags") else ""}
+          {approve_button(f"✓ Approve {pending_action.scheduled_day} post", approve_url)}
+          {decline_button("✗ Skip", decline_url)}
+        </div>
+        <p style="font-size:12px;color:#9CA3AF;margin:0;">{revised_post.get('follow_up', 'Want any changes? Just reply.')}</p>
+        """)
+        subject = f"Re: Your revised {pending_action.scheduled_day} post"
+
+    elif revised_post and action_type == "new_post":
+        from agent.executor import executor
+        action_dict = {
+            "type": "create_post",
             "platform": "instagram",
-        },
-        "reasoning": f"Revised post per owner request: {message[:100]}",
-        "risk_level": "medium",
-        "requires_approval": True
-    }
-    enriched = await executor.create_pending_action_with_tokens(
-        action, str(business.id), db
-    )
-    approve_url = f"{base_url}/actions/approve?token={enriched['approval_token']}"
-    decline_url = f"{base_url}/actions/decline?token={enriched['decline_token']}"
+            "parameters": {
+                "caption": revised_post["full_caption"],
+                "hashtags": revised_post["hashtags"],
+                "platform": "instagram",
+            },
+            "reasoning": f"User requested: {message[:100]}",
+            "risk_level": "medium",
+            "requires_approval": True,
+        }
+        enriched = await executor.create_pending_action_with_tokens(action_dict, str(business.id), db)
+        approve_url = f"{base_url}/actions/approve?token={enriched['approval_token']}"
+        decline_url = f"{base_url}/actions/decline?token={enriched['decline_token']}"
 
-    html = base_template(f"""
-    <p style="font-size:16px;font-weight:600;color:#1F2937;margin:0 0 8px 0;">
-      ✏️ Here's your revised post, {first_name}!
-    </p>
-    <p style="font-size:13px;color:#6B7280;margin:0 0 20px 0;">
-      Based on: <em>"{message[:80]}{'...' if len(message) > 80 else ''}"</em>
-    </p>
-    <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:20px;margin-bottom:20px;">
-      <p style="font-size:13px;font-weight:600;color:#374151;margin:0 0 10px 0;">📸 Revised Instagram post</p>
-      <p style="font-size:14px;color:#1F2937;line-height:1.8;margin:0 0 8px 0;white-space:pre-wrap;">{caption}</p>
-      {f'<p style="font-size:12px;color:#9CA3AF;margin:0;">{hashtags_text}</p>' if hashtags_text else ''}
-    </div>
-    <div style="background:#EFF6FF;border-radius:6px;padding:12px 14px;margin-bottom:20px;">
-      <p style="font-size:12px;color:#1D4ED8;margin:0;line-height:1.6;">
-        Still not right? Reply again with more instructions and I'll revise further.
-      </p>
-    </div>
-    {approve_button("✓ Approve & Schedule", approve_url)}
-    {decline_button("✗ Skip", decline_url)}
-    """)
+        html = base_template(f"""
+        <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:20px;margin-bottom:20px;">
+          <p style="font-size:14px;color:#1F2937;line-height:1.8;margin:0 0 8px 0;white-space:pre-wrap;">{revised_post['caption']}</p>
+          {f'<p style="font-size:12px;color:#9CA3AF;margin:0 0 16px 0;">{" ".join(revised_post["hashtags"][:10])}</p>' if revised_post.get("hashtags") else ""}
+          {approve_button("✓ Approve & Schedule", approve_url)}
+          {decline_button("✗ Skip", decline_url)}
+        </div>
+        <p style="font-size:12px;color:#9CA3AF;margin:0;">{revised_post.get('follow_up', 'Want any changes? Just reply.')}</p>
+        """)
+        subject = "Re: Your new post is ready"
+
+    else:
+        html = base_template(
+            f'<p style="font-size:14px;color:#1F2937;line-height:1.8;">{response_text.replace(chr(10), "<br>")}</p>'
+        )
+        subject = f"Re: {clean_subject(message, 40)}"
 
     await email_sender.send(
         to_email=user.email,
-        subject="Re: Your revised post is ready",
+        subject=subject,
         html_body=html,
-        email_type="post_revision",
+        email_type="reply_response",
         business_id=str(business.id),
         db=db,
         reply_to=f"reply+{business.id}@reply.marlo021.ai"
     )
 
 
+async def handle_cancellation(business, user, db: AsyncSession):
+    from email_system.sender import email_sender
+    from email_system.templates import base_template
+    first_name = (user.full_name or "there").split()[0]
+    html = base_template(f"""
+    <p style="font-size:16px;font-weight:600;color:#1F2937;margin:0 0 8px 0;">Got it, {first_name}.</p>
+    <p style="font-size:14px;color:#6B7280;margin:0 0 16px 0;line-height:1.7;">
+      Your subscription will be cancelled. You'll keep access until the end of your billing period.
+      If you change your mind, reply within 24 hours.
+    </p>
+    """)
+    await email_sender.send(
+        to_email=user.email, subject="Your Marlo subscription cancellation",
+        html_body=html, email_type="cancellation",
+        business_id=str(business.id), db=db,
+        reply_to=f"reply+{business.id}@reply.marlo021.ai"
+    )
+
+
+async def handle_onboarding_question(business, user, message: str, db: AsyncSession):
+    from agent.brain import brain
+    from email_system.sender import email_sender
+    from email_system.templates import base_template
+    frontend_url = os.getenv("FRONTEND_URL", "https://marlo021.ai")
+    step = business.onboarding_step
+    step_context = {
+        1: "User just signed up. Needs to connect Google Ads.",
+        2: "Connected Google. Needs to connect Instagram.",
+        3: "Connected Instagram. Needs to connect Mailchimp.",
+    }.get(step, "User is in the middle of setup.")
+
+    result = await brain.think(
+        user_message=message,
+        context={"step": step_context},
+        business_id=str(business.id),
+        db=None, model="claude-haiku-4-5-20251001"
+    )
+    reply_text = result.get("summary", "Happy to help! Just reply with your question.")
+    html = base_template(f"""
+    <p style="font-size:14px;color:#374151;line-height:1.7;margin:0 0 16px 0;">{reply_text}</p>
+    <p style="font-size:13px;color:#6B7280;margin:0;">
+      Still stuck? <a href="{frontend_url}/help" style="color:#2563EB;">Visit our help page</a>
+    </p>
+    """)
+    await email_sender.send(
+        to_email=user.email, subject="Re: your Marlo setup question",
+        html_body=html, email_type="onboarding_reply",
+        business_id=str(business.id), db=db,
+        reply_to=f"reply+{business.id}@reply.marlo021.ai"
+    )
+
+
 async def handle_photo_upload(business, user, attachments: list, message_text: str, db: AsyncSession):
-    """Process a photo sent via email attachment."""
     import io
     from PIL import Image
-    import pillow_heif
+    from integrations.image_gen import image_gen
+    from agent.user_memory import load_memory, initialize_memory_from_business
+    from agent.vendor_profiles import detect_vendor_type_from_industry, get_vendor_profile
+    from agent.reply_handler import handle_reply
 
-    pillow_heif.register_heif_opener()
+    try:
+        import pillow_heif
+        pillow_heif.register_heif_opener()
+    except ImportError:
+        pass
 
     attachment = attachments[0]
     image_data = base64.b64decode(attachment.get("Content", ""))
-
-    from integrations.image_gen import image_gen
-
     temp_dir = os.environ.get("TEMP", "/tmp")
     temp_path = os.path.join(temp_dir, f"marlo_upload_{uuid.uuid4().hex}.jpg")
 
-    img = Image.open(io.BytesIO(image_data))
-    img = img.convert("RGB")
-    img.save(temp_path, "JPEG", quality=95)
+    try:
+        img = Image.open(io.BytesIO(image_data)).convert("RGB")
+        img.save(temp_path, "JPEG", quality=95)
+        upload_result = await image_gen.upload_image(temp_path)
+        original_url = upload_result.get("url", "")
+    finally:
+        try:
+            os.remove(temp_path)
+        except Exception:
+            pass
 
-    upload_result = await image_gen.upload_image(temp_path)
-    original_url = upload_result.get("url", "")
-    enhanced_url = await image_gen.enhance_photo(original_url)
+    if not original_url:
+        return
 
+    # Load memory to get vendor type
+    memory = load_memory(business)
+    if not memory.get("vendor_type"):
+        memory = await initialize_memory_from_business(business)
+
+    vendor_type = memory.get("vendor_type") or detect_vendor_type_from_industry(business.industry or "")
     business_dict = {
-        "name": business.name, "industry": business.industry,
-        "description": business.description, "tone_of_voice": business.tone_of_voice,
-        "target_audience": business.target_audience
+        "name": business.name, "industry": business.industry or "",
+        "tone_of_voice": business.tone_of_voice or "warm and authentic",
+        "target_audience": business.target_audience or "local customers",
+        "description": business.description or "",
     }
 
-    caption_hint = message_text if len(message_text) > 5 else ""
-    platform_results = await image_gen.prepare_photo_for_platforms(
-        enhanced_url, business_dict, caption_hint=caption_hint
+    caption_context = message_text.strip() if len(message_text.strip()) > 5 else ""
+
+    # Generate lifestyle image
+    lifestyle_result = await image_gen.generate_lifestyle_from_product(
+        product_image_url=original_url, business=business_dict,
+        caption=caption_context, platform="instagram_feed", vendor_type=vendor_type,
+    )
+    lifestyle_url = lifestyle_result.get("url")
+    if not lifestyle_url:
+        lifestyle_url = await image_gen.enhance_photo(original_url)
+
+    # Generate caption using reply_handler
+    reply_result = await handle_reply(
+        user_message=f"Write an Instagram caption for this product photo. Context: {caption_context or 'product showcase'}",
+        business=business_dict, memory=memory, vendor_type=vendor_type,
     )
 
+    import random
+    profile = get_vendor_profile(vendor_type)
+    hashtag_pool = [tag for cluster in profile.hashtag_clusters for tag in cluster]
+    hashtags = random.sample(hashtag_pool, min(10, len(hashtag_pool)))
+
+    revised_post = reply_result.get("revised_post")
+    caption = revised_post["caption"] if revised_post else reply_result["response_text"][:300]
+    full_caption = f"{caption}\n\n{' '.join(hashtags)}"
+
+    # Save photo
     photo = UserPhoto(
-        id=uuid.uuid4(),
-        business_id=business.id,
-        original_url=original_url,
-        enhanced_url=enhanced_url,
-        instagram_url=platform_results.get("instagram_feed", {}).get("url"),
-        story_url=platform_results.get("instagram_story", {}).get("url"),
-        facebook_url=platform_results.get("facebook_feed", {}).get("url"),
-        google_display_url=platform_results.get("google_display", {}).get("url"),
-        caption_instagram=platform_results.get("instagram_feed", {}).get("caption"),
-        caption_facebook=platform_results.get("facebook_feed", {}).get("caption"),
-        status="pending",
-        created_at=datetime.utcnow()
+        id=uuid.uuid4(), business_id=business.id,
+        original_url=original_url, enhanced_url=lifestyle_url,
+        instagram_url=lifestyle_url, caption_instagram=caption,
+        status="pending", created_at=datetime.utcnow()
     )
     db.add(photo)
     await db.commit()
 
+    # Create approval action
     from agent.executor import executor
     base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
-    platform_previews = []
-
-    for platform_key, platform_data in platform_results.items():
-        if platform_data.get("url"):
-            action = {
-                "type": "create_post",
-                "platform": platform_key.split("_")[0],
-                "parameters": {
-                    "image_url": platform_data["url"],
-                    "caption": platform_data.get("caption", ""),
-                    "platform_key": platform_key,
-                    "photo_id": str(photo.id)
-                },
-                "reasoning": f"User sent a photo — posting to {platform_key.replace('_', ' ')}",
-                "risk_level": "medium",
-                "requires_approval": True
-            }
-            enriched = await executor.create_pending_action_with_tokens(
-                action, str(business.id), db
-            )
-            platform_previews.append({
-                "platform_label": platform_key.replace("_", " ").title(),
-                "caption": platform_data.get("caption", ""),
-                "image_url": platform_data["url"],
-                "approve_url": f"{base_url}/actions/approve?token={enriched['approval_token']}"
-            })
+    action_dict = {
+        "type": "create_post", "platform": "instagram",
+        "parameters": {
+            "caption": full_caption, "image_url": lifestyle_url,
+            "platform": "instagram", "hashtags": hashtags,
+            "photo_id": str(photo.id), "original_url": original_url,
+        },
+        "reasoning": "User sent a product photo",
+        "risk_level": "medium", "requires_approval": True,
+    }
+    enriched = await executor.create_pending_action_with_tokens(action_dict, str(business.id), db)
+    approve_url = f"{base_url}/actions/approve?token={enriched['approval_token']}"
+    decline_url = f"{base_url}/actions/decline?token={enriched['decline_token']}"
 
     from email_system.sender import email_sender
-    from email_system.templates import photo_response_template
-
+    from email_system.templates import base_template, approve_button, decline_button
     first_name = (user.full_name or "there").split()[0]
-    html = photo_response_template(first_name, "", platform_previews, base_url)
+
+    html = base_template(f"""
+    <p style="font-size:16px;font-weight:600;color:#1F2937;margin:0 0 8px 0;">
+      📸 Your photo is ready, {first_name}!
+    </p>
+    <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:16px;">
+      <img src="{lifestyle_url}" alt="Generated lifestyle image"
+           style="width:100%;border-radius:8px;margin-bottom:16px;display:block;" />
+      <p style="font-size:14px;color:#1F2937;line-height:1.7;margin:0 0 8px 0;">{caption}</p>
+      <p style="font-size:12px;color:#9CA3AF;margin:0 0 16px 0;">{' '.join(hashtags[:8])}</p>
+      <div style="background:#F9FAFB;border-radius:6px;padding:10px 12px;margin-bottom:16px;">
+        <p style="font-size:12px;color:#6B7280;margin:0;line-height:1.6;">
+          ✏️ Want a different caption? Reply with your instructions.<br>
+          🔄 Want a different image? Reply: "Try different style: [your idea]"
+        </p>
+      </div>
+      {approve_button("✓ Post to Instagram", approve_url)}
+      {decline_button("✗ Skip", decline_url)}
+    </div>
+    <details style="margin-top:12px;">
+      <summary style="font-size:12px;color:#9CA3AF;cursor:pointer;">See original photo</summary>
+      <img src="{original_url}" alt="Original" style="width:100%;max-width:300px;border-radius:6px;margin-top:8px;opacity:0.7;" />
+    </details>
+    """)
 
     await email_sender.send(
         to_email=user.email,
-        subject="📸 Your photo is ready — approve to post",
-        html_body=html,
-        email_type="photo_response",
-        business_id=str(business.id),
-        db=db
+        subject="📸 Your lifestyle photo is ready — approve to post",
+        html_body=html, email_type="photo_lifestyle_response",
+        business_id=str(business.id), db=db,
+        reply_to=f"reply+{business.id}@reply.marlo021.ai"
     )
-
-    try:
-        os.remove(temp_path)
-    except Exception:
-        pass

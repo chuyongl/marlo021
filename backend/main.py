@@ -49,7 +49,26 @@ async def startup():
     except Exception as e:
         print(f"Startup DB check error (non-fatal): {e}")
 
-    # 2. Start background scheduler
+    # 2. Run incremental migrations (safe to run on every startup)
+    try:
+        import asyncpg
+        db_url = os.getenv("DATABASE_URL", "").replace("+asyncpg", "")
+        conn = await asyncpg.connect(db_url)
+        try:
+            # Add user_memory column if not exists
+            exists = await conn.fetchval("""
+                SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_name = 'businesses' AND column_name = 'user_memory'
+            """)
+            if not exists:
+                await conn.execute("ALTER TABLE businesses ADD COLUMN user_memory JSONB DEFAULT NULL")
+                print("Migration: added user_memory column.")
+        finally:
+            await conn.close()
+    except Exception as e:
+        print(f"Migration error (non-fatal): {e}")
+
+    # 3. Start background scheduler
     try:
         from agent.scheduler import start_scheduler
         start_scheduler()

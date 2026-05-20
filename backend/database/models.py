@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Integer, Boolean, DateTime, JSON, ForeignKey, Text, Numeric
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import DeclarativeBase, relationship
 import uuid
 from datetime import datetime
@@ -44,6 +44,8 @@ class Business(Base):
     onboarding_completed = Column(Boolean, default=False)
     subscription_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # Per-user knowledge base — compact memory updated after each conversation
+    user_memory = Column(JSONB, nullable=True)
     owner = relationship("User", back_populates="businesses")
     integrations = relationship("PlatformIntegration", back_populates="business")
     campaigns = relationship("Campaign", back_populates="business")
@@ -96,15 +98,11 @@ class CampaignMetric(Base):
     campaign = relationship("Campaign", back_populates="metrics")
 
 class AgentAction(Base):
-    """
-    Core pending action table.
-    Also imported as PendingAction throughout the codebase — see alias below.
-    """
     __tablename__ = "agent_actions"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     business_id = Column(UUID(as_uuid=True), ForeignKey("businesses.id"))
     action_type = Column(String)
-    status = Column(String, default="pending")  # pending | executed | rejected | expired
+    status = Column(String, default="pending")
     input_context = Column(JSON)
     agent_reasoning = Column(Text)
     action_parameters = Column(JSON)
@@ -115,16 +113,13 @@ class AgentAction(Base):
     token_expires_at = Column(DateTime)
     approved_by = Column(UUID(as_uuid=True))
     approved_at = Column(DateTime)
-    # Scheduling
     scheduled_post_time = Column(DateTime(timezone=True), nullable=True)
     executed_at = Column(DateTime(timezone=True), nullable=True)
-    # Delivery tracking
     approval_email_sent = Column(Boolean, default=False)
     scheduled_day = Column(String, nullable=True)
     llm_cost_usd = Column(Numeric(8, 6))
     created_at = Column(DateTime, default=datetime.utcnow)
 
-# Alias — used interchangeably throughout codebase
 PendingAction = AgentAction
 
 class EmailLog(Base):
@@ -155,7 +150,6 @@ class UserPhoto(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class ContentFeedback(Base):
-    """Records every user approve/decline decision for learning."""
     __tablename__ = "content_feedback"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     business_id = Column(UUID(as_uuid=True), ForeignKey("businesses.id"), index=True)
