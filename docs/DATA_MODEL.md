@@ -28,11 +28,29 @@ The core entity. One row per customer business.
 | preferred_post_timezone | string | IANA timezone e.g. "America/Los_Angeles" |
 | timezone | string | User's detected timezone (from signup) |
 | email_notifications | bool | False if user unsubscribed |
+| user_memory | JSONB | ★ NEW: Per-user knowledge base, updated after each conversation |
+
+**user_memory structure:**
+```json
+{
+  "vendor_type": "maker_jewelry",
+  "content_preferences": {
+    "likes": ["founder voice", "milestone stories"],
+    "dislikes": ["salesy tone", "generic marketing speak"],
+    "style_notes": "short sentences, personal narrative"
+  },
+  "recent_context": "One sentence about what user is working on right now",
+  "pending_topics": ["topics they want to cover in future posts"],
+  "updated_at": "2026-05-21"
+}
+```
 
 **Key notes:**
 - Always read posting_schedule via `get_posting_schedule(biz)` helper — handles NULL/invalid values
 - `briefing_time` stores the kickoff day name (not a time)
 - `subscription_id` being NULL means account is inactive — scheduler skips these
+- `user_memory` starts NULL, initialized on first reply via `initialize_memory_from_business()`
+- `user_memory` updated asynchronously after each conversation using Haiku (~200 tokens vs ~2000 for raw history)
 
 ---
 
@@ -114,7 +132,7 @@ Every email sent. Used for deduplication — prevents sending the same email twi
 |---|---|---|
 | id | UUID | Primary key |
 | business_id | UUID | FK → businesses.id |
-| email_type | string | e.g. `first_kickoff`, `weekly_kickoff`, `onboarding_1`, `post_approval_monday` |
+| email_type | string | e.g. `first_kickoff`, `weekly_kickoff`, `post_approval_monday` |
 | sent_at | datetime | When sent |
 | metadata | JSON | Extra info (recipient, subject, etc.) |
 
@@ -125,6 +143,8 @@ Every email sent. Used for deduplication — prevents sending the same email twi
 - `weekly_kickoff` — sent every kickoff day after first
 - `post_approval_{day}` — e.g. `post_approval_monday`
 - `weekly_analytics`
+- `reply_response` — response to any user email reply
+- `photo_lifestyle_response` — ★ NEW: response when user sends a product photo
 
 ---
 
@@ -159,11 +179,9 @@ FROM agent_actions
 WHERE business_id = 'your-business-id'
 ORDER BY created_at DESC;
 
--- Check email history
-SELECT email_type, sent_at
-FROM email_logs
-WHERE business_id = 'your-business-id'
-ORDER BY sent_at DESC;
+-- Check user memory
+SELECT user_memory FROM businesses
+WHERE id = 'your-business-id';
 
 -- Find businesses ready for weekly content
 SELECT id, name, briefing_time, posting_schedule

@@ -1,83 +1,62 @@
 # Marlo — Task Board
 
-*Updated: May 13, 2026*
+*Updated: May 21, 2026*
 
 ---
 
-## 🔥 In Progress (Tomorrow)
+## 🔴 IMMEDIATE (next session)
 
-### [P0] Test Instagram Login end-to-end
-**Why:** Code is written and deployed — need to verify it actually works before finding beta users.
-**Steps:**
-- [ ] Reset test account: `DELETE /debug/reset/3512ed4f...`
-- [ ] Go to onboarding flow, click "Connect Instagram"
-- [ ] Log in with marlo021.ai Instagram credentials
-- [ ] Verify `platform_account_id` populated in DB:
-  ```sql
-  SELECT platform_account_id FROM platform_integrations
-  WHERE business_id = '3512ed4f-...' AND platform = 'meta';
-  ```
-- [ ] Trigger kickoff: `browser → /debug/trigger-kickoff/3512ed4f...`
-- [ ] Approve a post
-- [ ] Verify post appears on Instagram
-- [ ] If fails → check Railway logs, debug from there
+### [P0] Test conversational reply flow
+- [ ] Trigger kickoff → get approval email
+- [ ] Reply: "Make it less like an ad, more like sharing my work"
+- [ ] Verify: Marlo rewrites immediately, no clarifying questions
+- [ ] Reply with raw notes/story → verify post generated directly
+- [ ] Check Railway logs for `[UserMemory] Updated` after each reply
+- [ ] Check DB: `SELECT user_memory FROM businesses WHERE id = '3512ed4f-...'`
+
+### [P0] Test photo upload flow
+- [ ] Reply to any Marlo email with a product photo attached
+- [ ] Verify: lifestyle image generated (not just enhanced original)
+- [ ] Verify: caption matches vendor tone
+- [ ] Verify: preview email shows generated image with approve button
 
 ---
 
-## 📋 Up Next (This Week)
-
-### [P0] Upload app icon to new Meta app
-**Why:** Required for Meta app review submission. Failed May 13 due to Meta upload bug.
-**Steps:**
-- [ ] Go to `developers.facebook.com/apps/918827927853545/settings/basic/`
-- [ ] Upload `logo1024.jpg` as app icon
-- [ ] Fill Terms of Service URL: `https://marlo021.ai/terms` (Privacy URL already filled)
-- [ ] Save
+## 🟡 THIS WEEK
 
 ### [P0] Meta app review submission
-**Why:** `instagram_business_content_publish` needs Advanced Access before real users can connect.
-**Depends on:** Instagram end-to-end test passing + app icon uploaded
-**Steps:**
-- [ ] Prepare screen recording of full Instagram connect + post flow
-- [ ] Submit for review in Meta Developer Console (App ID: `918827927853545`)
-- [ ] Wait 1-2 weeks for approval
+- [ ] Screen recording of full Instagram connect + post flow
+- [ ] Submit for `instagram_business_content_publish` Advanced Access
+- [ ] App ID: `918827927853545`
+
+### [P1] Upload app icon to Meta Console
+- [ ] Go to `developers.facebook.com/apps/918827927853545/settings/basic/`
+- [ ] Upload `logo1024.jpg` (1024x1024)
 
 ### [P1] Stripe live mode
-**Steps:**
-- [ ] Switch `STRIPE_SECRET_KEY` to `sk_live_...`
-- [ ] Switch `STRIPE_WEBHOOK_SECRET` to live webhook secret
+- [ ] Switch `STRIPE_SECRET_KEY` → `sk_live_...`
+- [ ] Switch `STRIPE_WEBHOOK_SECRET` → live webhook secret
 - [ ] Test real payment
-- [ ] Update Railway env vars
 
 ---
 
-## 🎯 Next 2 Weeks
+## 🟢 SOON
 
-### [P1] Find 3-5 beta users
-**Target:** Seattle area restaurants or pet services
-**Why restaurants:** Perfect use case for "photo → email → post" flow
-**Why pet services:** Least served market, highest willingness to pay
-**Channels:**
-- [ ] Personal network
-- [ ] Direct outreach to local Instagram accounts with low posting frequency
-- [ ] Build-in-public content (cheapest CAC)
-
-### [P2] Weekly analytics email improvements
-**Current:** Basic stats, AI-generated insights
-**Needed:** Make insights more actionable ("Your Wednesday posts get 40% more engagement — keep that day")
+- [ ] **Find 3-5 beta users** — Seattle restaurants or pet services
+- [ ] **Remove debug_router** before going live with real users
+- [ ] **Fix reset endpoint** ForeignKeyViolation (if it recurs)
 
 ---
 
-## 🧊 Backlog (Future)
+## 🧊 Backlog
 
-- Google Ads integration (currently connected but not generating campaigns)
+- Google Ads integration (code exists, never tested)
 - Multi-platform posting (Facebook, TikTok)
 - Pricing tier 2 ($149-199 with Google Ads management)
 - Email open/click rate tracking
 - A/B testing for captions
-- Post revision via email reply (was working in earlier version, needs re-testing)
-- White-label via Vendasta channel partners
-- Rename `/skip-meta` → `/skip-instagram` for clarity
+- White-label via Vendasta
+- Add more vendor types to `vendor_profiles.py` as needed
 
 ---
 
@@ -85,30 +64,27 @@
 
 | Date | Task |
 |---|---|
-| May 13 | Privacy policy page live at marlo021.ai/privacy |
-| May 13 | Terms of Service page live at marlo021.ai/terms |
-| May 13 | New Business-type Meta app created (App ID: 918827927853545) |
-| May 13 | Instagram Login product added to new Meta app |
-| May 13 | Redirect URI configured in Meta Developer Console |
-| May 13 | Instagram Login OAuth endpoints written and deployed (oauth.py) |
-| May 13 | executor.py updated to use graph.instagram.com |
-| May 13 | Onboarding email 2 updated — "Connect Instagram" no Facebook required |
-| May 13 | Email subject lines updated to reflect Instagram Login flow |
-| May 13 | INSTAGRAM_APP_ID + INSTAGRAM_APP_SECRET added to Railway |
-| May 13 | Deleted docs/privacy.html and docs/terms.html (old placeholders) |
-| May 8 | Fix approval_router status check (pending vs pending_approval) |
-| May 8 | Fix debug_router idempotency (clear pending before regenerating) |
-| May 8 | Scheduler reads user's kickoff day (not hardcoded Sunday) |
-| May 8 | Add posting-schedule endpoint to businesses/router.py |
-| May 8 | Image guide — creative director style, tied to strategy |
-| May 8 | Fix two emails sent on trigger (email log check) |
-| May 8 | Set up /docs knowledge base |
-| Earlier | All 4 onboarding emails |
-| Earlier | first_kickoff and weekly_kickoff emails |
-| Earlier | post_approval email |
-| Earlier | weekly_analytics email |
-| Earlier | Stripe 14-day trial |
-| Earlier | fal.ai image generation |
-| Earlier | Kickoff day picker in email |
-| Earlier | Posting days picker in email |
-| Earlier | Timezone auto-detect on signup |
+| May 21 | ENVIRONMENT=production set in Railway |
+| May 21 | Sentry network errors suppressed (warning not error) |
+| May 21 | scheduler.py is_network_error() + log_error() helpers |
+| May 21 | user_memory.py — per-user knowledge base |
+| May 21 | reply_handler.py — conversational reply with memory |
+| May 21 | vendor_profiles.py — 7 vendor types |
+| May 21 | content_safety.py — silent content filter |
+| May 21 | inbound.py — routes all replies through reply_handler |
+| May 21 | image_gen.py — vendor-aware lifestyle generation |
+| May 21 | models.py — user_memory JSONB column |
+| May 21 | main.py — startup auto-migration for user_memory |
+| May 18 | Instagram posting end-to-end working (meta.py graph.instagram.com + polling) |
+| May 18 | meta.py — token decryption, container status polling |
+| May 18 | executor.py — correct platform lookup |
+| May 18 | INSTAGRAM_APP_SECRET corrected in Railway |
+| May 13 | Privacy page live at marlo021.ai/privacy |
+| May 13 | Terms page live at marlo021.ai/terms |
+| May 13 | Instagram Login OAuth written and deployed |
+| May 13 | Meta Console fully configured |
+| May 8 | All core email flows working |
+| May 8 | Approval flow fixed |
+| May 8 | Scheduler kickoff day logic |
+| May 8 | fal.ai image generation |
+| May 8 | Stripe 14-day trial |

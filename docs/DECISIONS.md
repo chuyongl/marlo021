@@ -1,22 +1,14 @@
 # Marlo — Architecture Decision Records
 
-Each decision recorded here explains WHAT we chose and WHY. Future developers (human or AI) should read this before suggesting changes.
-
 ---
 
 ## ADR-001: Email as the only interface (no dashboard)
 
 **Decision:** All user interactions happen via email. No web dashboard.
 
-**Why:** 
-- Target users (1-10 person SMBs) have low tech adoption
-- They already use email daily — zero learning curve
-- 75% of SaaS users churn in the first week because of complexity
-- No competitor does this — genuine market differentiation
+**Why:** Target users (1-10 person SMBs) have low tech adoption. They already use email daily. No competitor does this.
 
-**Trade-offs accepted:**
-- Complex operations (fine-grained ad targeting) can't be done via email
-- If email goes to spam, entire product experience breaks
+**Trade-offs:** Complex operations can't be done via email. If email goes to spam, entire experience breaks.
 
 **Status:** Core to product identity. Do not change.
 
@@ -26,42 +18,25 @@ Each decision recorded here explains WHAT we chose and WHY. Future developers (h
 
 **Decision:** Use APScheduler (in-process) for all scheduled jobs.
 
-**Why:**
-- Temporal requires a separate worker process + infrastructure
-- At <100 businesses, APScheduler is sufficient
-- Simpler Railway deployment (one service not two)
+**Why:** Temporal requires separate worker infrastructure. APScheduler is sufficient at <100 businesses.
 
-**Trade-offs accepted:**
-- Scheduler stops if Railway service restarts (brief gap in execution)
-- Harder to scale to 1000+ businesses
-
-**When to revisit:** When we have 100+ active businesses or Railway restarts are causing missed sends.
+**When to revisit:** 100+ active businesses or Railway restarts causing missed sends.
 
 ---
 
 ## ADR-003: One-click approval (no login required)
 
-**Decision:** Approve/decline links work without any authentication.
+**Decision:** Approve/decline links work without authentication.
 
-**Why:**
-- Requiring login before approving a post adds friction
-- Non-technical users forget passwords
-- Security risk is low — worst case is someone spoofs a link and approves/declines a post
-
-**Trade-offs accepted:**
-- Anyone with the link can approve/decline
-- Links don't expire (currently) — could be tightened
+**Why:** Login friction causes abandonment. Security risk is low — worst case someone approves/declines a post.
 
 ---
 
 ## ADR-004: strategy_summary uses only key_message
 
-**Decision:** Weekly kickoff emails show `strategy.key_message`, not full strategy object.
+**Decision:** Emails show `strategy.key_message`, not full strategy object.
 
-**Why:**
-- Full strategy object contains internal prompt fields (Tone, CTA) that sound robotic to users
-- `key_message` is human-readable and motivating
-- Example: "Building trust by showing the real humans behind the business" vs "Tone: warm. CTA: drive foot traffic."
+**Why:** Full strategy object contains internal prompt fields that sound robotic to users.
 
 **Status:** Fixed May 8. Do not revert.
 
@@ -71,85 +46,114 @@ Each decision recorded here explains WHAT we chose and WHY. Future developers (h
 
 **Decision:** `created_at` uses `datetime.utcnow()` (naive). `scheduled_post_time` uses `datetime.now(timezone.utc)` (aware).
 
-**Why (historical):** Early code used naive datetimes. `scheduled_post_time` was added later and used aware datetimes. Changing all of them risks breaking comparisons.
-
-**For new code:** Always use `datetime.now(timezone.utc)` (aware). The inconsistency is a tech debt to clean up, not a pattern to follow.
+**For new code:** Always use `datetime.now(timezone.utc)`. The inconsistency is tech debt, not a pattern to follow.
 
 ---
 
 ## ADR-006: Instagram Login API instead of Facebook Login
 
-**Decision:** Use Instagram Login API (launched July 2024) for all Instagram connections. Facebook Login flow is kept in code but no longer used for new connections.
+**Decision:** Use Instagram Login API for all Instagram connections.
 
-**Why:**
-- Facebook Login requires Instagram to be connected to a Facebook Page at the Graph API level
-- This creates impossible friction for non-technical users — they don't have Pages, or Pages have ad policy violations
-- Instagram Login requires only an Instagram Business/Creator account — no Facebook Page needed
-- User experience: "Log in with Instagram" (one step) vs "Connect Facebook → select Page → select Instagram" (three steps)
-- Estimated completion rate: Facebook Login ~10%, Instagram Login ~80% for our target market
+**Why:** Facebook Login requires connecting to a Facebook Page — creates impossible friction for non-technical users. Instagram Login requires only an Instagram Business/Creator account.
 
-**What changed (May 13, 2026):**
-- Created new Business-type Meta app (App ID: `918827927853545`, Instagram App ID: `1004448018806665`)
-- New endpoints: `GET /integrations/connect/instagram` and `GET /integrations/callback/instagram`
-- OAuth URL: `instagram.com/oauth/authorize` (not `facebook.com/dialog/oauth`)
-- Token exchange: `api.instagram.com/oauth/access_token` → then exchange for long-lived token via `graph.instagram.com/access_token`
-- Account ID: fetched from `graph.instagram.com/me` directly (no Facebook Page lookup)
-- Integration stored as `platform="meta"` in DB for backward compatibility with executor
-- Posting still uses `MetaIntegration` class but via `graph.instagram.com` host
-- Old Facebook Login endpoints (`/connect/meta`, `/callback/meta`) kept for backward compat but not linked from any email
+**What changed (May 13):**
+- New endpoints: `/integrations/connect/instagram` and `/integrations/callback/instagram`
+- Token endpoint: `api.instagram.com/oauth/access_token` → `graph.instagram.com/access_token`
+- Integration stored as `platform="meta"` for backward compat with executor
+- Posting via `graph.instagram.com` (not `graph.facebook.com`)
 
-**Credentials in Railway:**
-- `INSTAGRAM_APP_ID` — new app
-- `INSTAGRAM_APP_SECRET` — new app
-- `META_APP_ID` / `META_APP_SECRET` — old app, kept but unused for new connections
-
-**Status:** Code complete and deployed May 13, 2026. End-to-end test pending.
+**Status:** Working end-to-end as of May 21, 2026.
 
 ---
 
 ## ADR-007: Posting schedule stored as array
 
-**Decision:** `Business.posting_schedule` is a PostgreSQL array of day names (e.g., `["Monday", "Wednesday", "Friday"]`).
+**Decision:** `Business.posting_schedule` is a JSON array of day names.
 
-**Why:**
-- Flexible (can be 1-7 days)
-- Human-readable
-- Easy to display in emails as day buttons
-
-**Usage:** Always read via `get_posting_schedule(biz)` helper in `scheduler.py` — it handles NULL/empty/invalid values with sensible defaults.
+**Usage:** Always read via `get_posting_schedule(biz)` helper in scheduler.py.
 
 ---
 
 ## ADR-008: Content approval is two-step
 
-**Decision:** User clicks Approve → status becomes `executed`. Then scheduler posts at `scheduled_post_time`.
+**Decision:** Approve click → status `executed`. Scheduler posts at `scheduled_post_time`.
 
-**Why:**
-- Immediate posting on approval would mean posts go live at unpredictable times
-- Users expect posts to go live at their chosen time (e.g., Monday 9am)
-- Two-step: user approves early → Marlo posts at the right time
+**Why:** Immediate posting would mean posts go live at unpredictable times. Two-step lets users approve early and post at the right time.
 
-**Important:** `executor.py` has an `execute_action()` method that was previously called at approval time. This was removed. Only `executor.run()` is called by the scheduler. Do not re-add immediate execution at approval.
+**Important:** Never call executor at approval time. Only `executor.run()` called by scheduler.
 
 ---
 
-## ADR-009: Legal pages as React components, not static HTML
+## ADR-009: Legal pages as React components
 
-**Decision:** Privacy Policy and Terms of Service live as React pages in the frontend, not static HTML files.
+**Decision:** Privacy Policy and Terms of Service are React pages, not static HTML.
+
+**Pages:** `marlo021.ai/privacy` and `marlo021.ai/terms`
+
+**Status:** Live as of May 13, 2026.
+
+---
+
+## ADR-010: User memory instead of conversation history (★ NEW)
+
+**Decision:** Each business has a compact `user_memory` JSONB field. Replies use this instead of raw conversation history.
 
 **Why:**
-- Consistent with the rest of the frontend stack (React + Tailwind)
-- Matches Marlo brand (black background, lime green accent)
-- Both pages required for Meta app review — must be real, publicly accessible URLs
-- Old placeholders (`docs/privacy.html`, `docs/terms.html`) were never deployed and have been deleted
+- Raw history = ~2000 tokens per call, grows unboundedly
+- User memory = ~200 tokens, stable size, more accurate
+- Memory captures what matters: preferences, style notes, context
+- Updated asynchronously after each reply using Haiku (cheap)
 
-**Pages:**
-- Privacy Policy → `frontend/src/pages/Privacy.tsx` → `https://marlo021.ai/privacy`
-- Terms of Service → `frontend/src/pages/Terms.tsx` → `https://marlo021.ai/terms`
+**Structure:**
+```json
+{
+  "vendor_type": "maker_jewelry",
+  "content_preferences": {"likes": [], "dislikes": [], "style_notes": ""},
+  "recent_context": "one sentence",
+  "pending_topics": [],
+  "updated_at": "YYYY-MM-DD"
+}
+```
 
-**Meta app fields to fill (both apps):**
-- Privacy Policy URL: `https://marlo021.ai/privacy`
-- Terms of Service URL: `https://marlo021.ai/terms`
-- Location: App settings → Basic in Meta Developer Console
+**Migration:** Added via startup auto-migration in `main.py`. Safe to run on every deploy.
 
-**Status:** Both pages live as of May 13, 2026.
+---
+
+## ADR-011: reply_handler separate from brain.think() (★ NEW)
+
+**Decision:** Email replies use `reply_handler.handle_reply()`. Autonomous agent actions use `brain.think()`.
+
+**Why:**
+- `brain.think()` returns JSON with actions array — designed for agent decisions
+- Email replies need conversational output, not structured actions
+- `brain.think()` had no conversation memory, causing it to ask clarifying questions every turn
+- `reply_handler` uses user_memory for context, is instructed to execute first and never ask >1 question
+
+**Rule:** `brain.think()` = scheduler, campaigns, autonomous decisions. `reply_handler` = all email replies from users.
+
+---
+
+## ADR-012: Vendor profiles as central config (★ NEW)
+
+**Decision:** All vendor-type-specific logic lives in `vendor_profiles.py` as a single dict.
+
+**Why:**
+- Content strategy, image style, caption tone, hashtags all differ by vendor type
+- Centralizing means: adding a new vendor type = add one dict entry, nothing else changes
+- Used by: `reply_handler`, `image_gen`, `inbound`, `user_memory`
+
+**Current types:** `maker_jewelry`, `maker_ceramics`, `maker_candles`, `food_bakery`, `food_cafe`, `farmer_market`, `service_local`, `creative_professional`
+
+**Detection:** `detect_vendor_type_from_industry(industry_string)` auto-detects from business.industry. Can be overridden by user_memory.vendor_type.
+
+---
+
+## ADR-013: Network errors suppressed from Sentry (★ NEW)
+
+**Decision:** Railway infrastructure errors (DNS failures, connection timeouts) log as `WARNING`, not `ERROR`, so Sentry doesn't capture them.
+
+**Why:** Railway has occasional network blips. These are not code bugs and don't need developer attention. Previously they were generating dozens of Sentry alerts per outage, causing alert fatigue.
+
+**Implementation:** `is_network_error(e)` helper in `scheduler.py` checks for known transient error strings. `log_error(context, e)` routes accordingly.
+
+**Real bugs** (non-network errors) still log as `ERROR` and are captured by Sentry.

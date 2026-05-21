@@ -1,182 +1,184 @@
 # Marlo — Key User Flows
 
-Detailed step-by-step narratives of every major flow. Read this to understand how the pieces connect.
-
 ---
 
 ## Flow 1: New User Signup → First Post Live
 
-This is the full happy path. Every step matters.
-
 ### Step 1: Signup
-- User visits `marlo021.ai` and fills out signup form
-- Frontend auto-detects timezone via `Intl.DateTimeFormat().resolvedOptions().timeZone`
+- User visits `marlo021.ai`, fills signup form
+- Frontend auto-detects timezone
 - `POST /businesses/` creates Business + User records
-- `onboarding_step = 1`, `onboarding_completed = false`
-- **Email 1 sent:** "Connect Google Ads" with two buttons: Connect or Skip
+- `onboarding_step = 1`
+- **Email 1 sent:** "Connect Google Ads" — Connect or Skip
 
-### Step 2: Google Ads (optional)
-- **If connects:** `GET /integrations/connect/google` → OAuth → callback saves tokens → `onboarding_step = 2`
-- **If skips:** `GET /integrations/skip-google` → `onboarding_step = 2`
-- **Email 2 sent:** "Connect Facebook & Instagram"
-
-### Step 3: Instagram (critical)
-- **If connects:** `GET /integrations/connect/meta` (currently Facebook Login, migrating to Instagram Login)
-  - OAuth callback saves access_token + fetches Instagram Business Account ID
-  - Stores `platform_account_id` in `platform_integrations`
-  - `onboarding_step = 3`
-- **If skips:** `onboarding_step = 3`
-- **Email 3 sent:** "Connect Mailchimp"
-
-### Step 4: Mailchimp (optional)
-- Connect or skip → `onboarding_step = 4`
-- **Email 4 sent:** "Tell Marlo about your business"
-- User **replies** to this email with their business description
+### Step 2–4: Platform Connections (all optional)
+- Google Ads → Instagram → Mailchimp
+- Each step: connect via OAuth or skip
+- `onboarding_step` increments each time
 
 ### Step 5: Onboarding Complete
-- Postmark receives inbound reply → `POST /email/inbound`
-- `onboarding_handler` parses the reply
-- Updates business: `description`, `tone_of_voice`, `target_audience`
-- Sets `onboarding_completed = true`
-- Scheduler now includes this business in weekly content generation
+- Email 4: "Tell Marlo about your business" — user replies
+- Postmark receives reply → `POST /email/inbound`
+- `onboarding_handler` parses reply, updates business profile
+- `onboarding_completed = true`, `user_memory` initialized
+- Scheduler now includes this business
 
 ### Step 6: First Kickoff Email
-- Scheduler runs every hour, checks if it's user's kickoff day (from `biz.briefing_time`) at 9pm local
-- `strategy_agent.decide()` → weekly key message
-- `content_pipeline.generate_week_of_content()` → 3 posts (or however many days selected)
-- One `AgentAction` created per post (status: `pending`)
-- **first_kickoff email sent** with:
-  - Week's strategy summary
-  - Monday post preview + Approve/Skip buttons
-  - Kickoff day picker (buttons)
-  - Posting days picker (toggle buttons)
-  - Image guide (one creative direction per day)
+- Scheduler checks kickoff day at 9pm local
+- `strategy_agent` + `content_pipeline` generate N posts
+- `AgentAction` per post (status: `pending`)
+- `first_kickoff` email sent with strategy, post preview, approve buttons
 
-### Step 7: User Approves First Post
-- User clicks "✓ Approve Monday post" in email
-- `GET /actions/approve?token=xxx`
-- `approval_router` checks status is `pending`
-- Updates status → `executed`
-- Returns HTML confirmation page
-
-### Step 8: Post Goes Live
-- `execute_approved_posts` scheduler job runs every 15 minutes
-- Finds actions where `status = "executed" AND executed_at IS NULL AND scheduled_post_time <= now()`
-- Calls `executor.run(action, db)`
-- `executor.run()` maps `post_instagram` → calls `meta.post_to_instagram(ig_account_id, image_url, caption)`
-- Meta API publishes to Instagram
-- `action.executed_at = now()`
+### Step 7–8: Approve → Post Live
+- User clicks Approve → `status: executed`
+- `execute_approved_posts` scheduler (every 15min) finds `executed_at IS NULL AND scheduled_post_time <= now()`
+- `executor.run()` → `meta.post_to_instagram()` → Instagram
+- `executed_at` set
 
 ---
 
 ## Flow 2: Weekly Recurring Flow
 
-After onboarding, this repeats every week.
-
 ```
-User's kickoff day, 9pm local
-  ↓
-scheduler: weekly_content_generation fires
-  ↓
-Generate 3 posts → 3 AgentActions (pending)
-  ↓
-Send weekly_kickoff email (with last week stats)
-  ↓
-Day before each post, 2pm local
-  ↓
-scheduler: post_approval_and_expiry fires
-  ↓
-Send post_approval email for next day's post
-  ↓
+Kickoff day 9pm local → generate posts → weekly_kickoff email
+Day before each post → post_approval email
 User approves → status: executed
-  ↓
-Post day, at preferred_post_time (e.g. 9am)
-  ↓
-scheduler: execute_approved_posts fires
-  ↓
-Post goes live on Instagram
-  ↓
-Friday 2pm local
-  ↓
-scheduler: weekly_analytics fires
-  ↓
-Send analytics email (performance summary + AI insights)
+Post day at preferred_post_time → scheduler posts to Instagram
+Friday 2pm → weekly_analytics email
 ```
 
 ---
 
-## Flow 3: User Changes Kickoff Day
+## Flow 3: User Replies to Email (★ UPDATED)
 
-1. User clicks a day button in kickoff email (e.g. "Wednesday")
-2. `GET /businesses/settings/kickoff-day?business_id=xxx&day=Wednesday`
-3. Updates `biz.briefing_time = "Wednesday"`
-4. Returns HTML: "Kickoff day updated! Your weekly plan will now arrive every Wednesday."
-5. Next week's content generation fires on Wednesday at 9pm local instead of Sunday
+All post-onboarding replies now go through `reply_handler`.
+
+```
+User replies to any Marlo email
+  ↓
+POST /email/inbound (Postmark)
+  ↓
+inbound.py → handle_conversational_reply()
+  ↓
+Load user_memory (~200 tokens of context)
+  ↓
+Find most recent pending AgentAction (if any)
+  ↓
+reply_handler.handle_reply(message, business, memory, vendor_type, pending_action)
+  ↓
+content_safety.check_content_safety() — fast Haiku check
+  ↓
+[if blocked] → redirect message, stop
+  ↓
+[if clear] → Claude Sonnet with compact context
+  Rules: EXECUTE FIRST. Never ask >1 question. Never use third person.
+  ↓
+Returns: {response_text, revised_post, action_type}
+  ↓
+[if post_revision] → update pending action's caption/hashtags
+                   → send email with revised post + approve buttons
+[if new_post]      → create new AgentAction
+                   → send email with new post + approve buttons
+[if conversation]  → send plain reply
+  ↓
+asyncio.create_task(update_memory_async())
+  → Haiku summarizes conversation
+  → merges into businesses.user_memory JSONB
+  → saves async (doesn't block response)
+```
+
+**Key behaviors:**
+- User says "make it less salesy" → rewrites immediately, no questions
+- User pastes raw notes/story → turns it into a post, no questions
+- User says "use what I told you" → uses it directly
+- Memory persists preferences across sessions (dislikes/likes/style)
 
 ---
 
-## Flow 4: User Changes Posting Days
+## Flow 4: User Sends Product Photo (★ UPDATED)
 
-1. User clicks posting day toggles in kickoff email
-2. Email buttons call `GET /businesses/settings/posting-schedule?business_id=xxx&days=Tuesday,Thursday`
-3. Updates `biz.posting_schedule = ["Tuesday", "Thursday"]` and `posts_per_week = 2`
-4. Returns HTML: "Posting schedule updated! Marlo will now post on: Tuesday · Thursday"
-5. Takes effect from next weekly plan
+```
+User replies to email with photo attached
+  ↓
+inbound.py → handle_photo_upload()
+  ↓
+Decode base64 → save temp JPEG → upload to fal.ai → get original_url
+  ↓
+detect vendor_type from business.industry
+  (e.g. "jewelry" → maker_jewelry, "bakery" → food_bakery)
+  ↓
+image_gen.generate_lifestyle_from_product(original_url, vendor_type)
+  ↓
+  Claude reads vendor profile's lifestyle_scene_rules:
+    - scene_types (ranked options)
+    - model_guidance (how to use hands/people)
+    - props, composition, platform_notes
+  → generates detailed scene prompt
+  ↓
+  fal.ai flux-pro-v1.1-ultra image-to-image
+    image_url=original_url, strength=0.78
+    (0=keep original, 1=ignore; 0.78 transforms scene, keeps product)
+  → returns lifestyle_url
+  ↓
+reply_handler generates caption in vendor's caption_tone
+  ↓
+hashtags sampled from vendor's hashtag_clusters
+  ↓
+create AgentAction with lifestyle_url as image_url
+  ↓
+send preview email:
+  - Shows generated lifestyle image
+  - Caption + hashtags
+  - Approve / Skip buttons
+  - "See original photo" collapsible
+  - Instructions for requesting changes
+```
+
+**Fallback:** if fal.ai image-to-image fails → enhance original with clarity-upscaler → use that instead.
 
 ---
 
-## Flow 5: User Skips a Post
+## Flow 5: Approve / Skip / Feedback
 
-1. User clicks "✗ Skip" in approval email
-2. `GET /actions/decline?token=xxx`
-3. Status → `rejected`
-4. Returns HTML: "Got it — skipped." + optional feedback buttons
-5. If user clicks a feedback reason → `GET /actions/feedback?action_id=xxx&reason=wrong_tone`
-6. Reason stored in `content_feedback.reason` for future ML improvement
+- **Approve:** `GET /actions/approve?token=xxx` → status `executed` → posts at scheduled_post_time
+- **Skip:** `GET /actions/decline?token=xxx` → status `rejected` → feedback buttons shown
+- **Feedback reason:** `GET /actions/feedback?action_id=xxx&reason=wrong_tone` → saved to content_feedback
 
 ---
 
-## Flow 6: Post Expires (User Never Responds)
+## Flow 6: Post Expiry
 
-1. Post day arrives, action is still `pending`
-2. `post_approval_and_expiry` scheduler job expires the previous day's action
-3. Action status → `expired`
-4. `expire_stale_actions` job runs every 30 min as safety net — expires anything `pending` for 3+ days
+- `post_approval_and_expiry` job expires previous day's pending action at scheduled window
+- `expire_stale_actions` job is safety net — expires anything pending 3+ days
+- Expired posts are never posted, no notification to user
 
 ---
 
 ## Flow 7: Onboarding Reminder
 
-1. User receives email 4 but doesn't reply for 72 hours
-2. `onboarding_reminder` scheduler job checks every hour
-3. Finds businesses where `onboarding_step = 4` and email 4 was sent 72-96 hours ago
-4. Sends reminder email (same as email 4 with `is_reminder = True`)
-5. Only sends once (checks for existing `onboarding_4_reminder` in email_logs)
+- User stuck on step 4 (hasn't replied) for 72-96 hours
+- `onboarding_reminder` scheduler fires once
+- Sends same email 4 with `is_reminder=True`
+- Only sends once (checked via email_logs)
 
 ---
 
 ## Flow 8: Subscription Canceled
 
-1. User cancels in Stripe or payment fails
-2. Stripe sends webhook → `POST /billing/webhook`
-3. Or: daily health check at 2am UTC queries Stripe API
-4. If subscription status is `canceled`, `unpaid`, or `incomplete_expired`
-5. Sets `biz.subscription_id = None`
-6. Scheduler skips businesses where `subscription_id IS NULL`
-7. No more emails, no more posts
+- Stripe webhook or daily health check detects `canceled`/`unpaid`
+- `biz.subscription_id = None`
+- Scheduler skips the business — no more emails or posts
 
 ---
 
-## Edge Cases to Know
+## Edge Cases
 
-### What if trigger-kickoff is called twice?
-`debug_router.trigger_kickoff` clears all pending actions before generating new ones. Safe to call multiple times.
-
-### What if user approves after post time has passed?
-`execute_approved_posts` checks `scheduled_post_time <= now()`. If time has passed, it posts immediately on next 15-min cycle.
-
-### What if Meta API fails during posting?
-`executor.run()` returns error dict. `executed_at` stays NULL. Scheduler will retry on next 15-min cycle.
-
-### What if user has no active Meta integration?
-`executor.run()` returns `{"status": "skipped", "reason": "No active Meta integration found"}`.
+| Situation | Behavior |
+|---|---|
+| User approves after scheduled time passed | Posts immediately on next 15-min cycle |
+| Meta API fails during posting | `executed_at` stays NULL, retried next cycle |
+| No active Meta integration | executor returns `status: skipped` |
+| Railway network blip | Scheduler catches error, logs as WARNING (not Sentry), retries next cycle |
+| user_memory is NULL | Initialized from business profile on first reply |
+| Product photo fal.ai fails | Falls back to clarity-upscaler enhancement of original |
+| Content safety blocked | Non-preachy redirect message, no action taken |
