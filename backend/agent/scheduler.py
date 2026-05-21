@@ -17,6 +17,36 @@ DAY_TO_WEEKDAY  = {"Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3,
                    "Friday": 4, "Saturday": 5, "Sunday": 6}
 
 
+def is_network_error(e: Exception) -> bool:
+    """
+    Returns True for transient infrastructure errors that don't need Sentry alerts.
+    These happen during Railway network blips and resolve automatically.
+    """
+    msg = str(e).lower()
+    return any(keyword in msg for keyword in [
+        "errno -3",
+        "temporary failure in name resolution",
+        "connection is closed",
+        "connection refused",
+        "connection reset",
+        "timeout",
+        "could not connect",
+        "interface error",
+        "network is unreachable",
+    ])
+
+
+def log_error(context: str, e: Exception, exc_info: bool = False):
+    """
+    Log an error. Network errors stay as warnings (no Sentry).
+    Real errors go as errors (Sentry captures them).
+    """
+    if is_network_error(e):
+        logger.warning(f"[Scheduler] {context}: network issue (auto-recovering) — {type(e).__name__}")
+    else:
+        logger.error(f"[Scheduler] {context}: {e}", exc_info=exc_info)
+
+
 def get_biz_tz(biz):
     from zoneinfo import ZoneInfo
     tz_name = biz.preferred_post_timezone or biz.timezone or "America/New_York"
@@ -84,13 +114,11 @@ def build_scheduled_post_time(biz, day_name: str) -> datetime:
 
 
 async def _build_image_guide(posts: list, business_dict: dict, strategy_summary: str = "") -> list:
-    """Generate a high-level, human photo direction per post tied to the post's strategy."""
     from agent.brain import brain
     image_guide = []
     for post in posts:
         day = post.get("scheduled_day", "")
         caption = post.get("caption", "")
-
         prompt = f"""You're helping a small business owner understand what kind of photo to take for a social media post.
 
 This week's content strategy: {strategy_summary or "authentic, human content that builds trust"}
@@ -103,11 +131,6 @@ Write ONE photo direction in 1 sentence that:
 - Gives creative freedom — suggest a feeling or situation, not exact staging
 - Ends with a short reason why it works (e.g. "this builds trust", "this shows relatability")
 - Sounds like advice from a creative director, not an AI prompt
-
-Good examples:
-- "Catch someone mid-laugh while working — joy is more magnetic than professionalism."
-- "Show a quiet moment of focus at a messy desk — real work resonates more than polished setups."
-- "Capture the before: stress, clutter, overwhelm — contrast makes the payoff land harder."
 
 Return ONLY the one sentence, nothing else."""
 
@@ -123,7 +146,6 @@ Return ONLY the one sentence, nothing else."""
             description = "Show a real, unposed moment from your business day — authenticity always outperforms polish."
 
         image_guide.append({"day": day, "description": description})
-
     return image_guide
 
 
@@ -141,7 +163,6 @@ async def weekly_content_generation():
         import uuid as _uuid
 
         utc_now = datetime.now(timezone.utc)
-        # Use naive UTC for created_at comparisons (ADR-005: created_at is naive)
         utc_now_naive = datetime.utcnow()
 
         async with AsyncSessionLocal() as db:
@@ -163,7 +184,6 @@ async def weekly_content_generation():
                     if local_weekday != kickoff_weekday or local_hour != 21:
                         continue
 
-                    # Use naive datetime for created_at comparison
                     week_start = utc_now_naive - timedelta(days=(utc_now_naive.weekday() + 1) % 7)
                     existing = await db.execute(
                         select(AgentAction).where(
@@ -209,9 +229,7 @@ async def weekly_content_generation():
                         strategy_summary = f"Building authentic content for {biz.name}."
 
                     posts = await content_pipeline.generate_week_of_content(
-                        business_id=str(biz.id),
-                        db=db,
-                        platforms=platforms,
+                        business_id=str(biz.id), db=db, platforms=platforms,
                     )
                     while len(posts) < posts_count:
                         posts.append(posts[-1].copy() if posts else {})
@@ -226,12 +244,10 @@ async def weekly_content_generation():
                                 "google_ads", {"business": business_dict}, str(biz.id)
                             )
                             google_campaign = await google_ads_agent.generate_campaign(
-                                business=business_dict,
-                                strategy=ads_strategy,
-                                business_id=str(biz.id),
+                                business=business_dict, strategy=ads_strategy, business_id=str(biz.id),
                             )
                         except Exception as e:
-                            logger.error(f"[Scheduler] Google Ads error: {e}")
+                            log_error(f"Google Ads for {biz.name}", e)
 
                     stored_actions = []
                     for post in posts:
@@ -272,7 +288,6 @@ async def weekly_content_generation():
 
                     await db.commit()
 
-                    # Use naive datetime for created_at comparison
                     week_ago_naive = utc_now_naive - timedelta(days=7)
                     yesterday_naive = utc_now_naive - timedelta(days=1)
                     past_result = await db.execute(
@@ -326,13 +341,13 @@ async def weekly_content_generation():
                             ads_stored.approval_email_sent = True
                         await db.commit()
 
-                    logger.info(f"[Scheduler] Weekly kickoff sent for {biz.name} — {posts_count} posts: {posting_schedule} (kickoff day: {kickoff_day})")
+                    logger.info(f"[Scheduler] Weekly kickoff sent for {biz.name}")
 
                 except Exception as e:
-                    logger.error(f"[Scheduler] Weekly gen error for {biz.id}: {e}", exc_info=True)
+                    log_error(f"Weekly gen for {biz.id}", e, exc_info=not is_network_error(e))
 
     except Exception as e:
-        logger.error(f"[Scheduler] weekly_content_generation outer error: {e}", exc_info=True)
+        log_error("weekly_content_generation outer", e, exc_info=not is_network_error(e))
 
 
 # ─── 2. POST APPROVAL EMAILS + EXPIRY ────────────────────────────────────────
@@ -376,7 +391,6 @@ async def post_approval_and_expiry():
                             )
                             for action in expire_result.scalars().all():
                                 action.status = "expired"
-                                logger.info(f"[Scheduler] Expired {w['expire_day']} post for {biz.name}")
                             await db.commit()
 
                         if w["send_day"]:
@@ -411,13 +425,12 @@ async def post_approval_and_expiry():
                             )
                             next_action.approval_email_sent = True
                             await db.commit()
-                            logger.info(f"[Scheduler] {w['send_day']} approval email → {biz.name}")
 
                 except Exception as e:
-                    logger.error(f"[Scheduler] post_approval_and_expiry error for {biz.id}: {e}", exc_info=True)
+                    log_error(f"post_approval_and_expiry for {biz.id}", e)
 
     except Exception as e:
-        logger.error(f"[Scheduler] post_approval_and_expiry outer error: {e}", exc_info=True)
+        log_error("post_approval_and_expiry outer", e, exc_info=not is_network_error(e))
 
 
 # ─── 3. EXECUTE APPROVED POSTS ────────────────────────────────────────────────
@@ -446,10 +459,10 @@ async def execute_approved_posts():
                     await db.commit()
                     logger.info(f"[Scheduler] Posted {action.id} ({action.action_type})")
                 except Exception as e:
-                    logger.error(f"[Scheduler] Execute {action.id} error: {e}")
+                    log_error(f"Execute action {action.id}", e)
 
     except Exception as e:
-        logger.error(f"[Scheduler] execute_approved_posts error: {e}")
+        log_error("execute_approved_posts", e, exc_info=not is_network_error(e))
 
 
 # ─── 4. EXPIRE STALE ACTIONS ─────────────────────────────────────────────────
@@ -460,7 +473,6 @@ async def expire_stale_actions():
         from database.models import AgentAction
         from sqlalchemy import update, and_
 
-        # Use naive UTC for created_at comparison (ADR-005: created_at is naive)
         cutoff = datetime.utcnow() - timedelta(days=3)
         async with AsyncSessionLocal() as db:
             result = await db.execute(
@@ -475,7 +487,7 @@ async def expire_stale_actions():
                 logger.info(f"[Scheduler] Safety net expired {len(expired)} stale actions.")
 
     except Exception as e:
-        logger.error(f"[Scheduler] expire_stale_actions error: {e}")
+        log_error("expire_stale_actions", e, exc_info=not is_network_error(e))
 
 
 # ─── 5. ONBOARDING REMINDER ──────────────────────────────────────────────────
@@ -536,16 +548,15 @@ async def onboarding_reminder():
                         business_name=biz.name, db=db,
                         extra_data={"is_reminder": True}
                     )
-                    logger.info(f"[Scheduler] Onboarding reminder → {biz.name}")
 
                 except Exception as e:
-                    logger.error(f"[Scheduler] Onboarding reminder error for {biz.id}: {e}")
+                    log_error(f"Onboarding reminder for {biz.id}", e)
 
     except Exception as e:
-        logger.error(f"[Scheduler] onboarding_reminder outer error: {e}")
+        log_error("onboarding_reminder outer", e, exc_info=not is_network_error(e))
 
 
-# ─── 6. WEEKLY ANALYTICS (Friday 2pm local) ──────────────────────────────────
+# ─── 6. WEEKLY ANALYTICS ─────────────────────────────────────────────────────
 
 async def weekly_analytics():
     try:
@@ -591,13 +602,12 @@ async def weekly_analytics():
                         insights=insights,
                         db=db,
                     )
-                    logger.info(f"[Scheduler] Weekly analytics sent → {biz.name}")
 
                 except Exception as e:
-                    logger.error(f"[Scheduler] Weekly analytics error for {biz.id}: {e}", exc_info=True)
+                    log_error(f"Weekly analytics for {biz.id}", e, exc_info=not is_network_error(e))
 
     except Exception as e:
-        logger.error(f"[Scheduler] weekly_analytics outer error: {e}", exc_info=True)
+        log_error("weekly_analytics outer", e, exc_info=not is_network_error(e))
 
 
 # ─── 7. SUBSCRIPTION HEALTH CHECK ────────────────────────────────────────────
@@ -621,7 +631,6 @@ async def subscription_health_check():
                     sub = await stripe_client.get_subscription(biz.subscription_id)
                     if not sub:
                         continue
-                    # Handle both Stripe SDK objects and dicts
                     try:
                         status = sub["status"] if isinstance(sub, dict) else getattr(sub, "status", None)
                     except Exception:
@@ -631,17 +640,17 @@ async def subscription_health_check():
                         await db.commit()
                         logger.info(f"[Scheduler] Deactivated {biz.name} (Stripe: {status})")
                 except Exception as e:
-                    logger.error(f"[Scheduler] Subscription health error for {biz.id}: {e}")
+                    log_error(f"Subscription health for {biz.id}", e)
 
     except Exception as e:
-        logger.error(f"[Scheduler] subscription_health_check outer error: {e}")
+        log_error("subscription_health_check outer", e, exc_info=not is_network_error(e))
 
 
 # ─── REGISTER & START ─────────────────────────────────────────────────────────
 
 def start_scheduler():
     scheduler.add_job(weekly_content_generation, IntervalTrigger(hours=1),
-        id="weekly_content_generation", name="Weekly content gen (user's kickoff day 9pm local)",
+        id="weekly_content_generation", name="Weekly content gen",
         replace_existing=True, misfire_grace_time=600)
 
     scheduler.add_job(post_approval_and_expiry, IntervalTrigger(hours=1),
@@ -653,7 +662,7 @@ def start_scheduler():
         replace_existing=True, misfire_grace_time=300)
 
     scheduler.add_job(expire_stale_actions, IntervalTrigger(minutes=30),
-        id="expire_stale_actions", name="Expire stale actions (3-day net)",
+        id="expire_stale_actions", name="Expire stale actions",
         replace_existing=True, misfire_grace_time=300)
 
     scheduler.add_job(onboarding_reminder, IntervalTrigger(hours=1),
@@ -661,7 +670,7 @@ def start_scheduler():
         replace_existing=True, misfire_grace_time=600)
 
     scheduler.add_job(weekly_analytics, IntervalTrigger(hours=1),
-        id="weekly_analytics", name="Weekly analytics (Fri 2pm local)",
+        id="weekly_analytics", name="Weekly analytics",
         replace_existing=True, misfire_grace_time=600)
 
     scheduler.add_job(subscription_health_check,
@@ -670,6 +679,6 @@ def start_scheduler():
         replace_existing=True, misfire_grace_time=1800)
 
     scheduler.start()
-    logger.info("[Scheduler] Started. Jobs:")
+    logger.info("[Scheduler] Started.")
     for job in scheduler.get_jobs():
         logger.info(f"  ✓ {job.name} — next: {job.next_run_time}")
