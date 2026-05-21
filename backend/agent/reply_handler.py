@@ -2,18 +2,14 @@
 reply_handler.py
 
 Handles all user email replies with:
-- User memory (compact, maintained knowledge base — not raw history)
+- User memory (compact knowledge base — not raw history)
 - Vendor-aware content generation
 - User-first execution (do first, ask later — never ask more than one question)
 - Content safety filtering
-- Natural, direct responses
-
-Token cost: ~300-400 per call (vs ~2000+ with raw history)
 """
 
 import anthropic
 import os
-import json
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
@@ -24,31 +20,39 @@ YOUR JOB:
 The user has replied to a marketing email. Read what they want and DO IT immediately.
 
 CORE RULES:
-1. EXECUTE FIRST. If you have enough to act, act now. Don't ask for more info.
-2. NEVER ask more than one question. Ever. If you must ask, ask only one.
+1. EXECUTE FIRST. If you have enough to act, act now.
+2. NEVER ask more than one question. Ever.
 3. Talk TO the user directly. Never use third person ("Anna wants...").
 4. Match their energy. Casual = casual. Detailed = detailed.
-5. Keep responses SHORT. 2-4 sentences unless delivering a post draft.
-6. Their input, story, or raw notes = USE IT. Don't second-guess.
+5. Keep responses SHORT unless delivering a post.
+6. Their raw notes, story, or content = USE IT DIRECTLY. Don't ask permission.
 
-WHAT YOU CAN DO:
-- Rewrite or revise a post from their instructions
-- Write a new post from their raw content (even rough notes)
-- Adjust tone, style, length, message
-- Answer questions about marketing
+═══════════════════════════════════════
+CRITICAL: WHEN TO USE THE POST FORMAT
+═══════════════════════════════════════
+Use the POST format whenever:
+- User asks to rewrite, modify, or change a post
+- User asks you to "make it" something (less salesy, funnier, more personal, etc.)
+- User gives you their own content and says "use this" or "make this a post"
+- User provides a story or update and you need to turn it into a post
+- You are creating any new Instagram/social media content
 
-WHEN DELIVERING A POST — use this exact format:
+The POST format is MANDATORY for any post content. Never put post content in plain text.
+
+POST FORMAT — use EXACTLY this structure with no deviations:
 POST:
-[caption only, no hashtags]
+[caption only, no hashtags here]
 
 HASHTAGS:
-[hashtags]
+[hashtags on one line]
 
 FOLLOW_UP:
-[one short sentence: a question only if truly needed, otherwise "Want any changes? Just reply."]
+[one short sentence max — "Want any changes? Just reply." unless you have a specific question]
 
-FOR ALL OTHER REPLIES:
-Answer naturally. No special format.
+═══════════════════════════════════════
+FOR EVERYTHING ELSE (questions, info):
+═══════════════════════════════════════
+Answer naturally in 2-4 sentences. No special format needed.
 """
 
 
@@ -62,18 +66,12 @@ async def handle_reply(
     """
     Handle a user's email reply.
 
-    Args:
-        user_message: the user's reply
-        business: business dict (name, industry, tone_of_voice, etc.)
-        memory: user memory dict from user_memory.load_memory()
-        vendor_type: vendor type string
-        pending_action: current pending AgentAction dict if relevant
-
     Returns:
         {
             "response_text": str,
             "revised_post": dict or None,
-            "action_type": "post_revision" | "new_post" | "conversation" | "safety_block"
+            "action_type": "post_revision" | "new_post" | "conversation" | "safety_block",
+            "raw_ai_response": str,
         }
     """
     from agent.content_safety import check_content_safety, get_safe_redirect_message
@@ -87,6 +85,7 @@ async def handle_reply(
             "response_text": get_safe_redirect_message(),
             "revised_post": None,
             "action_type": "safety_block",
+            "raw_ai_response": "",
         }
 
     # Vendor profile
@@ -96,7 +95,7 @@ async def handle_reply(
         )
     profile = get_vendor_profile(vendor_type)
 
-    # Build compact context block using memory (~200 tokens)
+    # Compact context block (~200 tokens)
     memory_context = format_for_prompt(memory)
 
     context_block = f"""BUSINESS:
@@ -113,11 +112,10 @@ USER MEMORY:
     if pending_action:
         params = pending_action.get("action_parameters") or pending_action.get("parameters", {})
         caption = params.get("caption", "")
-        # Strip existing hashtags from caption display
         caption_clean = caption.split("\n\n#")[0] if "\n\n#" in caption else caption
         context_block += f"""
 
-CURRENT POST BEING DISCUSSED:
+CURRENT PENDING POST:
 Day: {pending_action.get('scheduled_day', '')}
 Caption: {caption_clean[:300]}"""
 
@@ -145,7 +143,7 @@ Caption: {caption_clean[:300]}"""
             post_section = raw_response.split("POST:")[1]
             caption = ""
             hashtags_text = ""
-            follow_up = ""
+            follow_up = "Want any changes? Just reply."
 
             if "HASHTAGS:" in post_section:
                 caption = post_section.split("HASHTAGS:")[0].strip()
@@ -170,11 +168,11 @@ Caption: {caption_clean[:300]}"""
                 "follow_up": follow_up,
             }
 
-            # Clean response for email
+            # Clean email response
             email_lines = ["Here's your revised post:\n", caption]
             if hashtags:
                 email_lines.append(f"\n{' '.join(hashtags[:10])}")
-            email_lines.append(f"\n\n{follow_up or 'Want any changes? Just reply.'}")
+            email_lines.append(f"\n\n{follow_up}")
             raw_response = "\n".join(email_lines)
 
         except Exception as e:
@@ -185,5 +183,5 @@ Caption: {caption_clean[:300]}"""
         "response_text": raw_response,
         "revised_post": revised_post,
         "action_type": action_type,
-        "raw_ai_response": response.content[0].text,  # for memory update
+        "raw_ai_response": response.content[0].text,
     }
