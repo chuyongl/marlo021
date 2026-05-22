@@ -1,59 +1,104 @@
 """
 reply_handler.py
 
-Handles all user email replies with:
-- User memory (compact knowledge base — not raw history)
-- Vendor-aware content generation
-- User-first execution (do first, ask later — never ask more than one question)
-- Content safety filtering
+Two-step approach:
+1. classify_intent() — Haiku, fast, cheap. Determines what user wants.
+2. handle_reply() — Sonnet, generates the right response for that intent.
+
+Intent types:
+- post_request: user gave content to turn into a post, or asked to write one
+- post_revision: user wants to change an existing pending post
+- conversation: question, feedback, or chat — no post needed
 """
 
 import anthropic
 import os
+import json
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 
-REPLY_SYSTEM_PROMPT = """You are Marlo, a helpful marketing assistant for small businesses.
+# ─── Step 1: Intent Classification ────────────────────────────────────────────
 
-YOUR JOB:
-The user has replied to a marketing email. Read what they want and DO IT immediately.
+CLASSIFY_PROMPT = """You classify what a user wants in one word.
 
-CORE RULES:
-1. EXECUTE FIRST. If you have enough to act, act now.
-2. NEVER ask more than one question. Ever.
-3. Talk TO the user directly. Never use third person ("Anna wants...").
-4. Match their energy. Casual = casual. Detailed = detailed.
-5. Keep responses SHORT unless delivering a post.
-6. Their raw notes, story, or content = USE IT DIRECTLY. Don't ask permission.
+INTENT OPTIONS:
+- post_request: user provided content/story/notes to turn into a post, OR asked to write/create a post about something
+- post_revision: user wants to change an existing post (make it X, change Y, edit Z, rewrite it)
+- conversation: question, feedback, general chat, anything else
 
-═══════════════════════════════════════
-CRITICAL: WHEN TO USE THE POST FORMAT
-═══════════════════════════════════════
-Use the POST format whenever:
-- User asks to rewrite, modify, or change a post
-- User asks you to "make it" something (less salesy, funnier, more personal, etc.)
-- User gives you their own content and says "use this" or "make this a post"
-- User provides a story or update and you need to turn it into a post
-- You are creating any new Instagram/social media content
+EXAMPLES:
+"use my message as the post" → post_request
+"This week we hit a milestone..." (long text) → post_request
+"Make it less salesy" → post_revision
+"Change the tone to be more personal" → post_revision
+"Rewrite this using my content: [content]" → post_request
+"What time does my post go live?" → conversation
+"Can you help me with Mailchimp?" → conversation
+"Make the caption shorter" → post_revision
+"I want to post about our new product launch" → post_request
 
-The POST format is MANDATORY for any post content. Never put post content in plain text.
+Respond with ONLY one of: post_request, post_revision, conversation"""
 
-POST FORMAT — use EXACTLY this structure with no deviations:
+
+async def classify_intent(user_message: str, has_pending_action: bool) -> str:
+    """Classify user intent using Haiku. Fast and cheap."""
+    try:
+        context = f"User has a pending post waiting for approval: {has_pending_action}\n\nUser message: {user_message[:500]}"
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=20,
+            messages=[{"role": "user", "content": f"{CLASSIFY_PROMPT}\n\n{context}"}]
+        )
+        intent = response.content[0].text.strip().lower()
+        if intent not in ("post_request", "post_revision", "conversation"):
+            intent = "post_request" if len(user_message) > 100 else "conversation"
+        print(f"[ReplyHandler] Intent: {intent}")
+        return intent
+    except Exception as e:
+        print(f"[ReplyHandler] classify_intent error: {e}")
+        # Fallback: long messages are probably post requests
+        return "post_request" if len(user_message) > 100 else "conversation"
+
+
+# ─── Step 2: Generate Response ─────────────────────────────────────────────────
+
+POST_GENERATION_PROMPT = """You are Marlo, a marketing assistant. Generate an Instagram post.
+
+RULES:
+- Use the user's content, voice, and story directly
+- Keep their authentic message — clean up spelling/grammar only
+- Match the vendor's caption style
+- ALWAYS use this exact format, no exceptions:
+
 POST:
-[caption only, no hashtags here]
+[caption only — no hashtags]
 
 HASHTAGS:
 [hashtags on one line]
 
 FOLLOW_UP:
-[one short sentence max — "Want any changes? Just reply." unless you have a specific question]
+[one sentence: "Want any changes? Just reply." or a specific question if needed]"""
 
-═══════════════════════════════════════
-FOR EVERYTHING ELSE (questions, info):
-═══════════════════════════════════════
-Answer naturally in 2-4 sentences. No special format needed.
-"""
+POST_REVISION_PROMPT = """You are Marlo, a marketing assistant. Revise the existing post based on user instructions.
+
+RULES:
+- Apply the user's instruction to the existing post
+- Keep the core message, just change what they asked
+- ALWAYS use this exact format, no exceptions:
+
+POST:
+[revised caption — no hashtags]
+
+HASHTAGS:
+[hashtags on one line]
+
+FOLLOW_UP:
+[one sentence: "Want any changes? Just reply."]"""
+
+CONVERSATION_PROMPT = """You are Marlo, a helpful marketing assistant.
+Answer naturally in 2-4 sentences. Be direct and helpful.
+Do NOT generate a post. Just answer the question or respond to the message."""
 
 
 async def handle_reply(
@@ -64,7 +109,7 @@ async def handle_reply(
     pending_action: dict = None,
 ) -> dict:
     """
-    Handle a user's email reply.
+    Main entry point. Classifies intent then generates appropriate response.
 
     Returns:
         {
@@ -78,7 +123,7 @@ async def handle_reply(
     from agent.vendor_profiles import get_vendor_profile, detect_vendor_type_from_industry
     from agent.user_memory import format_for_prompt
 
-    # Safety check
+    # Safety check first
     safety = await check_content_safety(user_message)
     if safety.get("blocked"):
         return {
@@ -94,10 +139,12 @@ async def handle_reply(
             business.get("industry", "")
         )
     profile = get_vendor_profile(vendor_type)
-
-    # Compact context block (~200 tokens)
     memory_context = format_for_prompt(memory)
 
+    # Classify intent
+    intent = await classify_intent(user_message, has_pending_action=pending_action is not None)
+
+    # Build context block
     context_block = f"""BUSINESS:
 Name: {business.get('name', '')}
 Industry: {business.get('industry', '')}
@@ -109,15 +156,26 @@ Caption style: {profile.caption_tone}
 USER MEMORY:
 {memory_context}"""
 
-    if pending_action:
+    if pending_action and intent == "post_revision":
         params = pending_action.get("action_parameters") or pending_action.get("parameters", {})
         caption = params.get("caption", "")
         caption_clean = caption.split("\n\n#")[0] if "\n\n#" in caption else caption
         context_block += f"""
 
-CURRENT PENDING POST:
+EXISTING POST TO REVISE:
 Day: {pending_action.get('scheduled_day', '')}
-Caption: {caption_clean[:300]}"""
+Current caption: {caption_clean[:400]}"""
+
+    # Select system prompt based on intent
+    if intent == "post_request":
+        system_prompt = POST_GENERATION_PROMPT
+        action_type_if_post = "new_post"
+    elif intent == "post_revision":
+        system_prompt = POST_REVISION_PROMPT
+        action_type_if_post = "post_revision"
+    else:
+        system_prompt = CONVERSATION_PROMPT
+        action_type_if_post = "conversation"
 
     messages = [{
         "role": "user",
@@ -127,18 +185,19 @@ Caption: {caption_clean[:300]}"""
     response = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=1000,
-        system=REPLY_SYSTEM_PROMPT,
+        system=system_prompt,
         messages=messages,
     )
 
     raw_response = response.content[0].text.strip()
+    print(f"[ReplyHandler] Raw response preview: {raw_response[:100]}")
 
-    # Parse post if present
+    # Parse post if intent was post-related
     revised_post = None
     action_type = "conversation"
 
-    if "POST:" in raw_response:
-        action_type = "post_revision" if pending_action else "new_post"
+    if intent in ("post_request", "post_revision") and "POST:" in raw_response:
+        action_type = action_type_if_post
         try:
             post_section = raw_response.split("POST:")[1]
             caption = ""
@@ -168,8 +227,8 @@ Caption: {caption_clean[:300]}"""
                 "follow_up": follow_up,
             }
 
-            # Clean email response
-            email_lines = ["Here's your revised post:\n", caption]
+            # Clean email response text
+            email_lines = ["Here's your post:\n", caption]
             if hashtags:
                 email_lines.append(f"\n{' '.join(hashtags[:10])}")
             email_lines.append(f"\n\n{follow_up}")
@@ -178,6 +237,11 @@ Caption: {caption_clean[:300]}"""
         except Exception as e:
             print(f"[ReplyHandler] Post parse error: {e}")
             action_type = "conversation"
+
+    elif intent in ("post_request", "post_revision") and "POST:" not in raw_response:
+        # AI didn't follow format — log it and treat as conversation
+        print(f"[ReplyHandler] WARNING: intent was {intent} but AI didn't use POST: format")
+        action_type = "conversation"
 
     return {
         "response_text": raw_response,
