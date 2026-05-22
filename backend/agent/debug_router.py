@@ -16,13 +16,11 @@ BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000")
 
 
 async def _build_image_guide(posts: list, business_dict: dict, strategy_summary: str = "") -> list:
-    """Generate a high-level, human photo direction per post tied to the post's strategy."""
     from agent.brain import brain
     image_guide = []
     for post in posts:
         day = post.get("scheduled_day", "")
         caption = post.get("caption", "")
-        platform = post.get("platform", "instagram")
 
         prompt = f"""You're helping a small business owner understand what kind of photo to take for a social media post.
 
@@ -36,11 +34,6 @@ Write ONE photo direction in 1 sentence that:
 - Gives creative freedom — suggest a feeling or situation, not exact staging
 - Ends with a short reason why it works (e.g. "this builds trust", "this shows relatability")
 - Sounds like advice from a creative director, not an AI prompt
-
-Good examples:
-- "Catch someone mid-laugh while working — joy is more magnetic than professionalism."
-- "Show a quiet moment of focus at a messy desk — real work resonates more than polished setups."
-- "Capture the before: stress, clutter, overwhelm — contrast makes the payoff land harder."
 
 Return ONLY the one sentence, nothing else."""
 
@@ -107,7 +100,6 @@ async def trigger_kickoff(business_id: str):
 
             first_name = (user.full_name or "").split()[0] or "there"
 
-            # ── Idempotency: clear existing pending actions before generating new ones ──
             await db.execute(
                 sql_delete(AgentAction).where(
                     AgentAction.business_id == biz.id,
@@ -223,7 +215,6 @@ async def trigger_kickoff(business_id: str):
             if not first_action:
                 return {"error": "No posts generated"}
 
-            # Check if first kickoff already sent (using email logs, not actions)
             kickoff_check = await db.execute(
                 select(EmailLog).where(
                     EmailLog.business_id == biz.id,
@@ -540,7 +531,7 @@ async def send_approval_email(business_id: str, day: str):
 @router.delete("/reset/{business_id}")
 async def reset_business(business_id: str):
     try:
-        from sqlalchemy import delete
+        from sqlalchemy import delete, update
         from database.models import EmailLog
 
         async with AsyncSessionLocal() as db:
@@ -549,6 +540,12 @@ async def reset_business(business_id: str):
             )
             deleted_logs = await db.execute(
                 delete(EmailLog).where(EmailLog.business_id == business_id)
+            )
+            # Ensure onboarding is marked complete so replies go to handle_conversational_reply
+            await db.execute(
+                update(Business)
+                .where(Business.id == business_id)
+                .values(onboarding_completed=True, onboarding_step=5)
             )
             await db.commit()
 
