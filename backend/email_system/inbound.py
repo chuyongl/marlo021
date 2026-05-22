@@ -14,6 +14,76 @@ def clean_subject(text: str, max_len: int = 60) -> str:
     return " ".join(text[:max_len * 2].split())[:max_len]
 
 
+async def load_conversation_history(business_id: str, db: AsyncSession) -> list:
+    """
+    Load last 3 exchanges from EmailLog as conversation history.
+    Returns [{role: "user"/"assistant", content: str}]
+    Each message truncated to 500 chars to keep tokens manageable.
+    """
+    try:
+        result = await db.execute(
+            select(EmailLog)
+            .where(
+                EmailLog.business_id == business_id,
+                EmailLog.email_type.in_([
+                    "reply_response", "post_revision",
+                    "photo_lifestyle_response", "post_approval"
+                ])
+            )
+            .order_by(desc(EmailLog.sent_at))
+            .limit(6)  # last 3 exchanges = up to 6 log entries
+        )
+        logs = list(reversed(result.scalars().all()))
+
+        history = []
+        for log in logs:
+            # User's reply (stored in reply_content)
+            if log.reply_content:
+                history.append({
+                    "role": "user",
+                    "content": log.reply_content[:500]
+                })
+            # Marlo's response (stored in subject as summary)
+            if log.subject:
+                history.append({
+                    "role": "assistant",
+                    "content": f"[Sent: {log.subject}]"
+                })
+
+        return history[-6:]  # max 6 messages = 3 exchanges
+    except Exception as e:
+        print(f"[Inbound] load_conversation_history error: {e}")
+        return []
+
+
+async def save_user_message_to_log(
+    business_id: str,
+    user_message: str,
+    db: AsyncSession
+):
+    """Save user's inbound message to the most recent EmailLog entry."""
+    try:
+        result = await db.execute(
+            select(EmailLog)
+            .where(
+                EmailLog.business_id == business_id,
+                EmailLog.email_type.in_([
+                    "reply_response", "post_revision",
+                    "photo_lifestyle_response", "post_approval",
+                    "weekly_kickoff", "first_kickoff"
+                ])
+            )
+            .order_by(desc(EmailLog.sent_at))
+            .limit(1)
+        )
+        log = result.scalar_one_or_none()
+        if log:
+            log.reply_content = user_message[:1000]
+            await db.commit()
+    except Exception as e:
+        print(f"[Inbound] save_user_message error (non-fatal): {e}")
+
+
 @router.post("/inbound")
 async def receive_inbound_email(request: Request, background_tasks: BackgroundTasks):
     payload = await request.json()
@@ -68,23 +138,19 @@ async def process_inbound_email(business_id: str, from_email: str, text_body: st
 
 
 async def handle_text_reply(business, user, message: str, db: AsyncSession):
-    # Onboarding step 4
     if business.onboarding_step == 4:
         from email_system.onboarding_handler import process_onboarding_reply
         await process_onboarding_reply(str(business.id), message, db)
         return
 
-    # Steps 1-3
     if business.onboarding_step < 4:
         await handle_onboarding_question(business=business, user=user, message=message, db=db)
         return
 
-    # Cancellation
     if "cancel my marlo021 subscription" in message.lower():
         await handle_cancellation(business=business, user=user, db=db)
         return
 
-    # Main conversational reply
     await handle_conversational_reply(business=business, user=user, message=message, db=db)
 
 
@@ -96,7 +162,6 @@ async def handle_conversational_reply(business, user, message: str, db: AsyncSes
     from email_system.templates import base_template, approve_button, decline_button
 
     base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
-    first_name = (user.full_name or "there").split()[0]
 
     business_dict = {
         "name": business.name,
@@ -106,12 +171,20 @@ async def handle_conversational_reply(business, user, message: str, db: AsyncSes
         "description": business.description or "",
     }
 
-    # Load or initialize memory
+    # Load memory
     memory = load_memory(business)
     if not memory.get("vendor_type"):
         memory = await initialize_memory_from_business(business)
 
     vendor_type = memory.get("vendor_type") or detect_vendor_type_from_industry(business.industry or "")
+
+    # Save user message to log BEFORE loading history
+    # (so it's available for future turns)
+    await save_user_message_to_log(str(business.id), message, db)
+
+    # Load conversation history (last 3 exchanges)
+    conversation_history = await load_conversation_history(str(business.id), db)
+    print(f"[Inbound] Loaded {len(conversation_history)} history messages")
 
     # Find most recent pending post action
     pending_action_dict = None
@@ -146,13 +219,14 @@ async def handle_conversational_reply(business, user, message: str, db: AsyncSes
         memory=memory,
         vendor_type=vendor_type,
         pending_action=pending_action_dict,
+        conversation_history=conversation_history,
     )
 
     response_text = result["response_text"]
     revised_post = result.get("revised_post")
     action_type = result.get("action_type", "conversation")
 
-    # Async memory update — runs after we send the email, doesn't block
+    # Async memory update
     asyncio.create_task(update_memory_async(
         business_id=str(business.id),
         user_message=message,
@@ -160,9 +234,8 @@ async def handle_conversational_reply(business, user, message: str, db: AsyncSes
         current_memory=memory,
     ))
 
-    # Build email based on action type
+    # Build and send email
     if revised_post and action_type in ("post_revision", "new_post") and pending_action:
-        # Update existing pending action
         params = dict(pending_action.action_parameters or {})
         params["caption"] = revised_post["full_caption"]
         params["hashtags"] = revised_post["hashtags"]
@@ -176,16 +249,16 @@ async def handle_conversational_reply(business, user, message: str, db: AsyncSes
         <p style="font-size:15px;color:#1F2937;margin:0 0 20px 0;">Here's your revised post:</p>
         <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:20px;margin-bottom:20px;">
           <p style="font-size:12px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:0.08em;margin:0 0 12px 0;">
-            📸 {pending_action.scheduled_day} post
+            📸 {pending_action.scheduled_day or 'Instagram'} post
           </p>
           <p style="font-size:14px;color:#1F2937;line-height:1.8;margin:0 0 8px 0;white-space:pre-wrap;">{revised_post['caption']}</p>
           {f'<p style="font-size:12px;color:#9CA3AF;margin:0 0 16px 0;">{" ".join(revised_post["hashtags"][:10])}</p>' if revised_post.get("hashtags") else ""}
-          {approve_button(f"✓ Approve {pending_action.scheduled_day} post", approve_url)}
+          {approve_button(f"✓ Approve post", approve_url)}
           {decline_button("✗ Skip", decline_url)}
         </div>
         <p style="font-size:12px;color:#9CA3AF;margin:0;">{revised_post.get('follow_up', 'Want any changes? Just reply.')}</p>
         """)
-        subject = f"Re: Your revised {pending_action.scheduled_day} post"
+        subject = f"Re: Your revised {pending_action.scheduled_day or 'Instagram'} post"
 
     elif revised_post and action_type == "new_post":
         from agent.executor import executor
@@ -318,7 +391,6 @@ async def handle_photo_upload(business, user, attachments: list, message_text: s
     if not original_url:
         return
 
-    # Load memory to get vendor type
     memory = load_memory(business)
     if not memory.get("vendor_type"):
         memory = await initialize_memory_from_business(business)
@@ -333,7 +405,6 @@ async def handle_photo_upload(business, user, attachments: list, message_text: s
 
     caption_context = message_text.strip() if len(message_text.strip()) > 5 else ""
 
-    # Generate lifestyle image
     lifestyle_result = await image_gen.generate_lifestyle_from_product(
         product_image_url=original_url, business=business_dict,
         caption=caption_context, platform="instagram_feed", vendor_type=vendor_type,
@@ -342,7 +413,6 @@ async def handle_photo_upload(business, user, attachments: list, message_text: s
     if not lifestyle_url:
         lifestyle_url = await image_gen.enhance_photo(original_url)
 
-    # Generate caption using reply_handler
     reply_result = await handle_reply(
         user_message=f"Write an Instagram caption for this product photo. Context: {caption_context or 'product showcase'}",
         business=business_dict, memory=memory, vendor_type=vendor_type,
@@ -357,7 +427,6 @@ async def handle_photo_upload(business, user, attachments: list, message_text: s
     caption = revised_post["caption"] if revised_post else reply_result["response_text"][:300]
     full_caption = f"{caption}\n\n{' '.join(hashtags)}"
 
-    # Save photo
     photo = UserPhoto(
         id=uuid.uuid4(), business_id=business.id,
         original_url=original_url, enhanced_url=lifestyle_url,
@@ -367,7 +436,6 @@ async def handle_photo_upload(business, user, attachments: list, message_text: s
     db.add(photo)
     await db.commit()
 
-    # Create approval action
     from agent.executor import executor
     base_url = os.getenv("APP_BASE_URL", "http://localhost:8000")
     action_dict = {
