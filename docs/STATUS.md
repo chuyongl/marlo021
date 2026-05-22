@@ -1,6 +1,6 @@
 # Marlo — Current Status
 
-*Last updated: May 21, 2026*
+*Last updated: May 22, 2026*
 
 ---
 
@@ -14,35 +14,35 @@
 - fal.ai image generation
 - Stripe 14-day trial
 - Privacy policy (`marlo021.ai/privacy`) and Terms (`marlo021.ai/terms`)
-- Meta Console configured (domains, privacy URL, data deletion callback)
-- Sentry network errors suppressed (Railway DNS blips no longer spam alerts)
+- Meta Console configured
+- Sentry network errors suppressed
 - `ENVIRONMENT=production` set in Railway
+- User memory system deployed (`businesses.user_memory` JSONB column added)
+- Vendor profiles deployed (7 types, auto-detected from industry)
+- Content safety filter deployed
+- Photo upload → lifestyle image generation working (tested)
 
 ---
 
-## ⚠️ Code Written, Not Fully Tested
+## ⚠️ Code Deployed, Not Fully Tested
 
-- **Conversational reply handler** (`reply_handler.py`) — deployed, not yet tested with real email replies
-- **User memory** (`user_memory.py`) — deployed, `user_memory` column added via startup migration
-- **Vendor profiles** (`vendor_profiles.py`) — deployed, auto-detection from industry string
-- **Content safety** (`content_safety.py`) — deployed, not tested with harmful input
-- **Lifestyle image generation** (`image_gen.generate_lifestyle_from_product`) — deployed, not yet tested with real product photo
-- `post_approval` email — scheduler logic written, not triggered in testing
-- `weekly_analytics` email — endpoint exists, not verified in full flow
-- 72-hour onboarding reminder — logic written
-- Decline feedback buttons — endpoint exists
-- Stale action expiry (3-day) — logic written
-- Google Ads campaign generation — code exists, never tested
+- **Conversational reply handler** — intent classification works, but approve buttons not yet confirmed end-to-end
+  - Root cause found: `debug_router.py` reset wasn't restoring `onboarding_completed=True` → replies were going to `handle_onboarding_question` instead of `handle_conversational_reply`
+  - Fix deployed: reset now sets `onboarding_step=5, onboarding_completed=True`
+  - **Next session: re-test reply flow with clean reset**
+- Cross-email conversation history — deployed, not yet tested
+- `billing_router.py` Stripe webhook fix — deployed
 
 ---
 
 ## 🔴 Not Yet Done
 
-- **Test conversational reply flow** — reply to approval email, verify memory + post revision works
-- **Test photo upload** — reply to email with product photo, verify lifestyle image generates
+- **Confirm reply flow works end-to-end** — reset → kickoff → reply with content → approve button appears
+- **Test photo upload** with real product photo
 - **Meta app review** — needs screen recording, submit for Advanced Access
 - **Stripe live mode** — switch `sk_test_` to `sk_live_`
 - **Beta users** — 3-5 Seattle small businesses
+- **Image quality** — switch to `flux-pro/v1.1-ultra`, improve prompts for human figures
 
 ---
 
@@ -57,7 +57,7 @@
 ## Debug Commands
 
 ```powershell
-# Reset test account
+# Reset (PowerShell only — DELETE method)
 Invoke-WebRequest -Method DELETE "https://api.marlo021.ai/debug/reset/3512ed4f-9dae-499e-9f5d-fdb0d85269ef"
 
 # Trigger kickoff
