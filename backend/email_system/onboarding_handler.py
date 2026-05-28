@@ -107,11 +107,7 @@ Business description: {reply_text}"""
     # ── Step 7: Generate content strategy ────────────────────────────────────
     try:
         strategy = await strategy_agent.decide("weekly_content", {"business": business_dict}, business_id)
-        strategy_summary = (
-            f"{strategy.get('key_message', '')} "
-            f"Tone: {strategy.get('tone_guidance', '')} "
-            f"CTA: {strategy.get('call_to_action', '')}"
-        ).strip()
+        strategy_summary = strategy.get("key_message", f"Building authentic content for {biz.name}.")
     except Exception as e:
         print(f"[OnboardingHandler] Strategy error: {e}")
         strategy = {}
@@ -187,16 +183,8 @@ Business description: {reply_text}"""
 
     await db.commit()
 
-    # ── Step 11: Build image guide ────────────────────────────────────────────
-    visual = strategy.get("visual_direction", "") if isinstance(strategy, dict) else ""
-    image_guide = []
-    for post in posts:
-        day = post.get("scheduled_day", "")
-        image_guide.append({
-            "day": day,
-            "type": "Real photo recommended",
-            "description": visual or f"A photo that shows {biz.name} in action — real people and real products always outperform stock imagery.",
-        })
+    # ── Step 11: Build per-day image guide ───────────────────────────────────
+    image_guide = await _build_image_guide(posts, business_dict, brain)
 
     # ── Step 12: Get first post + tokens ─────────────────────────────────────
     first_day = posting_schedule[0]
@@ -209,7 +197,6 @@ Business description: {reply_text}"""
         print(f"[OnboardingHandler] No first action found — skipping kickoff email")
         return
 
-    # Mark first post + ads approval email as sent
     first_action.approval_email_sent = True
     if ads_action:
         ads_action.approval_email_sent = True
@@ -235,3 +222,49 @@ Business description: {reply_text}"""
     )
 
     print(f"[OnboardingHandler] Kickoff email sent for {biz.name} — {posts_count} posts: {posting_schedule}")
+
+
+async def _build_image_guide(posts: list, business_dict: dict, brain) -> list:
+    """
+    Generate a unique, specific photo suggestion for each post day
+    based on that post's caption and strategy.
+    """
+    image_guide = []
+    for post in posts:
+        day = post.get("scheduled_day", "")
+        caption = post.get("caption", "")
+        platform = post.get("platform", "instagram")
+
+        prompt = f"""You are a photography director for a small business's social media.
+
+Business: {business_dict.get('name')}
+Industry: {business_dict.get('industry')}
+Target audience: {business_dict.get('target_audience')}
+
+This {platform} post is scheduled for {day}:
+"{caption[:300]}"
+
+Write ONE specific, actionable photo suggestion for this post in 1-2 sentences.
+- Be specific about what to show, who should be in it, what action is happening
+- Suggest the mood/lighting briefly
+- Do NOT repeat generic advice like "real photos perform better"
+- Make it feel tailored to this exact post's message
+- Return ONLY the suggestion text, nothing else"""
+
+        try:
+            suggestion = await brain.generate_content(
+                content_type="photo suggestion",
+                business=business_dict,
+                context={},
+                instructions=prompt
+            )
+            description = suggestion.strip().strip('"')
+        except Exception:
+            description = f"A candid photo showing {business_dict.get('name')} in action on {day} — focus on the human element."
+
+        image_guide.append({
+            "day": day,
+            "description": description,
+        })
+
+    return image_guide
