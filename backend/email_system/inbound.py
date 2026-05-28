@@ -120,10 +120,8 @@ async def process_inbound_email(business_id: str, from_email: str, text_body: st
 async def handle_text_reply(business, user, message: str, db: AsyncSession):
     """
     Route inbound text replies.
-    Key rule: if onboarding_completed=True, ALWAYS go to conversational reply
-    regardless of onboarding_step value.
+    Key rule: if onboarding_completed=True, ALWAYS go to conversational reply.
     """
-    # Completed onboarding — always conversational
     if business.onboarding_completed:
         if "cancel my marlo021 subscription" in message.lower():
             await handle_cancellation(business=business, user=user, db=db)
@@ -131,7 +129,6 @@ async def handle_text_reply(business, user, message: str, db: AsyncSession):
         await handle_conversational_reply(business=business, user=user, message=message, db=db)
         return
 
-    # Still in onboarding
     if business.onboarding_step == 4:
         from email_system.onboarding_handler import process_onboarding_reply
         await process_onboarding_reply(str(business.id), message, db)
@@ -143,7 +140,7 @@ async def handle_text_reply(business, user, message: str, db: AsyncSession):
 async def handle_conversational_reply(business, user, message: str, db: AsyncSession):
     from agent.reply_handler import handle_reply
     from agent.user_memory import load_memory, update_memory_async, initialize_memory_from_business
-    from agent.vendor_profiles import detect_vendor_type_from_industry
+    from agent.vendor_profiles import detect_vendor_type_from_industry, get_vendor_profile
     from email_system.sender import email_sender
     from email_system.templates import base_template, approve_button, decline_button
 
@@ -161,7 +158,7 @@ async def handle_conversational_reply(business, user, message: str, db: AsyncSes
     if not memory.get("vendor_type"):
         memory = await initialize_memory_from_business(business)
 
-    vendor_type = memory.get("vendor_type") or detect_vendor_type_from_industry(business.industry or "")
+    vendor_type = memory.get("vendor_type") or await detect_vendor_type_from_industry(business.industry or "")
 
     await save_user_message_to_log(str(business.id), message, db)
     conversation_history = await load_conversation_history(str(business.id), db)
@@ -238,19 +235,20 @@ async def handle_conversational_reply(business, user, message: str, db: AsyncSes
         subject = f"Re: Your revised {pending_action.scheduled_day or 'Instagram'} post"
 
     elif revised_post and action_type == "new_post":
-        # Generate image automatically
+        # Generate image — vendor-aware model selection
         image_url = None
         try:
             from integrations.image_gen import image_gen
-            from agent.vendor_profiles import get_vendor_profile
             profile = get_vendor_profile(vendor_type)
+            use_ideogram = profile.image_style.preferred_model == "ideogram"
             image_result = await image_gen.generate(
                 subject=f"{revised_post['caption'][:200]} — {profile.image_style.mood}",
                 business=business_dict,
                 platform="instagram_feed",
+                use_ideogram=use_ideogram,
             )
             image_url = image_result.get("url")
-            print(f"[Inbound] Generated image: {image_url[:60] if image_url else 'None'}")
+            print(f"[Inbound] Generated image ({image_result.get('model', 'unknown')}): {image_url[:60] if image_url else 'None'}")
         except Exception as e:
             print(f"[Inbound] Image generation error (non-fatal): {e}")
 
@@ -395,7 +393,7 @@ async def handle_photo_upload(business, user, attachments: list, message_text: s
     if not memory.get("vendor_type"):
         memory = await initialize_memory_from_business(business)
 
-    vendor_type = memory.get("vendor_type") or detect_vendor_type_from_industry(business.industry or "")
+    vendor_type = memory.get("vendor_type") or await detect_vendor_type_from_industry(business.industry or "")
     business_dict = {
         "name": business.name, "industry": business.industry or "",
         "tone_of_voice": business.tone_of_voice or "warm and authentic",

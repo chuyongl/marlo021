@@ -18,6 +18,11 @@ PLATFORM_SIZES = {
     "email_header":     {"width": 1792, "height": 600},
 }
 
+# Model selection
+FLUX_MODEL = "fal-ai/flux-pro/v1.1"
+FLUX_ULTRA_MODEL = "fal-ai/flux-pro/v1.1-ultra"
+IDEOGRAM_MODEL = "fal-ai/ideogram/v3"
+
 
 class ImageGenerator:
 
@@ -26,36 +31,70 @@ class ImageGenerator:
         subject: str,
         business: dict,
         platform: str = "instagram_feed",
-        extra_instructions: str = ""
+        extra_instructions: str = "",
+        use_ideogram: bool = False,
     ) -> dict:
         size = PLATFORM_SIZES.get(platform, {"width": 1024, "height": 1024})
-        prompt = f"""
+
+        if use_ideogram:
+            # Ideogram for text-accurate images (SaaS mockups, etc.)
+            prompt = f"""
+{subject}.
+Business type: {business.get('industry', '')} business.
+Style: {business.get('tone_of_voice', 'professional, clean, modern')}.
+{extra_instructions}
+High quality commercial image optimized for {platform.replace('_', ' ')} format.
+""".strip()
+
+            result = await fal_client.run_async(
+                IDEOGRAM_MODEL,
+                arguments={
+                    "prompt": prompt,
+                    "aspect_ratio": "1:1" if size["width"] == size["height"] else "9:16",
+                    "style": "realistic",
+                    "num_images": 1,
+                }
+            )
+            return {
+                "url": result["images"][0]["url"],
+                "width": size["width"],
+                "height": size["height"],
+                "platform": platform,
+                "prompt": prompt,
+                "model": "ideogram",
+            }
+
+        else:
+            # Flux for lifestyle/product photography (no text needed)
+            prompt = f"""
 {subject}.
 Business type: {business.get('industry', '')} business.
 Mood and style: {business.get('tone_of_voice', 'professional, warm, inviting')}.
 {extra_instructions}
-High quality commercial photography, no text overlay, no watermarks,
+High quality commercial photography, absolutely no text no words no letters no signs,
+no UI elements, no phone screens unless specifically requested,
 clean composition optimized for {platform.replace('_', ' ')} format.
 """.strip()
 
-        result = await fal_client.run_async(
-            "fal-ai/flux-pro/v1.1",
-            arguments={
+            result = await fal_client.run_async(
+                FLUX_MODEL,
+                arguments={
+                    "prompt": prompt,
+                    "image_size": size,
+                    "num_inference_steps": 25,
+                    "guidance_scale": 3.5,
+                    "num_images": 1,
+                    "safety_tolerance": "2"
+                }
+            )
+            return {
+                "url": result["images"][0]["url"],
+                "width": size["width"],
+                "height": size["height"],
+                "platform": platform,
                 "prompt": prompt,
-                "image_size": size,
-                "num_inference_steps": 25,
-                "guidance_scale": 3.5,
-                "num_images": 1,
-                "safety_tolerance": "2"
+                "model": "flux",
             }
-        )
-        return {
-            "url": result["images"][0]["url"],
-            "width": size["width"],
-            "height": size["height"],
-            "platform": platform,
-            "prompt": prompt
-        }
 
     async def generate_lifestyle_from_product(
         self,
@@ -67,7 +106,7 @@ clean composition optimized for {platform.replace('_', ' ')} format.
     ) -> dict:
         """
         Takes a user's product photo and generates a commercial lifestyle image.
-        Uses vendor profile to craft the right scene.
+        Selects model based on vendor profile's preferred_model.
         """
         from agent.brain import brain
         from agent.vendor_profiles import get_vendor_profile, detect_vendor_type_from_industry
@@ -75,10 +114,11 @@ clean composition optimized for {platform.replace('_', ' ')} format.
         size = PLATFORM_SIZES.get(platform, {"width": 1024, "height": 1024})
 
         if not vendor_type:
-            vendor_type = detect_vendor_type_from_industry(business.get("industry", ""))
+            vendor_type = await detect_vendor_type_from_industry(business.get("industry", ""))
         profile = get_vendor_profile(vendor_type)
+        use_ideogram = profile.image_style.preferred_model == "ideogram"
 
-        print(f"[ImageGen] Vendor type: {vendor_type} ({profile.display_name})")
+        print(f"[ImageGen] Vendor: {vendor_type} | Model: {'ideogram' if use_ideogram else 'flux'}")
 
         scene_rules = profile.lifestyle_scene_rules
         image_style = profile.image_style
@@ -105,7 +145,8 @@ COMPOSITION: {scene_rules.composition}
 
 Write a detailed image generation prompt for the best scene.
 Product must be clearly visible and the hero.
-No text, no watermarks. Max 120 words. Return ONLY the prompt."""
+{'Include readable accurate text where appropriate for the brand.' if use_ideogram else 'No text, no words, no letters.'}
+Max 120 words. Return ONLY the prompt."""
 
         try:
             scene_prompt = await brain.generate_content(
@@ -125,28 +166,37 @@ No text, no watermarks. Max 120 words. Return ONLY the prompt."""
             )
 
         platform_note = scene_rules.platform_notes.get(platform, "")
-        full_prompt = (
-            f"{scene_prompt}. Product photo reference — maintain product accuracy. "
-            f"{platform_note} Photorealistic, no text."
-        ).strip()
+        full_prompt = f"{scene_prompt}. Product photo reference — maintain product accuracy. {platform_note}".strip()
 
         print(f"[ImageGen] Prompt: {full_prompt[:100]}...")
 
         try:
-            result = await fal_client.run_async(
-                "fal-ai/flux-pro/v1.1-ultra",
-                arguments={
-                    "prompt": full_prompt,
-                    "image_url": product_image_url,
-                    "strength": 0.78,
-                    "image_size": size,
-                    "num_inference_steps": 28,
-                    "guidance_scale": 3.5,
-                    "num_images": 1,
-                    "safety_tolerance": "2",
-                    "output_format": "jpeg",
-                }
-            )
+            if use_ideogram:
+                result = await fal_client.run_async(
+                    IDEOGRAM_MODEL,
+                    arguments={
+                        "prompt": full_prompt,
+                        "aspect_ratio": "1:1",
+                        "style": "realistic",
+                        "num_images": 1,
+                    }
+                )
+            else:
+                result = await fal_client.run_async(
+                    FLUX_ULTRA_MODEL,
+                    arguments={
+                        "prompt": full_prompt,
+                        "image_url": product_image_url,
+                        "strength": 0.78,
+                        "image_size": size,
+                        "num_inference_steps": 28,
+                        "guidance_scale": 3.5,
+                        "num_images": 1,
+                        "safety_tolerance": "2",
+                        "output_format": "jpeg",
+                    }
+                )
+
             generated_url = result["images"][0]["url"]
             print(f"[ImageGen] Generated: {generated_url[:60]}...")
             return {
@@ -156,12 +206,17 @@ No text, no watermarks. Max 120 words. Return ONLY the prompt."""
                 "platform": platform,
                 "prompt": full_prompt,
                 "vendor_type": vendor_type,
+                "model": "ideogram" if use_ideogram else "flux",
                 "source": "lifestyle_from_product",
             }
+
         except Exception as e:
-            print(f"[ImageGen] fal.ai error: {e}")
+            print(f"[ImageGen] Error: {e}")
             try:
-                fallback = await self.generate(subject=scene_prompt, business=business, platform=platform)
+                fallback = await self.generate(
+                    subject=scene_prompt, business=business,
+                    platform=platform, use_ideogram=use_ideogram
+                )
                 fallback["source"] = "lifestyle_fallback"
                 return fallback
             except Exception as e2:

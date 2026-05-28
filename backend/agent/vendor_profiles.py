@@ -15,6 +15,7 @@ class ImageStyle:
     lighting: str
     backgrounds: list
     avoid: str
+    preferred_model: str = "flux"  # "flux" or "ideogram" — ideogram for text-heavy images
 
 
 @dataclass
@@ -41,6 +42,71 @@ class VendorProfile:
 
 VENDOR_PROFILES = {
 
+    # ── Software / SaaS ───────────────────────────────────────────────────────
+    "software_saas": VendorProfile(
+        vendor_type="software_saas",
+        display_name="Software & SaaS",
+        content_pillars=[
+            "product milestones and launches",
+            "build in public / founder journey",
+            "product demos and features",
+            "customer stories and wins",
+            "team and culture",
+            "industry insights and opinion",
+        ],
+        image_style=ImageStyle(
+            mood="clean, modern, confident, founder-authentic",
+            color_palette="brand colors, dark mode aesthetics, clean whites",
+            lighting="clean studio or natural light for people shots",
+            backgrounds=["clean desk setup", "minimal workspace", "app interface on screen", "dark brand background"],
+            avoid="stock photo feel, overly corporate, cluttered UI",
+            preferred_model="ideogram",  # needs accurate text in mockups
+        ),
+        lifestyle_scene_rules=LifestyleSceneRules(
+            scene_types=[
+                "clean app interface mockup on phone showing key feature with real readable text",
+                "founder at minimal desk with product visible on laptop screen",
+                "before/after split: chaos (sticky notes, overwhelm) vs clarity (clean dashboard)",
+                "product dashboard screenshot styled as social card with brand colors",
+                "team working together on laptop in modern office or cafe",
+            ],
+            model_guidance=(
+                "For mockup images: use Ideogram for accurate text rendering. "
+                "Show real product UI with correct readable text. "
+                "For people shots: authentic founder energy, not stock photo smiles."
+            ),
+            props=["laptop", "phone showing app", "minimal desk accessories", "coffee"],
+            composition=(
+                "Clean and purposeful. Product is the hero. "
+                "For mockups: phone or laptop frame centered, text clearly readable. "
+                "For people: candid over posed."
+            ),
+            platform_notes={
+                "instagram_feed": "Square or portrait. Brand colors consistent. Product visible.",
+                "instagram_story": "Behind the scenes build process, metrics wins, feature demos.",
+            },
+        ),
+        caption_tone=(
+            "Direct, confident, and honest. Write like a founder talking to other founders. "
+            "Share real numbers, real challenges, real wins. "
+            "No corporate speak. Short punchy sentences. "
+            "Build in public energy — transparent about the journey."
+        ),
+        hashtag_clusters=[
+            ["#buildinpublic", "#indiefounder", "#startuplife", "#solofounder"],
+            ["#saas", "#productlaunch", "#indiehackers", "#makersgonnamake"],
+            ["#smallbusiness", "#aitools", "#productivity", "#entrepreneurship"],
+        ],
+        photo_prompts=[
+            "Your product on screen — show the feature you shipped this week",
+            "You working — authentic founder moment, messy desk or coffee shop",
+            "A metric or milestone screenshot styled as a shareable graphic",
+            "Before/after of the problem your product solves",
+        ],
+        posting_frequency="4-5x per week — consistency builds audience for SaaS",
+    ),
+
+    # ── Jewelry / Accessories ─────────────────────────────────────────────────
     "maker_jewelry": VendorProfile(
         vendor_type="maker_jewelry",
         display_name="Jewelry Maker",
@@ -72,8 +138,7 @@ VENDOR_PROFILES = {
             props=["dried flowers", "fresh greenery", "linen fabric", "candles", "ribbon"],
             composition=(
                 "Rule of thirds. Product is the clear hero. "
-                "Negative space is your friend. "
-                "For rings/earrings: close up at 45-degree angle."
+                "Negative space is your friend."
             ),
             platform_notes={
                 "instagram_feed": "Square or portrait (4:5). Consistent color palette.",
@@ -90,14 +155,15 @@ VENDOR_PROFILES = {
             ["#shopsmall", "#makersgonnamake", "#supporthandmade", "#wearableart"],
         ],
         photo_prompts=[
-            "Close-up of your hands working on a piece — show the process and texture",
-            "Flat lay of your latest collection on white or linen background",
+            "Close-up of your hands working on a piece",
+            "Flat lay of your latest collection on white or linen",
             "Someone wearing your piece in natural window light",
-            "Detail shot of your most intricate piece — show the craftsmanship",
+            "Detail shot of your most intricate piece",
         ],
         posting_frequency="3-4x per week",
     ),
 
+    # ── Ceramics / Pottery ────────────────────────────────────────────────────
     "maker_ceramics": VendorProfile(
         vendor_type="maker_ceramics",
         display_name="Ceramics & Pottery",
@@ -121,10 +187,7 @@ VENDOR_PROFILES = {
                 "flat lay with food, plants, and linen",
                 "detail close-up of glaze and texture",
             ],
-            model_guidance=(
-                "Real maker hands are beautiful. In-use shots work best. "
-                "No need for a face — hands and context tell the story."
-            ),
+            model_guidance="Real maker hands are beautiful. In-use shots work best.",
             props=["fresh herbs", "flowers", "coffee beans", "linen napkins", "bread"],
             composition="Generous negative space. Slightly asymmetric feels natural.",
             platform_notes={
@@ -143,13 +206,14 @@ VENDOR_PROFILES = {
         ],
         photo_prompts=[
             "Hands shaping clay at the wheel or table",
-            "A finished piece with coffee or flowers inside — in use",
+            "A finished piece with coffee or flowers inside",
             "Fresh-from-the-kiln pieces lined up",
             "Detail of glaze texture in window light",
         ],
         posting_frequency="3x per week",
     ),
 
+    # ── Candles / Home Fragrance ──────────────────────────────────────────────
     "maker_candles": VendorProfile(
         vendor_type="maker_candles",
         display_name="Candles & Home Fragrance",
@@ -177,7 +241,7 @@ VENDOR_PROFILES = {
             props=["books", "crystals", "dried flowers", "matches", "mug of tea"],
             composition="Moody and intimate. Let candle glow create natural warmth.",
             platform_notes={
-                "instagram_feed": "Consistent warm palette. Dark and moody works well.",
+                "instagram_feed": "Consistent warm palette.",
                 "instagram_story": "Show the ritual — lighting, unwrapping, gifting.",
             },
         ),
@@ -196,9 +260,10 @@ VENDOR_PROFILES = {
             "Pouring process — wax and fragrance being added",
             "Gifting setup — wrapped beautifully",
         ],
-        posting_frequency="3x per week, lean into seasonal moments",
+        posting_frequency="3x per week",
     ),
 
+    # ── Bakery / Food ─────────────────────────────────────────────────────────
     "food_bakery": VendorProfile(
         vendor_type="food_bakery",
         display_name="Bakery & Baked Goods",
@@ -220,16 +285,12 @@ VENDOR_PROFILES = {
                 "hands breaking or holding product — showing texture",
                 "cross-section showing interior layers",
                 "full spread with coffee, jam, butter",
-                "styled on a cafe table or kitchen counter",
             ],
-            model_guidance=(
-                "Hands breaking bread feel authentic. Show steam if possible. "
-                "Crumbs and imperfections are appetizing."
-            ),
-            props=["coffee cup", "small plants", "jam jars", "linen", "seasonal fruits"],
+            model_guidance="Hands breaking bread feel authentic. Crumbs and imperfections are appetizing.",
+            props=["coffee cup", "jam jars", "linen", "seasonal fruits"],
             composition="Show the inside when possible. Top-down for spreads.",
             platform_notes={
-                "instagram_feed": "Bright and warm. Consistent warm palette.",
+                "instagram_feed": "Bright and warm.",
                 "instagram_story": "Behind the scenes — baking, packaging, early morning.",
             },
         ),
@@ -245,12 +306,13 @@ VENDOR_PROFILES = {
         photo_prompts=[
             "Fresh out of the oven — show the steam and golden color",
             "Cross section of your most popular item",
-            "Your workspace early morning — dough, trays, the process",
+            "Your workspace early morning",
             "This week's special with one or two props",
         ],
         posting_frequency="4-5x per week",
     ),
 
+    # ── Coffee Shop / Café ────────────────────────────────────────────────────
     "food_cafe": VendorProfile(
         vendor_type="food_cafe",
         display_name="Coffee Shop & Café",
@@ -271,13 +333,9 @@ VENDOR_PROFILES = {
                 "drink on cafe table with window light and gentle blur",
                 "latte art close-up — overhead shot",
                 "someone enjoying a drink in a cozy corner",
-                "seasonal drink with seasonal props",
                 "behind the bar — barista preparing drinks",
             ],
-            model_guidance=(
-                "Real customers or staff feel authentic. "
-                "Hands wrapped around a warm mug is universally appealing."
-            ),
+            model_guidance="Real customers or staff feel authentic. Hands around a warm mug is universal.",
             props=["book", "laptop", "journal", "flowers on table", "pastry"],
             composition="Overhead for latte art. Eye-level for atmosphere.",
             platform_notes={
@@ -303,12 +361,13 @@ VENDOR_PROFILES = {
         posting_frequency="5x per week",
     ),
 
+    # ── Farmer / Market ───────────────────────────────────────────────────────
     "farmer_market": VendorProfile(
         vendor_type="farmer_market",
         display_name="Farmer & Market Vendor",
         content_pillars=[
             "seasonal harvest", "market days",
-            "farm life behind the scenes", "how to use / recipes",
+            "farm life behind the scenes", "recipes and how-to",
             "community", "availability and pre-orders",
         ],
         image_style=ImageStyle(
@@ -316,7 +375,7 @@ VENDOR_PROFILES = {
             color_palette="earth tones, deep greens, harvest golds, berry reds",
             lighting="natural outdoor light, golden hour for farm shots",
             backgrounds=["farm fields", "market stalls", "wooden crates", "baskets"],
-            avoid="studio-looking images, overly polished, out-of-season colors",
+            avoid="studio-looking images, overly polished",
         ),
         lifestyle_scene_rules=LifestyleSceneRules(
             scene_types=[
@@ -324,16 +383,12 @@ VENDOR_PROFILES = {
                 "market stall abundance shot — full display",
                 "close-up of produce showing freshness and color",
                 "seasonal flat lay on wood or in basket",
-                "farm landscape with product in foreground",
             ],
-            model_guidance=(
-                "Real farmer hands are best — weathered and authentic. "
-                "Show scale by including hands with produce."
-            ),
+            model_guidance="Real farmer hands are best — weathered and authentic.",
             props=["wooden crates", "baskets", "burlap", "seasonal leaves"],
-            composition="Abundance reads well — fill the frame. Outdoor light beats studio.",
+            composition="Abundance reads well — fill the frame.",
             platform_notes={
-                "instagram_feed": "Seasonal color palette that shifts with harvest cycles.",
+                "instagram_feed": "Seasonal color palette.",
                 "instagram_story": "Market day countdowns, harvest updates.",
             },
         ),
@@ -348,13 +403,121 @@ VENDOR_PROFILES = {
         ],
         photo_prompts=[
             "This week's harvest — show abundance and color",
-            "You or your hands in the field — show the real work",
+            "You or your hands in the field",
             "Market stall setup before the rush",
-            "Close-up of your most beautiful produce this week",
+            "Close-up of your most beautiful produce",
         ],
         posting_frequency="3-4x per week, timed around market days",
     ),
 
+    # ── Health & Wellness ─────────────────────────────────────────────────────
+    "health_wellness": VendorProfile(
+        vendor_type="health_wellness",
+        display_name="Health & Wellness",
+        content_pillars=[
+            "tips and education", "client transformations",
+            "behind the scenes", "product or service showcase",
+            "personal story and motivation", "community",
+        ],
+        image_style=ImageStyle(
+            mood="calm, empowering, clean, aspirational but real",
+            color_palette="soft greens, earth tones, warm whites, sage",
+            lighting="bright natural light, airy and clean",
+            backgrounds=["yoga studio", "nature outdoors", "clean minimal space", "gym"],
+            avoid="overly posed, unrealistic body standards, clinical feel",
+        ),
+        lifestyle_scene_rules=LifestyleSceneRules(
+            scene_types=[
+                "person in movement — yoga pose, workout, walk in nature",
+                "calm ritual moment — meditation, morning tea, journaling",
+                "before/after result (with permission and sensitivity)",
+                "product or supplement styled cleanly",
+                "practitioner working with client",
+            ],
+            model_guidance=(
+                "Authentic and diverse bodies. Movement feels natural, not posed. "
+                "Emotion and wellbeing over perfection."
+            ),
+            props=["yoga mat", "water bottle", "plants", "journal", "healthy food"],
+            composition="Space and light. Feels like a breath of fresh air.",
+            platform_notes={
+                "instagram_feed": "Consistent calm palette. Inspires without pressuring.",
+                "instagram_story": "Tips, tutorials, day-in-the-life.",
+            },
+        ),
+        caption_tone=(
+            "Warm, encouraging, and educational. Lead with value. "
+            "Share practical tips. Empowering not preachy."
+        ),
+        hashtag_clusters=[
+            ["#wellness", "#healthylifestyle", "#selfcare", "#mindfulness"],
+            ["#fitness", "#yoga", "#nutrition", "#mentalhealth"],
+            ["#holistichealth", "#wellnesscommunity", "#healthcoach"],
+        ],
+        photo_prompts=[
+            "A movement or practice moment — authentic, not posed",
+            "Your workspace or tools — what your sessions look like",
+            "A calm ritual from your own routine",
+            "A client win or transformation (with permission)",
+        ],
+        posting_frequency="4-5x per week",
+    ),
+
+    # ── Retail / Fashion ──────────────────────────────────────────────────────
+    "retail_fashion": VendorProfile(
+        vendor_type="retail_fashion",
+        display_name="Fashion & Retail",
+        content_pillars=[
+            "product showcase", "styling and outfits",
+            "behind the scenes", "new arrivals",
+            "customer styling", "brand story",
+        ],
+        image_style=ImageStyle(
+            mood="stylish, aspirational, editorial, brand-consistent",
+            color_palette="depends on brand — consistent season palette",
+            lighting="clean natural or studio light, no harsh shadows",
+            backgrounds=["minimal studio", "urban street", "nature", "brand aesthetic setting"],
+            avoid="inconsistent aesthetic, bad lighting, cluttered backgrounds",
+        ),
+        lifestyle_scene_rules=LifestyleSceneRules(
+            scene_types=[
+                "model or person wearing product in lifestyle setting",
+                "flat lay of product with complementary items",
+                "detail close-up of fabric, texture, or craftsmanship",
+                "styled outfit on location — urban, nature, or interior",
+                "packaging and unboxing moment",
+            ],
+            model_guidance=(
+                "Real people wearing products feel more authentic than mannequins. "
+                "Show how the piece moves and fits in real life."
+            ),
+            props=["complementary accessories", "seasonal elements", "brand packaging"],
+            composition="Product is always the hero. Clean consistent aesthetic.",
+            platform_notes={
+                "instagram_feed": "Grid aesthetic is critical — consistent mood and palette.",
+                "instagram_story": "New arrivals, styling tips, behind the scenes.",
+            },
+        ),
+        caption_tone=(
+            "Confident and stylish. Short and punchy. "
+            "Speak to the lifestyle the customer aspires to. "
+            "Include practical info — size, availability, link."
+        ),
+        hashtag_clusters=[
+            ["#fashion", "#style", "#ootd", "#outfitoftheday"],
+            ["#shopsmall", "#independentbrand", "#slowfashion", "#sustainablestyle"],
+            ["#newcollection", "#shoponline", "#fashionblogger"],
+        ],
+        photo_prompts=[
+            "This week's new arrival styled on a real person",
+            "Detail shot of your favorite fabric or texture",
+            "Flat lay of a complete outfit with accessories",
+            "Behind the scenes — packing orders or new stock arriving",
+        ],
+        posting_frequency="5x per week — fashion benefits from high frequency",
+    ),
+
+    # ── Local Service ─────────────────────────────────────────────────────────
     "service_local": VendorProfile(
         vendor_type="service_local",
         display_name="Local Service Business",
@@ -376,12 +539,8 @@ VENDOR_PROFILES = {
                 "team in action — candid moment of serving a client",
                 "before and after pairing (with permission)",
                 "detail shot of the service outcome",
-                "behind the scenes prep or tools",
             ],
-            model_guidance=(
-                "Real clients (with permission) are more powerful than stock. "
-                "Team photos build trust."
-            ),
+            model_guidance="Real clients (with permission) are more powerful than stock. Team photos build trust.",
             props=["your actual tools", "branded elements", "workspace details"],
             composition="Clear and bright. Before/after: same lighting and angle.",
             platform_notes={
@@ -406,6 +565,7 @@ VENDOR_PROFILES = {
         posting_frequency="3-4x per week",
     ),
 
+    # ── Creative Professional ─────────────────────────────────────────────────
     "creative_professional": VendorProfile(
         vendor_type="creative_professional",
         display_name="Creative Professional",
@@ -427,12 +587,8 @@ VENDOR_PROFILES = {
                 "finished project hero shot",
                 "you at work in your environment",
                 "before and after of a project",
-                "tools and workspace detail",
             ],
-            model_guidance=(
-                "For creatives, YOU are the brand. "
-                "Include yourself naturally — working, thinking, presenting."
-            ),
+            model_guidance="For creatives, YOU are the brand. Include yourself naturally.",
             props=["your actual work tools", "projects in progress"],
             composition="Let your personal aesthetic lead. Grid should feel like a portfolio.",
             platform_notes={
@@ -464,9 +620,17 @@ def get_vendor_profile(vendor_type: str) -> VendorProfile:
     return VENDOR_PROFILES.get(vendor_type, VENDOR_PROFILES["service_local"])
 
 
-def detect_vendor_type_from_industry(industry: str) -> str:
-    """Auto-detect vendor type from industry string."""
-    industry_lower = (industry or "").lower()
+async def detect_vendor_type_from_industry(industry: str) -> str:
+    """
+    Detect vendor type from industry string.
+    Uses AI classification for ambiguous cases instead of pure keyword matching.
+    """
+    if not industry:
+        return "service_local"
+
+    industry_lower = industry.lower()
+
+    # Fast keyword matching for clear cases
     if any(w in industry_lower for w in ["jewelry", "jewellery", "accessories", "gems"]):
         return "maker_jewelry"
     if any(w in industry_lower for w in ["ceramic", "pottery", "clay"]):
@@ -475,12 +639,42 @@ def detect_vendor_type_from_industry(industry: str) -> str:
         return "maker_candles"
     if any(w in industry_lower for w in ["bakery", "baking", "pastry", "bread", "cake"]):
         return "food_bakery"
-    if any(w in industry_lower for w in ["cafe", "coffee", "espresso", "tea room"]):
+    if any(w in industry_lower for w in ["cafe", "coffee", "espresso", "tea room", "restaurant", "food & bev"]):
         return "food_cafe"
     if any(w in industry_lower for w in ["farm", "farmer", "market", "produce", "harvest", "flowers"]):
         return "farmer_market"
-    if any(w in industry_lower for w in ["photo", "design", "creative", "art", "illustrat", "coach"]):
+    if any(w in industry_lower for w in ["yoga", "fitness", "gym", "wellness", "health", "nutrition", "coaching", "therapy"]):
+        return "health_wellness"
+    if any(w in industry_lower for w in ["fashion", "clothing", "apparel", "boutique", "retail", "shoes"]):
+        return "retail_fashion"
+    if any(w in industry_lower for w in ["software", "saas", "app", "tech", "startup", "ai ", "platform", "tool", "developer", "professional services"]):
+        return "software_saas"
+    if any(w in industry_lower for w in ["photo", "design", "creative", "art", "illustrat"]):
         return "creative_professional"
     if any(w in industry_lower for w in ["craft", "handmade", "maker", "artisan", "textile", "leather"]):
         return "maker_jewelry"
+
+    # For ambiguous cases, use AI classification
+    try:
+        import anthropic
+        import os
+        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        vendor_types = list(VENDOR_PROFILES.keys())
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=20,
+            messages=[{
+                "role": "user",
+                "content": f"""Classify this business industry into one vendor type.
+Industry: "{industry}"
+Options: {', '.join(vendor_types)}
+Return ONLY the vendor type string, nothing else."""
+            }]
+        )
+        result = response.content[0].text.strip().lower()
+        if result in VENDOR_PROFILES:
+            return result
+    except Exception as e:
+        print(f"[VendorProfiles] AI classification error: {e}")
+
     return "service_local"
