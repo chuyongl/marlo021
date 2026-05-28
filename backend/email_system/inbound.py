@@ -29,20 +29,12 @@ async def load_conversation_history(business_id: str, db: AsyncSession) -> list:
             .limit(6)
         )
         logs = list(reversed(result.scalars().all()))
-
         history = []
         for log in logs:
             if log.reply_content:
-                history.append({
-                    "role": "user",
-                    "content": log.reply_content[:500]
-                })
+                history.append({"role": "user", "content": log.reply_content[:500]})
             if log.subject:
-                history.append({
-                    "role": "assistant",
-                    "content": f"[Sent: {log.subject}]"
-                })
-
+                history.append({"role": "assistant", "content": f"[Sent: {log.subject}]"})
         return history[-6:]
     except Exception as e:
         print(f"[Inbound] load_conversation_history error: {e}")
@@ -126,20 +118,26 @@ async def process_inbound_email(business_id: str, from_email: str, text_body: st
 
 
 async def handle_text_reply(business, user, message: str, db: AsyncSession):
+    """
+    Route inbound text replies.
+    Key rule: if onboarding_completed=True, ALWAYS go to conversational reply
+    regardless of onboarding_step value.
+    """
+    # Completed onboarding — always conversational
+    if business.onboarding_completed:
+        if "cancel my marlo021 subscription" in message.lower():
+            await handle_cancellation(business=business, user=user, db=db)
+            return
+        await handle_conversational_reply(business=business, user=user, message=message, db=db)
+        return
+
+    # Still in onboarding
     if business.onboarding_step == 4:
         from email_system.onboarding_handler import process_onboarding_reply
         await process_onboarding_reply(str(business.id), message, db)
         return
 
-    if business.onboarding_step < 4:
-        await handle_onboarding_question(business=business, user=user, message=message, db=db)
-        return
-
-    if "cancel my marlo021 subscription" in message.lower():
-        await handle_cancellation(business=business, user=user, db=db)
-        return
-
-    await handle_conversational_reply(business=business, user=user, message=message, db=db)
+    await handle_onboarding_question(business=business, user=user, message=message, db=db)
 
 
 async def handle_conversational_reply(business, user, message: str, db: AsyncSession):
@@ -214,8 +212,7 @@ async def handle_conversational_reply(business, user, message: str, db: AsyncSes
         current_memory=memory,
     ))
 
-    if revised_post and action_type in ("post_revision",) and pending_action:
-        # Update existing pending action's caption
+    if revised_post and action_type == "post_revision" and pending_action:
         params = dict(pending_action.action_parameters or {})
         params["caption"] = revised_post["full_caption"]
         params["hashtags"] = revised_post["hashtags"]
@@ -241,7 +238,7 @@ async def handle_conversational_reply(business, user, message: str, db: AsyncSes
         subject = f"Re: Your revised {pending_action.scheduled_day or 'Instagram'} post"
 
     elif revised_post and action_type == "new_post":
-        # Generate image for new post
+        # Generate image automatically
         image_url = None
         try:
             from integrations.image_gen import image_gen
@@ -253,7 +250,7 @@ async def handle_conversational_reply(business, user, message: str, db: AsyncSes
                 platform="instagram_feed",
             )
             image_url = image_result.get("url")
-            print(f"[Inbound] Generated image for new post: {image_url[:60] if image_url else 'None'}")
+            print(f"[Inbound] Generated image: {image_url[:60] if image_url else 'None'}")
         except Exception as e:
             print(f"[Inbound] Image generation error (non-fatal): {e}")
 
