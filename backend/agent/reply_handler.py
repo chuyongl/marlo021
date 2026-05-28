@@ -4,13 +4,6 @@ reply_handler.py
 Two-step approach:
 1. classify_intent() — Haiku, fast, cheap
 2. handle_reply() — Sonnet, generates response with conversation history
-
-conversation_history format:
-[
-  {"role": "user", "content": "..."},
-  {"role": "assistant", "content": "..."},
-]
-Max 3 exchanges (6 messages) to keep tokens manageable.
 """
 
 import anthropic
@@ -18,8 +11,6 @@ import os
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-
-# ─── Step 1: Intent Classification ────────────────────────────────────────────
 
 CLASSIFY_PROMPT = """You classify what a user wants in one word.
 
@@ -40,6 +31,8 @@ EXAMPLES:
 "I want to post about our new product launch" → post_request
 "use what I told you" → post_request
 "that content I shared earlier" → post_request
+"post this for friday" → post_request
+"schedule this for next week" → post_request
 
 Respond with ONLY one of: post_request, post_revision, conversation"""
 
@@ -49,11 +42,10 @@ async def classify_intent(
     has_pending_action: bool,
     conversation_history: list = None
 ) -> str:
-    """Classify user intent using Haiku. Includes recent history for context."""
     try:
         history_context = ""
         if conversation_history:
-            recent = conversation_history[-4:]  # last 2 exchanges
+            recent = conversation_history[-4:]
             lines = []
             for msg in recent:
                 role = "User" if msg["role"] == "user" else "Marlo"
@@ -80,8 +72,6 @@ async def classify_intent(
         return "post_request" if len(user_message) > 100 else "conversation"
 
 
-# ─── Step 2: Generate Response ─────────────────────────────────────────────────
-
 POST_GENERATION_PROMPT = """You are Marlo, a marketing assistant. Generate an Instagram post.
 
 RULES:
@@ -89,22 +79,25 @@ RULES:
 - If user says "use what I said" or "use my content" — look at the conversation history for their content
 - Keep their authentic message — clean up spelling/grammar only
 - Match the vendor's caption style
+- Marlo WILL generate an image automatically — NEVER ask the user to provide one
+- NEVER say "I can't create images" — image generation is handled automatically
 - ALWAYS use this exact format, no exceptions:
 
 POST:
-[caption only — no hashtags]
+[caption only — no hashtags here]
 
 HASHTAGS:
 [hashtags on one line]
 
 FOLLOW_UP:
-[one sentence: "Want any changes? Just reply." or a specific question if needed]"""
+[one sentence max: "Your post is scheduled — want any changes? Just reply." OR a specific question if truly needed. NEVER ask for an image.]"""
 
 POST_REVISION_PROMPT = """You are Marlo, a marketing assistant. Revise the existing post based on user instructions.
 
 RULES:
 - Apply the user's instruction to the existing post
 - Keep the core message, just change what they asked
+- Marlo WILL generate an image automatically — NEVER ask the user to provide one
 - ALWAYS use this exact format, no exceptions:
 
 POST:
@@ -118,7 +111,8 @@ FOLLOW_UP:
 
 CONVERSATION_PROMPT = """You are Marlo, a helpful marketing assistant.
 Answer naturally in 2-4 sentences. Be direct and helpful.
-Do NOT generate a post. Just answer the question or respond to the message."""
+Do NOT generate a post. Just answer the question or respond to the message.
+Do NOT ask for images — Marlo generates images automatically."""
 
 
 async def handle_reply(
@@ -129,28 +123,12 @@ async def handle_reply(
     pending_action: dict = None,
     conversation_history: list = None,
 ) -> dict:
-    """
-    Main entry point. Classifies intent then generates appropriate response.
-
-    Args:
-        conversation_history: list of {"role": "user"/"assistant", "content": str}
-                              last 3 exchanges max, loaded from EmailLog
-
-    Returns:
-        {
-            "response_text": str,
-            "revised_post": dict or None,
-            "action_type": "post_revision" | "new_post" | "conversation" | "safety_block",
-            "raw_ai_response": str,
-        }
-    """
     from agent.content_safety import check_content_safety, get_safe_redirect_message
     from agent.vendor_profiles import get_vendor_profile, detect_vendor_type_from_industry
     from agent.user_memory import format_for_prompt
 
     conversation_history = conversation_history or []
 
-    # Safety check
     safety = await check_content_safety(user_message)
     if safety.get("blocked"):
         return {
@@ -160,7 +138,6 @@ async def handle_reply(
             "raw_ai_response": "",
         }
 
-    # Vendor profile
     if not vendor_type:
         vendor_type = memory.get("vendor_type") or detect_vendor_type_from_industry(
             business.get("industry", "")
@@ -168,14 +145,12 @@ async def handle_reply(
     profile = get_vendor_profile(vendor_type)
     memory_context = format_for_prompt(memory)
 
-    # Classify intent (with history for context)
     intent = await classify_intent(
         user_message,
         has_pending_action=pending_action is not None,
         conversation_history=conversation_history
     )
 
-    # Build system context block
     context_block = f"""BUSINESS:
 Name: {business.get('name', '')}
 Industry: {business.get('industry', '')}
@@ -197,7 +172,6 @@ EXISTING POST TO REVISE:
 Day: {pending_action.get('scheduled_day', '')}
 Current caption: {caption_clean[:400]}"""
 
-    # Select system prompt
     if intent == "post_request":
         system_prompt = POST_GENERATION_PROMPT
         action_type_if_post = "new_post"
@@ -208,10 +182,7 @@ Current caption: {caption_clean[:400]}"""
         system_prompt = CONVERSATION_PROMPT
         action_type_if_post = "conversation"
 
-    # Build messages with conversation history
     messages = []
-
-    # Add context as first user message (system context)
     messages.append({
         "role": "user",
         "content": f"[CONTEXT]\n{context_block}\n[/CONTEXT]\n\nReady."
@@ -221,14 +192,12 @@ Current caption: {caption_clean[:400]}"""
         "content": "Got it. What do you need?"
     })
 
-    # Add conversation history (last 3 exchanges = 6 messages)
     for msg in conversation_history[-6:]:
         messages.append({
             "role": msg["role"],
-            "content": msg["content"][:500]  # truncate long messages
+            "content": msg["content"][:500]
         })
 
-    # Add current message
     messages.append({
         "role": "user",
         "content": user_message
@@ -244,7 +213,6 @@ Current caption: {caption_clean[:400]}"""
     raw_response = response.content[0].text.strip()
     print(f"[ReplyHandler] Intent={intent} | Response preview: {raw_response[:80]}")
 
-    # Parse post
     revised_post = None
     action_type = "conversation"
 
