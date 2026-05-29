@@ -75,3 +75,83 @@ Reset was broken (onboarding_step not restored) — now fixed. Re-test:
 - [x] All core email flows
 - [x] Stripe 14-day trial
 - [x] Privacy + Terms pages live
+
+# Marlo — Task Board
+
+*Updated: May 28, 2026*
+
+---
+
+## 🔴 NEXT SESSION
+
+### [P0] Verify Ideogram image quality for software_saas
+Reply to a post approval email, approve the post, see if image looks correct.
+Expected log: `[ImageGen] Vendor: software_saas | Model: ideogram`
+
+### [P0] Meta app review submission
+- [ ] Screen recording of full Instagram connect + post flow
+- [ ] Submit for `instagram_business_content_publish` Advanced Access
+- [ ] App ID: `918827927853545`
+
+---
+
+## 🟡 THIS WEEK
+
+### [P1] Stripe live mode
+- [ ] Switch `STRIPE_SECRET_KEY` → `sk_live_...` in Railway
+- [ ] Switch `STRIPE_WEBHOOK_SECRET` → live webhook secret
+
+### [P1] Beta users
+- [ ] Find 3-5 Seattle small businesses (restaurant, cafe, retail, wellness)
+- [ ] Manually onboard — watch for edge cases in vendor detection
+
+---
+
+## 🟢 SOON
+
+- [ ] Remove `debug_router.py` before real users go live
+- [ ] Test `health_wellness` and `retail_fashion` vendor types with real content
+- [ ] Photo upload flow — test with real product photo end-to-end
+
+---
+
+## 🧊 Backlog
+
+- Google Ads integration (code exists, never tested with real account)
+- Multi-platform posting (Facebook, TikTok)
+- Pricing tier 2 ($149-199 with Google Ads)
+- Email open/click rate tracking
+- Agent registry — central capability index for brain awareness
+- Content source integrations (GitHub, Notion, Google Docs for founder/SaaS users)
+
+---
+
+## ✅ Completed This Session (May 28)
+
+- [x] **Reply flow working** — `onboarding_completed` checked first, routing fixed
+- [x] **Approve & Schedule button** appears correctly end-to-end
+- [x] `software_saas` vendor type added with Ideogram as preferred model
+- [x] `health_wellness` and `retail_fashion` vendor types added
+- [x] `detect_vendor_type_from_industry` now async with AI fallback for ambiguous cases
+- [x] `image_gen.py` — vendor-aware model selection (Flux vs Ideogram)
+- [x] `inbound.py` — passes `use_ideogram` based on vendor profile
+- [x] `reply_handler.py` — AI explicitly told it can generate images, never asks user
+- [x] `onboarding_handler.py` — strategy_summary fix committed
+- [x] `router.py` — kickoff day picker endpoint committed
+- [x] `workflows.py` and `optimization.py` deleted (dead code)
+- [x] Friday post approved and scheduled ✅
+
+## ✅ Completed Previous Sessions
+
+- [x] Instagram posting end-to-end (meta.py, container polling)
+- [x] User memory system (businesses.user_memory JSONB)
+- [x] Two-step intent classification (Haiku → Sonnet)
+- [x] Cross-email conversation history (EmailLog.reply_content)
+- [x] Content safety filter
+- [x] Lifestyle image generation from product photo
+- [x] Scheduler network errors suppressed from Sentry
+- [x] Instagram OAuth end-to-end
+- [x] All core email flows
+- [x] Stripe 14-day trial
+- [x] Privacy + Terms pages live
+- [x] debug_router reset now restores onboarding_completed=True
