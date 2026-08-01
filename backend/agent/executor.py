@@ -1,9 +1,9 @@
 from agent.guardrails import guardrails
-from database.models import AgentAction, PlatformIntegration
+from database.models import AgentAction, PlatformIntegration, Business
 from database.session import AsyncSessionLocal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from auth.utils import generate_secure_token
 import uuid
 
@@ -74,38 +74,97 @@ class AgentExecutor:
         self,
         action: dict,
         business_id: str,
-        db: AsyncSession
+        db: AsyncSession,
+        scheduled_day: str = None
     ) -> dict:
         """
         Save a pending action to the database with one-click approval tokens.
         Returns the action dict enriched with tokens ready for email embedding.
+
+        This is the path used by email replies and photo uploads. It MUST write
+        the same shape of row that the weekly generator writes, otherwise the
+        post is created but can never be published:
+
+          - action_type must be "post_instagram" (not the internal "create_post"),
+            because executor.run() dispatches on that value
+          - status must be "pending" (not "pending_approval"), because the
+            approval flow, the expiry sweep, and the "find the pending post"
+            lookup in inbound.py all filter on "pending"
+          - scheduled_post_time must be set, because the publisher filters on
+            scheduled_post_time <= now() and NULL never satisfies that
         """
         approval_token = generate_secure_token()
         decline_token = generate_secure_token()
         expires_at = datetime.utcnow() + timedelta(hours=48)
 
+        # --- Normalise the action type -------------------------------------
+        raw_type = action.get("type")
+        params = action.get("parameters", {}) or {}
+        platform = action.get("platform") or params.get("platform") or "instagram"
+
+        if raw_type == "create_post":
+            action_type = f"post_{platform}"
+        else:
+            action_type = raw_type
+
+        # --- Work out when this post should actually go live ---------------
+        scheduled_post_time = None
+        resolved_day = scheduled_day
+
+        if action_type in ("post_instagram", "post_facebook"):
+            try:
+                from agent.scheduler import build_next_available_post_time
+
+                biz_result = await db.execute(
+                    select(Business).where(Business.id == business_id)
+                )
+                biz = biz_result.scalar_one_or_none()
+
+                if biz:
+                    scheduled_post_time, resolved_day = build_next_available_post_time(
+                        biz, scheduled_day
+                    )
+                else:
+                    scheduled_post_time = datetime.now(timezone.utc) + timedelta(days=1)
+                    resolved_day = scheduled_post_time.strftime("%A")
+
+            except Exception as e:
+                print(f"[Executor] Could not compute post slot ({e}) — defaulting to +24h")
+                scheduled_post_time = datetime.now(timezone.utc) + timedelta(days=1)
+                resolved_day = scheduled_post_time.strftime("%A")
+
         log = AgentAction(
             id=uuid.uuid4(),
             business_id=business_id,
-            action_type=action.get("type"),
-            status="pending_approval",
+            action_type=action_type,
+            status="pending",
             input_context=action,
             agent_reasoning=action.get("reasoning", ""),
-            action_parameters=action.get("parameters", {}),
+            action_parameters=params,
             requires_approval=True,
             approval_token=approval_token,
             decline_token=decline_token,
             token_expires_at=expires_at,
+            scheduled_post_time=scheduled_post_time,
+            scheduled_day=resolved_day,
+            approval_email_sent=True,
             created_at=datetime.utcnow()
         )
         db.add(log)
         await db.commit()
+
+        print(
+            f"[Executor] Pending action created — type={action_type} "
+            f"day={resolved_day} time={scheduled_post_time}"
+        )
 
         return {
             **action,
             "action_id": str(log.id),
             "approval_token": approval_token,
             "decline_token": decline_token,
+            "scheduled_day": resolved_day,
+            "scheduled_post_time": scheduled_post_time.isoformat() if scheduled_post_time else None,
             "title": action.get("type", "").replace("_", " ").title(),
             "description": action.get("reasoning", "")[:250]
         }
@@ -117,9 +176,15 @@ class AgentExecutor:
         """
         params = action.action_parameters or {}
 
-        # Map action_type to internal format
-        if action.action_type in ("post_instagram", "post_facebook"):
-            platform = action.action_type.replace("post_", "")
+        # Map action_type to internal format.
+        # "create_post" is accepted here as a safety net for any legacy rows
+        # written before the create_pending_action_with_tokens fix.
+        if action.action_type in ("post_instagram", "post_facebook", "create_post"):
+            if action.action_type == "create_post":
+                platform = params.get("platform", "instagram")
+            else:
+                platform = action.action_type.replace("post_", "")
+
             internal_action = {
                 "type": "create_post",
                 "platform": platform,
@@ -139,7 +204,7 @@ class AgentExecutor:
             return {"status": "no_handler", "action_type": action.action_type}
 
         # Get ig_account_id from Meta integration (platform stored as "meta" regardless of login method)
-        if action.action_type == "post_instagram":
+        if internal_action["platform"] == "instagram":
             int_result = await db.execute(
                 select(PlatformIntegration).where(
                     PlatformIntegration.business_id == action.business_id,
@@ -195,6 +260,9 @@ class AgentExecutor:
 
             if not ig_integration:
                 return {"status": "skipped", "reason": "No active Instagram integration found"}
+
+            if not params.get("image_url"):
+                return {"status": "skipped", "reason": "Post has no image_url — nothing to publish"}
 
             from integrations.meta import MetaIntegration
             meta = MetaIntegration(

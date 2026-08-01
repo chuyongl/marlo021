@@ -113,6 +113,57 @@ def build_scheduled_post_time(biz, day_name: str) -> datetime:
         return datetime.now(timezone.utc) + timedelta(days=1)
 
 
+def build_next_available_post_time(biz, preferred_day: str = None):
+    """
+    Pick the next real publishing slot for an ad-hoc post (one created from an
+    email reply or a photo upload, rather than by the weekly generator).
+
+    Returns (utc_datetime, day_name).
+
+    Logic: look at the business's posting days, find the soonest one whose
+    posting time is still in the future, and use that. If a slot has already
+    passed today, roll it to next week rather than scheduling into the past.
+    """
+    try:
+        tz = get_biz_tz(biz)
+        now_local = datetime.now(tz)
+        hour, minute = map(int, (biz.preferred_post_time or "09:00").split(":"))
+
+        if preferred_day in DAY_TO_WEEKDAY:
+            candidate_days = [preferred_day]
+        else:
+            candidate_days = get_posting_schedule(biz)
+
+        best_dt = None
+        best_day = None
+
+        for day in candidate_days:
+            days_ahead = (DAY_TO_WEEKDAY[day] - now_local.weekday()) % 7
+            candidate = now_local.replace(
+                hour=hour, minute=minute, second=0, microsecond=0
+            ) + timedelta(days=days_ahead)
+
+            # Slot already gone today (or within the next 10 min) — push a week out
+            if candidate <= now_local + timedelta(minutes=10):
+                candidate = candidate + timedelta(days=7)
+
+            if best_dt is None or candidate < best_dt:
+                best_dt = candidate
+                best_day = day
+
+        if best_dt is None:
+            best_dt = now_local.replace(
+                hour=hour, minute=minute, second=0, microsecond=0
+            ) + timedelta(days=1)
+            best_day = best_dt.strftime("%A")
+
+        return best_dt.astimezone(timezone.utc), best_day
+
+    except Exception:
+        fallback = datetime.now(timezone.utc) + timedelta(days=1)
+        return fallback, fallback.strftime("%A")
+
+
 async def _build_image_guide(posts: list, business_dict: dict, strategy_summary: str = "") -> list:
     from agent.brain import brain
     image_guide = []
@@ -166,13 +217,16 @@ async def weekly_content_generation():
         utc_now_naive = datetime.utcnow()
 
         async with AsyncSessionLocal() as db:
+            # FREE MVP: a live business is one that finished onboarding.
+            # A Stripe subscription is NOT required. (Was filtering on
+            # subscription_id != None, which silently skipped every free user.)
             result = await db.execute(
                 select(Business).where(
                     Business.onboarding_completed == True,
-                    Business.subscription_id != None,
                 )
             )
             businesses = result.scalars().all()
+            logger.info(f"[Scheduler] weekly_content_generation checking {len(businesses)} live businesses")
 
             for biz in businesses:
                 try:
@@ -362,10 +416,10 @@ async def post_approval_and_expiry():
         utc_now = datetime.now(timezone.utc)
 
         async with AsyncSessionLocal() as db:
+            # FREE MVP: no subscription required to be a live business.
             result = await db.execute(
                 select(Business).where(
                     Business.onboarding_completed == True,
-                    Business.subscription_id != None,
                 )
             )
             businesses = result.scalars().all()
@@ -425,6 +479,7 @@ async def post_approval_and_expiry():
                             )
                             next_action.approval_email_sent = True
                             await db.commit()
+                            logger.info(f"[Scheduler] Approval email sent for {biz.name} — {w['send_day']}")
 
                 except Exception as e:
                     log_error(f"post_approval_and_expiry for {biz.id}", e)
@@ -449,13 +504,25 @@ async def execute_approved_posts():
                 select(AgentAction).where(
                     AgentAction.status == "executed",
                     AgentAction.executed_at == None,
+                    AgentAction.scheduled_post_time != None,
                     AgentAction.scheduled_post_time <= utc_now,
                 )
             )
             for action in result.scalars().all():
                 try:
-                    await executor.run(action, db)
+                    outcome = await executor.run(action, db)
+
+                    # Don't mark as published if the executor couldn't handle it —
+                    # otherwise a broken action silently looks successful forever.
+                    if isinstance(outcome, dict) and outcome.get("status") in ("no_handler", "skipped"):
+                        logger.error(
+                            f"[Scheduler] Action {action.id} NOT posted — "
+                            f"{outcome.get('status')}: {outcome.get('reason') or outcome.get('action_type')}"
+                        )
+                        continue
+
                     action.executed_at = utc_now
+                    action.outcome = outcome if isinstance(outcome, dict) else {"result": str(outcome)}
                     await db.commit()
                     logger.info(f"[Scheduler] Posted {action.id} ({action.action_type})")
                 except Exception as e:
@@ -477,7 +544,10 @@ async def expire_stale_actions():
         async with AsyncSessionLocal() as db:
             result = await db.execute(
                 update(AgentAction)
-                .where(and_(AgentAction.status == "pending", AgentAction.created_at < cutoff))
+                .where(and_(
+                    AgentAction.status.in_(["pending", "pending_approval"]),
+                    AgentAction.created_at < cutoff
+                ))
                 .values(status="expired")
                 .returning(AgentAction.id)
             )
@@ -569,10 +639,10 @@ async def weekly_analytics():
         utc_now = datetime.now(timezone.utc)
 
         async with AsyncSessionLocal() as db:
+            # FREE MVP: no subscription required to be a live business.
             result = await db.execute(
                 select(Business).where(
                     Business.onboarding_completed == True,
-                    Business.subscription_id != None,
                 )
             )
             businesses = result.scalars().all()
@@ -613,6 +683,10 @@ async def weekly_analytics():
 # ─── 7. SUBSCRIPTION HEALTH CHECK ────────────────────────────────────────────
 
 async def subscription_health_check():
+    """
+    Only touches businesses that actually HAVE a Stripe subscription.
+    In free mode this loop is simply empty — that's correct, not a bug.
+    """
     try:
         from database.session import AsyncSessionLocal
         from database.models import Business
