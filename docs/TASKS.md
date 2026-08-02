@@ -1,157 +1,96 @@
-# Marlo — Task Board
+# Marlo — Product Overview
 
-*Updated: May 22, 2026*
-
----
-
-## 🔴 IMMEDIATE (next session — first thing)
-
-### [P0] Test conversational reply flow end-to-end
-Reset was broken (onboarding_step not restored) — now fixed. Re-test:
-- [ ] PowerShell reset: `Invoke-WebRequest -Method DELETE "https://api.marlo021.ai/debug/reset/3512ed4f-..."`
-- [ ] Browser trigger-kickoff
-- [ ] Reply with milestone content
-- [ ] Verify Railway logs show `[ReplyHandler] Intent: post_request`
-- [ ] Verify approve button appears in email
-- [ ] Approve → verify post goes live on Instagram
+*Last updated: August 1, 2026*
+*Location: `C:\Users\Octopus\Documents\marlo\docs\PRODUCT.md`*
 
 ---
 
-## 🟡 THIS WEEK
+## What Is Marlo
 
-### [P0] Meta app review submission
-- [ ] Screen recording of full Instagram connect + post flow
-- [ ] Submit for `instagram_business_content_publish` Advanced Access
-- [ ] App ID: `918827927853545`
+Marlo is an autonomous AI marketing agent for small businesses. Everything happens via email — no dashboard, no login required. Users manage their entire marketing by reading and replying to emails.
 
-### [P1] Image quality improvement
-- [ ] Switch `fal-ai/flux-pro/v1.1` → `fal-ai/flux-pro/v1.1-ultra` in `image_gen.py`
-- [ ] Improve prompt to avoid human figure errors (two laptops etc.)
-- [ ] Cost difference: $0.055 → $0.06 per image (negligible)
-
-### [P1] Stripe live mode
-- [ ] Switch `STRIPE_SECRET_KEY` → `sk_live_...`
-- [ ] Switch `STRIPE_WEBHOOK_SECRET` → live webhook secret
+**One-line pitch:** "Your competitor just hired a social media manager. Marlo is yours — for $99/month."
 
 ---
 
-## 🟢 SOON
+## Target Customer
 
-- [ ] **Find 3-5 beta users** — Seattle restaurants or pet services
-- [ ] **Remove debug_router** before going live with real users
-- [ ] **Test photo upload** with real product photo → lifestyle image
+**Primary focus right now: independent makers, starting with jewelry.**
 
----
+Narrowed from "any local SMB" because makers have a specific, acute pain: they make beautiful physical objects and have no idea how to show them off consistently online.
 
-## 🧊 Backlog
-
-- Google Ads integration (code exists, never tested)
-- Multi-platform posting (Facebook, TikTok)
-- Pricing tier 2 ($149-199 with Google Ads)
-- Email open/click rate tracking
-- Add more vendor types to `vendor_profiles.py` as needed
+- 1-10 person micro-businesses
+- Core segments: makers (jewelry, ceramics, candles), food (bakery, cafe), local services, small professional services
+- Tech-savviness: low — they use email and Instagram, nothing more
+- Pain: 73% of small business owners have no confidence their marketing is working
+- Time spent on marketing: average 20 hours/week (they hate it)
 
 ---
 
-## ✅ Completed This Session (May 22)
+## Pricing
 
-- [x] Two-step intent classification in reply_handler (Haiku classify → Sonnet generate)
-- [x] Cross-email conversation history (EmailLog.reply_content + load_conversation_history)
-- [x] debug_router reset now restores onboarding_completed=True, onboarding_step=5
-- [x] billing_router.py Stripe SDK `.get()` fix in handle_payment_failed + handle_payment_succeeded
-- [x] Sentry ENVIRONMENT=production set in Railway
-- [x] user_memory.py correct file deployed (was accidentally overwritten with migration code)
-- [x] migrations/ folder removed (migration now in main.py startup)
+**Current mode: FREE.** Not charging anyone yet. Stripe is deliberately parked until one real user completes the full loop.
 
-## ✅ Completed Previous Sessions
+Planned pricing once we start charging:
 
-- [x] Instagram posting end-to-end (meta.py graph.instagram.com + polling)
-- [x] User memory system (businesses.user_memory JSONB)
-- [x] Vendor profiles (7 types, auto-detection)
-- [x] Content safety filter
-- [x] Lifestyle image generation from product photo
-- [x] Scheduler network errors suppressed from Sentry
-- [x] Instagram OAuth end-to-end
-- [x] All core email flows
-- [x] Stripe 14-day trial
-- [x] Privacy + Terms pages live
-
-# Marlo — Task Board
-
-*Updated: May 28, 2026*
+| Tier | Price | Includes |
+|---|---|---|
+| Main | $99/month | Instagram posting, content generation, weekly plan |
+| Trial | Free 14 days | Full access, no credit card required at signup |
+| Tier 2 (future) | $149–199 | Adds Google Ads |
 
 ---
 
-## 🔴 NEXT SESSION
+## Core Value Proposition
 
-### [P0] Verify Ideogram image quality for software_saas
-Reply to a post approval email, approve the post, see if image looks correct.
-Expected log: `[ImageGen] Vendor: software_saas | Model: ideogram`
-
-### [P0] Meta app review submission
-- [ ] Screen recording of full Instagram connect + post flow
-- [ ] Submit for `instagram_business_content_publish` Advanced Access
-- [ ] App ID: `918827927853545`
+1. **Zero learning curve** — users already know how to use email
+2. **Fully autonomous** — Marlo generates content, schedules posts, sends weekly plans
+3. **One-click approval** — users approve or skip posts from their inbox
+4. **No dashboard** — everything in email, nothing to log into
 
 ---
 
-## 🟡 THIS WEEK
+## What Makes Marlo Different
 
-### [P1] Stripe live mode
-- [ ] Switch `STRIPE_SECRET_KEY` → `sk_live_...` in Railway
-- [ ] Switch `STRIPE_WEBHOOK_SECRET` → live webhook secret
-
-### [P1] Beta users
-- [ ] Find 3-5 Seattle small businesses (restaurant, cafe, retail, wellness)
-- [ ] Manually onboard — watch for edge cases in vendor detection
+Every competitor (Buffer, Hootsuite, Mailchimp, Madgicx) requires a dashboard. Marlo is the only product operating 100% via email interaction. Genuine blue ocean position — no direct competitors identified as of May 2026.
 
 ---
 
-## 🟢 SOON
+## Key Metrics to Track
 
-- [ ] Remove `debug_router.py` before real users go live
-- [ ] Test `health_wellness` and `retail_fashion` vendor types with real content
-- [ ] Photo upload flow — test with real product photo end-to-end
+**While free (now):**
+- Does the user reply to Marlo's emails?
+- Does the user approve the posts?
 
----
+Two behavioral signals. Everything else is premature.
 
-## 🧊 Backlog
-
-- Google Ads integration (code exists, never tested with real account)
-- Multi-platform posting (Facebook, TikTok)
-- Pricing tier 2 ($149-199 with Google Ads)
-- Email open/click rate tracking
-- Agent registry — central capability index for brain awareness
-- Content source integrations (GitHub, Notion, Google Docs for founder/SaaS users)
+**Once charging:**
+- Trial → paid conversion rate (target: >30%)
+- Monthly churn (SMB SaaS benchmark 4.8–8.1% — we need <5%)
+- Time to first value (target: <7 days)
+- Posts approved vs skipped ratio (proxy for content quality)
 
 ---
 
-## ✅ Completed This Session (May 28)
+## Current Status (August 2026)
 
-- [x] **Reply flow working** — `onboarding_completed` checked first, routing fixed
-- [x] **Approve & Schedule button** appears correctly end-to-end
-- [x] `software_saas` vendor type added with Ideogram as preferred model
-- [x] `health_wellness` and `retail_fashion` vendor types added
-- [x] `detect_vendor_type_from_industry` now async with AI fallback for ambiguous cases
-- [x] `image_gen.py` — vendor-aware model selection (Flux vs Ideogram)
-- [x] `inbound.py` — passes `use_ideogram` based on vendor profile
-- [x] `reply_handler.py` — AI explicitly told it can generate images, never asks user
-- [x] `onboarding_handler.py` — strategy_summary fix committed
-- [x] `router.py` — kickoff day picker endpoint committed
-- [x] `workflows.py` and `optimization.py` deleted (dead code)
-- [x] Friday post approved and scheduled ✅
+- **Product:** functionally complete, in bug-fixing phase
+- **Users:** 0 — goal is one hand-onboarded real jewelry seller
+- **Instagram posting:** working (Instagram Login API, posts publish on schedule)
+- **Vendor types:** 10, with AI-powered auto-detection
+- **Stripe:** test mode, intentionally not in use
+- **Open blockers:** three bug fixes deployed Aug 1, untested — see `STATUS.md`
 
-## ✅ Completed Previous Sessions
+---
 
-- [x] Instagram posting end-to-end (meta.py, container polling)
-- [x] User memory system (businesses.user_memory JSONB)
-- [x] Two-step intent classification (Haiku → Sonnet)
-- [x] Cross-email conversation history (EmailLog.reply_content)
-- [x] Content safety filter
-- [x] Lifestyle image generation from product photo
-- [x] Scheduler network errors suppressed from Sentry
-- [x] Instagram OAuth end-to-end
-- [x] All core email flows
-- [x] Stripe 14-day trial
-- [x] Privacy + Terms pages live
-- [x] debug_router reset now restores onboarding_completed=True
+## Where Marlo Is Heading
+
+A Phase 2 direction is under consideration: an add-on marketing intelligence layer that reads a merchant's order data, predicts what each customer needs next, and writes segments into their existing email tool. Ideation only, nothing built. See `PHASE_2_DIRECTION.md`.
+
+---
+
+## Company
+
+- **Founder:** Anna (Chuyong Liu)
+- **Stage:** Pre-revenue, free MVP, seeking first real user
+- **Stack:** FastAPI + React, Railway, PostgreSQL, Anthropic Claude, fal.ai
