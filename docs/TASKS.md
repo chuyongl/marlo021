@@ -1,96 +1,129 @@
-# Marlo — Product Overview
+# Marlo — Task Board
 
-*Last updated: August 1, 2026*
-*Location: `C:\Users\Octopus\Documents\marlo\docs\PRODUCT.md`*
+*Updated: August 4, 2026*
+*Location: `C:\Users\Octopus\Documents\marlo\docs\TASKS.md`*
 
----
-
-## What Is Marlo
-
-Marlo is an autonomous AI marketing agent for small businesses. Everything happens via email — no dashboard, no login required. Users manage their entire marketing by reading and replying to emails.
-
-**One-line pitch:** "Your competitor just hired a social media manager. Marlo is yours — for $99/month."
+> **Doc rule:** REPLACED each session, never appended. Finished work moves to the completed log.
 
 ---
 
-## Target Customer
+## 🔧 P0-A — Cleanup (finish first, mechanical)
 
-**Primary focus right now: independent makers, starting with jewelry.**
+- [ ] Run `git mv` to move archived files into `backend/archive/`
+- [ ] **Rewrite `main.py`** — drop router registrations for archived modules
+- [ ] **Rewrite `scheduler.py`** — drop archived imports and their jobs
+- [ ] Verify the app boots locally
+- [ ] Commit and push; confirm Railway deploys green
 
-Narrowed from "any local SMB" because makers have a specific, acute pain: they make beautiful physical objects and have no idea how to show them off consistently online.
-
-- 1-10 person micro-businesses
-- Core segments: makers (jewelry, ceramics, candles), food (bakery, cafe), local services, small professional services
-- Tech-savviness: low — they use email and Instagram, nothing more
-- Pain: 73% of small business owners have no confidence their marketing is working
-- Time spent on marketing: average 20 hours/week (they hate it)
+⚠️ **Do not push mid-way.** The app won't start until `main.py` and `scheduler.py` are clean.
 
 ---
 
-## Pricing
+## 📐 P0-B — Editorial Rules (design, no code)
 
-**Current mode: FREE.** Not charging anyone yet. Stripe is deliberately parked until one real user completes the full loop.
+**This is the real P0.** Content generation can be done unscalably at first; the rules cannot be missing.
 
-Planned pricing once we start charging:
+### Issue format
+- [ ] Word budget per issue — mix of short and longer, exact shape TBD
+- [ ] What sections exist; fixed or variable
+- [ ] How many vendors appear per issue
+- [ ] How many follows a reader needs for the issue to feel relevant
+- [ ] **Reader follows 1 vendor** — what fills the issue?
+- [ ] **Reader follows 40** — what gets cut? Does it feel like loss?
+- [ ] Minimum material required to assemble at full length
 
-| Tier | Price | Includes |
-|---|---|---|
-| Main | $99/month | Instagram posting, content generation, weekly plan |
-| Trial | Free 14 days | Full access, no credit card required at signup |
-| Tier 2 (future) | $149–199 | Adds Google Ads |
+### Content supply design
+- [ ] Question set for vendors + rotation logic
+- [ ] Reserve-bank rules: what qualifies, when to hold vs use
+- [ ] Market-level content types (seasonal, how-to, logistics)
+- [ ] Supply runway metric and escalation thresholds
 
----
+**Working assumption only, not a decision:** one deeper story + several short pieces.
 
-## Core Value Proposition
-
-1. **Zero learning curve** — users already know how to use email
-2. **Fully autonomous** — Marlo generates content, schedules posts, sends weekly plans
-3. **One-click approval** — users approve or skip posts from their inbox
-4. **No dashboard** — everything in email, nothing to log into
-
----
-
-## What Makes Marlo Different
-
-Every competitor (Buffer, Hootsuite, Mailchimp, Madgicx) requires a dashboard. Marlo is the only product operating 100% via email interaction. Genuine blue ocean position — no direct competitors identified as of May 2026.
+**Best way to decide these: get real material from a few real vendors and edit it by hand.** Rules written against imagined replies won't survive.
 
 ---
 
-## Key Metrics to Track
+## 🏗️ P1 — Core Build
 
-**While free (now):**
-- Does the user reply to Marlo's emails?
-- Does the user approve the posts?
+Ordered so real vendor material arrives as early as possible.
 
-Two behavioral signals. Everything else is premature.
-
-**Once charging:**
-- Trial → paid conversion rate (target: >30%)
-- Monthly churn (SMB SaaS benchmark 4.8–8.1% — we need <5%)
-- Time to first value (target: <7 days)
-- Posts approved vs skipped ratio (proxy for content quality)
-
----
-
-## Current Status (August 2026)
-
-- **Product:** functionally complete, in bug-fixing phase
-- **Users:** 0 — goal is one hand-onboarded real jewelry seller
-- **Instagram posting:** working (Instagram Login API, posts publish on schedule)
-- **Vendor types:** 10, with AI-powered auto-detection
-- **Stripe:** test mode, intentionally not in use
-- **Open blockers:** three bug fixes deployed Aug 1, untested — see `STATUS.md`
+- [ ] **Rewrite `database/models.py`** — all new tables per `DATA_MODEL.md`
+- [ ] **Content intake** — vendor reply → `content_item` (repurpose `inbound.py`)
+- [ ] **Interview + chase** — weekly question, nudge non-responders
+- [ ] **Block builder** — `content_item` → `content_block`, written against the P0-B spec
+- [ ] **Style guard** — reject marketing voice, invented facts, overlength, the word "Marlo"
+- [ ] **Scan → subscribe** — `GET /v/{scan_code}`, landing page, consent, cookie, follow
+- [ ] **Assembler + personalizer** — issue pool → per-reader selection
+- [ ] **Renderer** — newsletter HTML template
+- [ ] **Dispatcher** — batch send via Resend
+- [ ] **Unsubscribe** — one-click, immediate (legally required)
 
 ---
 
-## Where Marlo Is Heading
+## 🧱 P2 — Supply Infrastructure
 
-A Phase 2 direction is under consideration: an add-on marketing intelligence layer that reads a merchant's order data, predicts what each customer needs next, and writes segments into their existing email tool. Ideation only, nothing built. See `PHASE_2_DIRECTION.md`.
+- [ ] **Reserve bank** — deposit, tag by season, hold, release
+- [ ] **Market content** — vendor-independent pieces written ahead
+- [ ] **Supply monitor** — continuous runway tracking + escalation
+- [ ] Vendor block approval flow
+- [ ] Photo enhancement via fal.ai (real photos only)
+- [ ] Interest vector computation from scan history
+- [ ] Vendor onboarding page + QR generation
 
 ---
 
-## Company
+## 🎨 P3 — Later
 
-- **Founder:** Anna (Chuyong Liu)
-- **Stage:** Pre-revenue, free MVP, seeking first real user
-- **Stack:** FastAPI + React, Railway, PostgreSQL, Anthropic Claude, fal.ai
+- [ ] Preferences page (mute vendor, change frequency)
+- [ ] Open / click tracking
+- [ ] Multi-market support
+- [ ] Delete `backend/archive/` once we're sure
+- [ ] Remove `debug_router.py` before real readers
+
+---
+
+## ❓ Decisions Needed From Anna
+
+| Decision | Blocks |
+|---|---|
+| **Newsletter brand name** | Any outbound email |
+| **Sending domain** (not marlo021.ai) | Any outbound email |
+| Issue format (P0-B above) | Assembly and personalization |
+| Physical QR format | Vendor onboarding |
+| Vendor onboarding: self-serve or bulk import | `vendors/router.py` |
+
+---
+
+## 🧊 Backlog
+
+- Revenue model (deliberately unresolved)
+- Prediction / personalization engine — see `PHASE_2_DIRECTION.md` (shelved)
+- Instagram posting — archived, revive only if the newsletter needs a social arm
+
+---
+
+## ✅ Completed Log
+
+### August 4, 2026 — Pivot to newsletter
+- [x] Redefined the product: consumer newsletter, free both sides, Marlo invisible
+- [x] Established "the issue ships every week; the pipeline flexes" as a governing principle
+- [x] Designed the four-tier content supply model (fresh / chase / reserve / market)
+- [x] Rewrote `PRODUCT.md`, `ARCHITECTURE.md`, `DATA_MODEL.md`
+- [x] Designed scan-to-subscribe: QR → one-time signup → auto-follow, no password
+- [x] Designed personalization scoring, including forced discovery of unfollowed vendors
+- [x] Added Rule 4 to `COLLABORATION_GUIDE.md` — no unsolicited startup advice
+- [x] Set English as the default working language
+- [x] Decided to archive rather than delete old code
+- [x] Reprioritized: editorial rules are P0, not the pipeline
+
+### August 1, 2026 — Bug fixes (now moot)
+- [x] Fixed `create_pending_action_with_tokens` writing wrong `action_type` / `status` / null `scheduled_post_time`
+- [x] Fixed scheduler filtering on `subscription_id`, hiding all free users
+- [x] Standardized doc filenames
+- [x] Ran life-moment inference tests on mock data (general store + jewelry)
+
+*(Both fixes were on the Instagram path, now archived. Retained for history.)*
+
+### Earlier
+- [x] Instagram posting end-to-end, OAuth, user memory, vendor profiles, content safety, lifestyle image generation, all core email flows, privacy + terms pages

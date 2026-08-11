@@ -1,198 +1,191 @@
 # Marlo — API Reference
 
+*Last updated: August 4, 2026*
+*Location: `C:\Users\Octopus\Documents\marlo\docs\API.md`*
+
+> ⚠️ **Fully rewritten August 4, 2026.** The old API served Instagram posting, OAuth, and Stripe. All of it is archived. **Nothing below is built yet** except where noted — this is the target surface, written so implementation has a spec to build against.
+
 Base URL: `https://api.marlo021.ai`
 
 ---
 
-## Auth
+## Design Rules
 
-### POST /auth/register
-Register a new user.
-```json
-Body: { "email": "...", "password": "...", "full_name": "..." }
-Response: { "id": "uuid", "email": "..." }
-```
+**1. No passwords anywhere.** Readers are identified by a signed cookie or a signed token in an email link. The email address is the identity.
 
-### POST /auth/login
-Login. Returns JWT token.
-```
-Content-Type: application/x-www-form-urlencoded
-Body: username=email@example.com&password=...
-Response: { "access_token": "...", "token_type": "bearer" }
-```
-⚠️ Field name is `username` not `email` (OAuth2 standard).
+**2. Marlo never appears in a response.** Any user-visible string containing "Marlo" is a bug. Reader-facing pages use the newsletter's brand name.
+
+**3. Tokens are signed, not guessable.** Unsubscribe, preferences, and vendor approval links carry HMAC-signed tokens. No token, no access.
+
+**4. Reader-facing endpoints return HTML, not JSON.** They're opened from a phone camera or an email client, not called by code.
 
 ---
 
-## Businesses
+## Reader Endpoints
 
-### POST /businesses/
-Create a business. Triggers onboarding email 1.
+### GET /v/{scan_code}
+**The product's front door.** Opened by scanning a QR code at a vendor's stall.
+
+```
+Path:     scan_code — 4-5 char vendor code, e.g. "A7K2"
+Response: HTML
+Cookie:   reads sub_token if present
+```
+
+**Two behaviors:**
+
+| Cookie state | What happens |
+|---|---|
+| **Absent** (new reader) | Landing page: vendor name, photo, what they'll receive. One email field, one unchecked consent box. |
+| **Present** (returning) | Logs the scan, increments `vendor_follow.scan_count`, shows "Added {vendor}" plus the current follow list. **No input required, ~1 second.** |
+
+Always writes a `scan_event`. Dedup: same reader + same vendor + same day counts once as an interest signal, though every raw event is stored.
+
+**Invalid or inactive `scan_code`:** generic "this code isn't active" page. Never reveal whether the code ever existed.
+
+---
+
+### POST /subscribe
+Creates a subscriber. Called from the scan landing page.
+
 ```json
 Body: {
-  "name": "string",
-  "industry": "string",
-  "monthly_ad_budget": 300,        // example only — user enters any number (e.g. 50, 500, 2000)
-  "description": "optional",
-  "tone_of_voice": "optional",
-  "target_audience": "optional",
-  "timezone": "America/Los_Angeles",           // auto-detected from browser via Intl.DateTimeFormat()
-  "preferred_post_timezone": "America/Los_Angeles"  // same — not hardcoded, reflects user's actual location
+  "email": "...",
+  "scan_code": "A7K2",
+  "consent": true
 }
-Response: { "id": "uuid", "name": "string" }
-```
-Note: all values above are examples only. `timezone` and `preferred_post_timezone` are auto-detected on the frontend using `Intl.DateTimeFormat().resolvedOptions().timeZone` — they reflect whatever timezone the user's browser reports at signup.
-
-### GET /businesses/
-List businesses for current user.
-
-### GET /businesses/settings/kickoff-day
-**Called from email button.** Updates user's kickoff day.
-```
-Query: business_id=uuid&day=Sunday
-Response: HTML page ("Kickoff day updated!")
+Response: HTML confirmation
+Sets:     sub_token cookie (signed, 2-year expiry)
 ```
 
-### GET /businesses/settings/posting-schedule
-**Called from email button.** Updates posting days.
+**Required behavior:**
+- `consent` must be `true` — reject otherwise. **Never pre-check the box in the UI.**
+- Record `consent_at` and `consent_source` (e.g. `qr_scan:A7K2`)
+- Create `vendor_follow` for the scanned vendor
+- Set `first_vendor_id` for attribution
+- Send welcome email
+
+**Email already exists:** link the session to the existing subscriber and add the follow. **Do not error, do not create a duplicate, do not reveal that the address was already registered.**
+
+---
+
+### GET /unsubscribe?token={t}
+One-click unsubscribe. **Legally required (CAN-SPAM).**
+
 ```
-Query: business_id=uuid&days=Monday,Wednesday,Friday
-Response: HTML page ("Posting schedule updated!")
+Query:    token — signed subscriber token
+Response: HTML confirmation
+```
+
+Must take effect immediately — no confirmation step, no login, no "are you sure." Sets `status = "unsubscribed"` and `unsubscribed_at`.
+
+If the link came from a specific issue, set `issue_renders.unsubscribed_from_this = true` for that render. **This is the only signal that can diagnose content quality — do not skip it.**
+
+Offer a lighter option on the confirmation page (pause, or reduce frequency), but only *after* the unsubscribe has already taken effect.
+
+---
+
+### GET /preferences?token={t}
+Manage follows and frequency. No login.
+
+```
+Query:    token — signed subscriber token
+Response: HTML
+```
+
+Reader can mute individual vendors (`vendor_follow.is_muted`), change `send_frequency`, or unsubscribe.
+
+---
+
+## Vendor Endpoints
+
+### GET /vendor/join
+Vendor onboarding page.
+
+⚠️ **Open question:** self-serve signup, or bulk import by the market? This endpoint's shape depends on that decision.
+
+---
+
+### GET /vendor/approve?token={t}
+Vendor approves their own block in the upcoming issue.
+
+```
+Query:    token — signed, scoped to one content_block
+Response: HTML
+```
+
+Sets `approved_by_vendor = true`. Unapproved blocks score `-999` and never ship.
+
+**Reuses the one-click-approval pattern from v1** — this mechanism already works and is worth keeping.
+
+---
+
+### GET /vendor/qr/{vendor_id}
+Returns the printable QR image for a vendor's `scan_code`.
+
+```
+Response: PNG or SVG
 ```
 
 ---
 
-## Actions (Approval)
-
-### GET /actions/approve
-**Called from email button.** Approves a pending action.
-```
-Query: token=uuid
-Response: HTML page ("Done! Your post will go live at the scheduled time.")
-```
-Status flow: `pending` → `executed`
-
-### GET /actions/decline
-**Called from email button.** Declines a pending action.
-```
-Query: token=uuid
-Response: HTML page ("Got it — skipped.") + feedback buttons
-```
-Status flow: `pending` → `rejected`
-
-### GET /actions/feedback
-Records reason for decline.
-```
-Query: action_id=uuid&reason=wrong_tone|not_relevant|poor_quality|wrong_timing|other
-Response: HTML page ("Thanks for the feedback!")
-```
-
-### GET /actions/unsubscribe
-One-click unsubscribe (CAN-SPAM required).
-```
-Query: token=base64_encoded_business_id
-Response: HTML page ("Unsubscribed.")
-```
-
----
-
-## Integrations (OAuth)
-
-### GET /integrations/connect/google
-Starts Google Ads OAuth flow.
-```
-Query: business_id=uuid
-Response: Redirect to Google OAuth
-```
-
-### GET /integrations/callback/google
-Google OAuth callback. Saves tokens, advances onboarding to step 2, sends email 2.
-
-### GET /integrations/skip-google
-User skips Google Ads. Advances to step 2, sends email 2.
-```
-Query: business_id=uuid
-```
-
-### GET /integrations/connect/meta
-Starts Facebook Login OAuth flow (to be replaced with Instagram Login).
-```
-Query: business_id=uuid
-Response: Redirect to Facebook OAuth
-```
-
-### GET /integrations/callback/meta
-Meta OAuth callback. Saves tokens + Instagram account ID, advances to step 3, sends email 3.
-
-### GET /integrations/skip-meta
-User skips Meta. Advances to step 3, sends email 3.
-
-### GET /integrations/connect/mailchimp
-Starts Mailchimp OAuth (or skips if not configured).
-
-### GET /integrations/callback/mailchimp
-Mailchimp callback. Advances to step 4, sends email 4.
-
-### GET /integrations/skip-mailchimp
-User skips Mailchimp. Advances to step 4, sends email 4.
-
----
-
-## Email Inbound
+## Inbound Email
 
 ### POST /email/inbound
-Postmark webhook for inbound email replies.
-Parses business info from email 4 replies, sets `onboarding_completed = true`.
+**Postmark webhook. This is the content intake pipe.** ✅ *Already working from v1.*
+
+```
+Body:     Postmark inbound payload
+Response: {"status": "received"}
+```
+
+Flow:
+1. Identify the vendor from the `+address` in the recipient
+2. Run `content_safety` check
+3. Photos → fal.ai enhancement → store URLs
+4. `reply_handler` interprets the reply
+5. Create `content_item` with `raw_text` stored **verbatim, never modified**
+6. **Classify: use now, or deposit to the reserve bank?**
+7. Send a short confirmation back to the vendor
+
+Step 6 is the piece that makes weekly delivery possible — time-sensitive material ships this week, evergreen material is banked for a thin week.
 
 ---
 
-## Billing (Stripe)
+## Internal / Debug
 
-### POST /billing/create-checkout
-Creates Stripe checkout session for signup.
+Prefix `/debug/`, no auth. **Remove before real readers.**
 
-### POST /billing/webhook
-Stripe webhook handler (subscription created/canceled/payment failed).
+The v1 debug endpoints are archived along with the Instagram code. New ones needed:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /debug/supply` | Current material count and runway in days |
+| `GET /debug/issue/{market_id}` | Preview the assembled block pool |
+| `GET /debug/render/{subscriber_id}` | Preview one reader's personalized issue |
+| `GET /debug/reserve` | Reserve bank depth by season/type |
+
+`/debug/render` matters most — it's the only way to see what an individual reader actually receives before sending.
 
 ---
 
-## Debug Endpoints (⚠️ Remove before public launch)
+## Not Carried Over
 
-All require no auth. Prefix: `/debug/`
+Archived along with their code. Do not reimplement without a deliberate decision:
 
-### GET /debug/businesses
-List all businesses with settings.
+| Old endpoint group | Reason |
+|---|---|
+| `/auth/*` | No passwords in the new model |
+| `/businesses/*` | Replaced by `/vendor/*` |
+| `/actions/approve`, `/decline`, `/feedback` | Instagram approval flow |
+| `/integrations/*` | No OAuth |
+| `/billing/*` | Free product |
+| Old `/debug/*` | Built around Instagram posting |
 
-### GET /debug/trigger-kickoff/{business_id}
-Generate this week's posts + send kickoff email.
-- Clears all pending actions first (idempotent)
-- Sends `first_kickoff` or `weekly_kickoff` based on email history
-```json
-Response: {
-  "status": "success",
-  "email_sent": "first_kickoff",
-  "posts_generated": 3,
-  "posting_schedule": ["Monday", "Wednesday", "Friday"]
-}
-```
+---
 
-### GET /debug/resend-kickoff/{business_id}
-Resend kickoff email without regenerating content.
+## Open Questions
 
-### GET /debug/trigger-analytics/{business_id}
-Send analytics email immediately.
-
-### GET /debug/test-post/{business_id}
-Attempt real Instagram post with latest pending action.
-
-### GET /debug/actions/{business_id}
-List all actions with status, approve/decline URLs, caption previews.
-
-### GET /debug/send-approval/{business_id}/{day}
-Send approval email for a specific day (e.g., Monday).
-
-### DELETE /debug/reset/{business_id}
-Delete all actions and email logs. Full reset.
-```powershell
-Invoke-WebRequest -Method DELETE "https://api.marlo021.ai/debug/reset/{id}"
-```
+- **Sending domain** — outbound mail can't come from marlo021.ai; readers shouldn't see Marlo. Affects every link in every email.
+- **Scan URL host** — should the QR point at a branded short domain rather than marlo021.ai?
+- Vendor onboarding shape (self-serve vs bulk import)

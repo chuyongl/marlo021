@@ -1,132 +1,115 @@
 # Marlo — Current Status
 
-*Last updated: August 1, 2026*
+*Last updated: August 4, 2026*
 *Location: `C:\Users\Octopus\Documents\marlo\docs\STATUS.md`*
 
-> **Doc rule:** This file is REPLACED each session, never appended. One "Last updated" date only.
+> **Doc rule:** REPLACED each session, never appended. One "Last updated" date only.
 
 ---
 
-## 🎯 Where Things Stand
+## Where Things Stand
 
-Two tracks running at once. Be explicit about which one you're working on.
+**Marlo pivoted on August 4, 2026.** It is no longer an Instagram tool sold to merchants. It is now a **local newsletter for consumers**, built from vendor-supplied material. Free for everyone. Marlo itself is invisible to both sides.
 
-**Track 1 — Marlo v1 (Instagram content, free MVP).** Code exists. Three bugs fixed Aug 1, untested. Goal: one hand-onboarded jewelry seller through the full loop.
-
-**Track 2 — Phase 2 (prediction engine / add-on marketing layer).** Ideation only, nothing built. See `PHASE_2_DIRECTION.md`.
-
-Not yet decided whether Track 1 continues, folds into Track 2, or gets parked.
+Docs are rewritten. Code cleanup is in progress. **The newsletter build has not started.**
 
 ---
 
-## 🔴 FIRST THING NEXT SESSION — untested code is live
+## 🔴 IN PROGRESS — Cleanup (finish before anything else)
 
-Three bugs diagnosed and fixed Aug 1. **Committed and deployed. None tested.**
+Old Instagram/Stripe code is being moved to `backend/archive/`.
 
-| Bug | Fix | Status |
-|---|---|---|
-| BUG-1 — reply-created posts never publish | `executor.py` — `create_pending_action_with_tokens` now writes `action_type="post_instagram"`, `status="pending"`, and a real `scheduled_post_time` | Deployed, UNTESTED |
-| BUG-2 — approval email not sent | Downstream of BUG-3; fixed by the same change | Deployed, UNTESTED |
-| BUG-3 — scheduler blind to free users | `scheduler.py` — three jobs no longer filter on `subscription_id != None` | Deployed, UNTESTED |
+**⚠️ The app will not boot until imports are fixed.** `main.py` registers routers from archived files, and `scheduler.py` imports `executor`, `strategy_agent`, `content_pipeline`, and `google_ads_agent`.
 
-**Also in the same commit:**
-- `execute_approved_posts` no longer marks a post published when the executor returns `no_handler` / `skipped` (previously a failed post looked successful forever and never retried)
-- `expire_stale_actions` now also sweeps legacy `pending_approval` rows
-- `executor.run()` accepts legacy `create_post` rows so anything already stuck in the DB can still publish
-- New log line: `weekly_content_generation checking N live businesses`
+- [x] Decide: archive rather than delete
+- [ ] Run the `git mv` commands
+- [ ] **Rewrite `main.py`** — remove archived router registrations
+- [ ] **Rewrite `scheduler.py`** — remove archived imports and the jobs that used them
+- [ ] Verify local boot, then push
 
-### ⚠️ ERRORS.md correction needed
-`ERRORS.md` files the symptom `{"status": "no_handler", "action_type": "create_post"}` under *"platform_account_id is NULL."* **That diagnosis was wrong.** The real cause was `create_pending_action_with_tokens` writing `action_type="create_post"`, which `executor.run()` had no handler for. Update that entry.
-
-### Test sequence when ready
-1. PowerShell reset
-2. Browser trigger-kickoff
-3. Reply to the kickoff email with content
-4. Check `/debug/actions` — the new post must show `action_type: post_instagram`, `status: pending`, and a non-null `scheduled_post_time`. All three correct = BUG-1 dead.
-5. Approve → status flips to `executed`
-6. Wait one 15-min cycle → check Instagram
-
-Expected log: `[Executor] Pending action created — type=post_instagram day=... time=...`
+**Do not push until `main.py` and `scheduler.py` are clean, or Railway will fail to start.**
 
 ---
 
-## ✅ Working End-to-End (verified as of May 28)
+## 🔴 NEXT — P0 Design Work (no code)
 
-- All 4 onboarding emails
-- `first_kickoff` and `weekly_kickoff` emails
-- Instagram OAuth (Instagram Login API) — @marlo021.ai
-- Instagram posting — scheduler auto-posts at `scheduled_post_time`
-- Post approval flow — approve → `executed` → scheduler posts
-- fal.ai image generation — Flux for lifestyle, Ideogram for text-heavy (`software_saas`)
-- Privacy policy + Terms live, Meta Console configured
-- Sentry network errors suppressed, `ENVIRONMENT=production`
-- User memory system (`businesses.user_memory` JSONB)
-- Vendor profiles — 10 types, AI-powered auto-detection
-- Content safety filter
-- Reply flow — `onboarding_completed` checked first, Haiku classify → Sonnet generate, Approve & Schedule button, vendor-aware image generation, cross-email history
+These are decisions, not builds. **They block everything downstream.**
 
----
+**Issue format** — the hardest and most important:
+- Word budget and shape (mix of short and longer)
+- Sections: which exist, fixed or variable
+- Vendors per issue
+- Minimum follows for an issue to feel relevant
+- Behavior when a reader follows only 1 vendor
+- Behavior when a reader follows 40
+- Minimum material to assemble a full-length issue
 
-## ⚠️ Deployed, Not Tested
+**Content supply design:**
+- What questions to ask vendors, and in what rotation
+- What counts as reserve-bank material vs use-now
+- What market-level content exists (seasonal, how-to, logistics)
+- How supply runway is measured and when to escalate
 
-- **The three bug fixes above** ← highest priority
-- Ideogram model for `software_saas`
-- `health_wellness` and `retail_fashion` vendor types
-- AI-powered vendor detection (async Haiku fallback)
-- Photo upload → lifestyle image flow (never tested with a real product photo)
+**Working assumption only, not a decision:** one deeper story plus several short pieces.
 
 ---
 
-## 🐛 Known Latent Bug (not urgent)
+## ✅ Still Working (from v1, being reused)
 
-`agent/reply_handler.py`, inside `handle_reply()` — the fallback line calls `detect_vendor_type_from_industry(...)` **without `await`**. That function became async on May 28. If the fallback fires, `vendor_type` becomes a coroutine object instead of a string. Rarely fires because `inbound.py` always passes a vendor type in. Fix next time that file is touched.
-
----
-
-## 🔴 Not Yet Done
-
-**Track 1:**
-- Test the three bug fixes
-- Onboard one real jewelry seller by hand
-- Meta app review — screen recording + Advanced Access
-- Remove `debug_router.py` before real users go live
-
-**Track 2:**
-- Get real order data for the gift-classifier notebook test
-- Verify Shopify protected customer data approval requirements
+- Email sending via Resend
+- Inbound email via Postmark — **this becomes the content intake pipe**
+- `reply_handler.py` — understands vendor replies
+- One-click approval by email token
+- Photo upload → fal.ai
+- `vendor_profiles.py`, `content_safety.py`, `user_memory.py`
+- APScheduler framework
+- Railway deploy, Postgres, Sentry config
 
 ---
 
-## 🧊 Out of Scope Right Now
+## 🗄️ Archived (reference only, not imported)
 
-Stripe live mode, 14-day trial logic, all billing work, Google Ads integration.
+`backend/archive/` — `content_pipeline.py`, `strategy_agent.py`, `executor.py`, `google_ads_agent.py`, `analytics_agent.py`, `meta.py`, `oauth.py`, `google_ads.py`, `billing/`
+
+**Do not build on these.** They belong to the Instagram-posting era.
 
 ---
 
-## Key Facts
+## 🆕 Not Built Yet
+
+Everything in the new architecture:
+- New database models (`markets`, `vendors`, `subscribers`, `scan_events`, `vendor_follows`, `content_items`, `content_blocks`, `issues`, `issue_renders`)
+- Scan → subscribe flow
+- Content supply pipeline (supply monitor, interview + chase, reserve bank, market content)
+- Block builder + style guard
+- Personalizer + renderer + dispatcher
+- Frontend pages (Scan, Subscribe, Preferences, VendorSignup)
+
+---
+
+## 🚧 Blocking Open Questions
+
+| Question | Blocks |
+|---|---|
+| **Issue format** | All assembly and personalization work |
+| **Newsletter brand name** | Any outbound email |
+| **Sending domain** (not marlo021.ai) | Any outbound email |
+
+---
+
+## 🐛 Carried-Over Bugs (from the Instagram era)
+
+Three bug fixes were deployed Aug 1 and never tested. **They are now moot** — they lived in `executor.py` and `scheduler.py` on the Instagram posting path, which is archived. No action needed unless that path is ever revived.
+
+`reply_handler.py` still has a missing `await` on `detect_vendor_type_from_industry` in its fallback branch. **Still relevant** — that file is being reused. Fix when next touched.
+
+---
+
+## Quick Reference
 
 | Item | Value |
 |---|---|
-| Test business ID | `3512ed4f-9dae-499e-9f5d-fdb0d85269ef` |
-| Instagram | @marlo021.ai (ID: `26745567421768455`) |
-| Instagram App ID | `1004448018806665` |
-| Meta App ID | `918827927853545` |
-| ⚠️ CONFIRM | `1664730228042130` appeared in July 30 Meta Console work — which app ID is live? |
 | API base | `https://api.marlo021.ai` |
 | Frontend | `https://marlo021.ai` |
-
----
-
-## Debug Commands
-
-```powershell
-Invoke-WebRequest -Method DELETE "https://api.marlo021.ai/debug/reset/3512ed4f-9dae-499e-9f5d-fdb0d85269ef"
-```
-
-```
-https://api.marlo021.ai/debug/trigger-kickoff/3512ed4f-9dae-499e-9f5d-fdb0d85269ef
-https://api.marlo021.ai/debug/actions/3512ed4f-9dae-499e-9f5d-fdb0d85269ef
-https://api.marlo021.ai/debug/test-post/3512ed4f-9dae-499e-9f5d-fdb0d85269ef
-```
-
-**Logs:** `railway logs --tail`
+| Local repo | `C:\Users\Octopus\Documents\marlo\` |
+| Logs | `railway logs --tail` |
