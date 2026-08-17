@@ -9,65 +9,65 @@
 
 ## Where Things Stand
 
-**Design is settled.** Product, architecture, and data model are all documented and agreed. The writer agent has been validated against realistic material.
+**Design is settled** — product, architecture, data model all documented and agreed.
 
-**Build has started.** `database/models.py` is written but not yet tested or deployed.
+**The foundation is deployed.** 19 tables live in production. All v1 Instagram code is archived. The API boots clean with zero routers, which is correct at this stage.
 
 **Nothing else is built.** No writer, no editor UI, no scan flow, no sending.
 
 ---
 
-## 🔴 IMMEDIATE — Next Steps
+## ✅ Deployed and Verified (Aug 12)
 
-### 1. Test the models
-```powershell
-cd C:\Users\Octopus\Documents\marlo\backend
-Remove-Item -Recurse -Force __pycache__ -ErrorAction SilentlyContinue
-python -c "from database.models import Base; print(f'{len(Base.metadata.tables)} tables')"
+- `database/models.py` — **19 tables**, live in production
+- `main.py` v`0.3.0` — all v1 routers archived, router checklist ready to uncomment
+- `agent/scheduler.py` — framework running, zero jobs registered
+
+**Verify anytime:**
 ```
-Should print **17 tables**.
-
-### 2. ⚠️ Fix broken imports before pushing
-`main.py` registers `businesses.router`, `agent.approval_router`, and `agent.router` — all import models that **no longer exist** in the new `models.py` (`Business`, `AgentAction`, `PlatformIntegration`).
-
-The fault-tolerant `include()` helper will log them as SKIPPED rather than crash, but they should be removed properly rather than left failing.
-
-**Do not push until this is resolved.**
-
-### 3. Then P0 items 3–10
-See `TASKS.md`.
+https://api.marlo021.ai/health           → {"version": "0.3.0"}
+https://api.marlo021.ai/health/detailed  → tables_defined: 19
+```
 
 ---
 
-## ✅ Done
+## 🗄️ Fully Archived
 
-- Product definition, architecture, data model — all documented
-- Writer agent validated (`WRITER_TEST.md`) — bar is reachable, failure is upstream in the interviewer
-- Instagram/Stripe code archived to `backend/archive/`
-- `main.py` and `scheduler.py` cleaned of archived imports (Aug 11)
-- Docs consolidated to 8 files
-- `database/models.py` written — 17 tables
+`backend/archive/` — nothing imports from it:
 
----
+`auth/` · `businesses/` · `approval_router.py` · `router.py` · `debug_router.py` · `inbound.py` · `content_pipeline.py` · `strategy_agent.py` · `executor.py` · `google_ads_agent.py` · `analytics_agent.py` · `meta.py` · `oauth.py` · `google_ads.py` · `billing/`
 
-## 🆕 Not Built
-
-Everything in P0 items 3–10 and all of P1–P3. Specifically:
-- Writer agent, style guard
-- Editor login, review queue
-- Personalizer, renderer, dispatcher
-- Unsubscribe
-- Invitation codes, vendor signup, interviewer agent
-- Scan flow, subscriber creation
-- All scheduler jobs (framework running, zero jobs registered — correct for now)
+**Do not build on these.** Old v1 database tables also remain in production, untouched and unread.
 
 ---
 
-## 🗄️ Archived (`backend/archive/`, not imported)
+## 🔴 NEXT — P0 items 3–10
 
-`content_pipeline.py`, `strategy_agent.py`, `executor.py`, `google_ads_agent.py`, `analytics_agent.py`, `meta.py`, `oauth.py`, `google_ads.py`, `billing/`
+Per `TASKS.md`:
 
-**Do not build on these.**
+**3.** Seed data — one market, neighborhoods, category pairs, test vendors
+**4 + 5.** Writer agent **and** style guard — build together, not sequentially
+**6.** Editor login + review queue
+**7.** Personalizer
+**8.** Renderer
+**9.** Dispatcher
+**10.** Unsubscribe
+
+**Done means:** paste in three submissions → writer drafts → you approve → an issue assembles and sends to three test addresses → **each gets a different selection.**
+
+---
+
+## ⚠️ Deliberately Deferred: Prompt Quality
+
+**The writer and interviewer prompts are not expected to be good in v1.**
+
+Build the skeleton first, tune the craft later. This is a decision, not an oversight.
+
+The reason is practical: **you can't tune a writing voice against invented material.** The `WRITER_TEST.md` samples were written by Claude imagining how vendors talk. Real conversations will be messier and differently messy, and the prompt refinements that matter will only be visible once real 素材 flows through.
+
+**Expect from P0:** publishable but unremarkable copy. Good enough to prove the loop, not good enough to be proud of.
+
+**The craft pass happens after P1**, when real vendor material exists.
 
 ---
 
@@ -75,9 +75,9 @@ Everything in P0 items 3–10 and all of P1–P3. Specifically:
 
 | Question | Blocks |
 |---|---|
-| **Brown Bag sending domain** — can't be marlo021.ai | Any outbound email |
-| One React app with role routing, or separate vendor / editor apps? | Editor UI |
-| Physical QR format | Vendor rollout |
+| **Brown Bag sending domain** — can't be marlo021.ai | Any outbound email (P0 #9) |
+| One React app with role routing, or separate vendor / editor apps? | Editor UI (P0 #6) |
+| Physical QR format | Vendor rollout (P2) |
 
 ---
 
@@ -85,16 +85,15 @@ Everything in P0 items 3–10 and all of P1–P3. Specifically:
 
 | Item | Value |
 |---|---|
-| Publication name | **Brown Bag** (provisional, stored in `markets.publication_name`) |
-| Backend system name | Marlo (repo, API — never user-facing) |
+| Publication name | **Brown Bag** (provisional, in `markets.publication_name`) |
+| Backend system name | Marlo — repo and API only, never user-facing |
 | API base | `https://api.marlo021.ai` |
 | Local repo | `C:\Users\Octopus\Documents\marlo\` |
 | Logs | `railway logs --tail` |
-| Health check | `GET /health` → `0.2.0` |
 
 ---
 
-## Key Design Decisions (quick recall)
+## Key Design Decisions (cold-start recall)
 
 - **Two agents:** interviewer gathers 素材, writer writes the story
 - **Everything publishable is a block** — one table, one approval lifecycle
@@ -103,3 +102,4 @@ Everything in P0 items 3–10 and all of P1–P3. Specifically:
 - **Vendors see drafts before editors** and can flag corrections
 - **Issue ships every week** — never shrink, never skip, get more material
 - **Nothing ships without editor approval**
+- **Vendors sign up with invitation codes** — live immediately, no activation step

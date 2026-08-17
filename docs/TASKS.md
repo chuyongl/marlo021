@@ -15,34 +15,26 @@ Everything on that path is P0. Everything else waits — including things that f
 
 ---
 
-## ✅ P0 — Prerequisite (done)
-
-- [x] **Writer agent test** — validated the quality bar against realistic 素材 before building. See `WRITER_TEST.md`.
-  - Writer works when material is there
-  - Thin material still publishable at 120 words
-  - **Failure is upstream** — the interviewer is the harder build, not the writer
-  - Two design changes fell out: `style_guard` matters more than weighted; interviewer needs a "nothing here" exit
-
----
-
 ## 🔴 P0 — One issue, end to end
 
 | # | Task | Status |
 |---|---|---|
-| 1 | **`database/models.py`** — all 17 tables | ⬜ written, untested |
-| 2 | **Clean up broken imports** — `main.py` routers referencing dead models | ⬜ |
-| 3 | **Seed data** — one market, neighborhoods, category pairs, test vendors | ⬜ |
+| 1 | `database/models.py` — 19 tables | ✅ **deployed** |
+| 2 | Archive v1 routers, clean `main.py` | ✅ **deployed** |
+| 3 | **Seed data** — market, neighborhoods, category pairs, test vendors | ⬜ next |
 | 4 | **Writer agent** (`content/writer.py`) — 素材 → draft | ⬜ |
 | 5 | **Style guard** (`content/style_guard.py`) — the rejector | ⬜ |
 | 6 | **Editor login + review queue** | ⬜ |
 | 7 | **Personalizer** — exclude seen → score → select | ⬜ |
-| 8 | **Renderer** — HTML template, 9 slots, 4 fonts, ≤1000 words | ⬜ |
-| 9 | **Dispatcher** — send via Resend + write `seen_blocks` | ⬜ |
+| 8 | **Renderer** — HTML, 9 slots, 4 fonts, ≤1000 words | ⬜ |
+| 9 | **Dispatcher** — Resend + write `seen_blocks` | ⬜ |
 | 10 | **Unsubscribe** — one-click, immediate | ⬜ |
 
-**Build 4 and 5 together.** The style guard isn't a polish step — it's what stops filler ever reaching a reader. Building the writer without it produces something that can't be trusted.
+**Build 4 and 5 together.** The style guard isn't polish — it's what stops filler ever reaching a reader. A writer without it produces something that can't be trusted.
 
-**Done means:** paste in three submissions → writer drafts them → you approve → an issue assembles and sends to three test addresses → **each address gets a different selection.**
+**Done means:** paste in three submissions → writer drafts → approve → issue assembles and sends to three test addresses → **each gets a different selection.**
+
+⚠️ **Prompt quality is deliberately deferred.** v1 writer output will be publishable but unremarkable. The craft pass happens after P1, when real vendor material exists. See `STATUS.md`.
 
 ---
 
@@ -83,12 +75,11 @@ Everything on that path is P0. Everything else waits — including things that f
 ## 🔵 P3 — Later
 
 - Ads and sponsors (⚠️ this is the revenue — pull forward if needed)
-- Events block
-- Referral block
-- Greeting workflow
+- Events block · referral block · greeting workflow
 - Escalation queue UI
 - Reader preferences page
 - Open / click tracking
+- **Prompt craft pass** — tune writer and interviewer against real material
 - Multi-market
 
 ---
@@ -97,37 +88,38 @@ Everything on that path is P0. Everything else waits — including things that f
 
 | Decision | Blocks |
 |---|---|
-| **Brown Bag sending domain** (not marlo021.ai) | Any outbound email — P0 #9 |
-| One React app with role routing, or two? | P0 #6 (editor UI) |
+| **Brown Bag sending domain** (not marlo021.ai) | P0 #9 |
+| One React app with role routing, or two? | P0 #6 |
 | Physical QR format | P2 #20 |
 
 ---
 
 ## ✅ Completed Log
 
-### August 12, 2026 — Design settled, models written
-- [x] Named the publication **Brown Bag**; Marlo is now the backend system name
+### August 12, 2026 — Design settled, foundation deployed
+- [x] Named the publication **Brown Bag**; Marlo is the backend system name
 - [x] **Two-agent split**: interviewer gathers 素材, writer writes the story
-- [x] **Invitation-code vendor signup** — codes carry market + neighborhood, live immediately, no editor activation
-- [x] `category_pairs` table — complementary categories derived, zero editor work per signup
-- [x] **Seen is permanent** — `seen_blocks` table, hard exclusion, distinct from vendor fatigue
-- [x] **Vendors see drafts before editors** — `vendor_preview` status + `block_corrections`
+- [x] **Invitation-code vendor signup** — codes carry market + neighborhood, live immediately
+- [x] `category_pairs` — complementary categories derived, zero editor work per signup
+- [x] **Seen is permanent** — `seen_blocks` table, distinct from vendor fatigue
+- [x] **Vendors see drafts before editors** — `vendor_preview` + `block_corrections`
 - [x] **No turn limit** on conversations; they persist across sessions
-- [x] Neighborhood-tiered proximity scoring (same +20 / adjacent +12 / city +6)
-- [x] Content standards rewritten to a real quality bar; difficult material allowed, never fish for pain
-- [x] `sensitivity.py` — flagged material never auto-drafts
-- [x] Writer agent test (`WRITER_TEST.md`)
-- [x] `database/models.py` — all 17 tables written
+- [x] Neighborhood-tiered proximity (same +20 / adjacent +12 / city +6)
+- [x] Content standards rewritten; difficult material allowed, never fish for pain
+- [x] `sensitivity.py` design — flagged material never auto-drafts
+- [x] **Writer agent test** (`WRITER_TEST.md`) — bar is reachable, failure is upstream
+- [x] **`database/models.py` — 19 tables, deployed**
+- [x] **All v1 routers archived; `main.py` v0.3.0 deployed clean**
 
 ### August 11, 2026 — Cleanup
-- [x] Archived Instagram/Stripe code to `backend/archive/` via `git mv`
-- [x] Rewrote `main.py` (fault-tolerant router loading) and `scheduler.py` (jobs stripped)
-- [x] Consolidated docs 11 → 7
+- [x] Archived Instagram/Stripe code via `git mv`
+- [x] Rewrote `main.py` and `scheduler.py`
+- [x] Consolidated docs 11 → 8
 
 ### August 4, 2026 — Pivot
 - [x] Redefined the product: consumer newsletter, free both sides
-- [x] "The issue ships every week; the pipeline flexes" as a governing principle
+- [x] "The issue ships every week; the pipeline flexes"
 - [x] Rule 4 in `COLLABORATION_GUIDE.md` — no unsolicited startup advice
 
 ### Earlier
-- [x] Instagram posting, OAuth, user memory, vendor profiles, content safety, all core email flows, privacy + terms pages *(all archived)*
+- [x] Instagram posting, OAuth, user memory, vendor profiles, content safety, email flows *(all archived)*
