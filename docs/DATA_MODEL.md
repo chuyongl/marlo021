@@ -3,7 +3,7 @@
 *Last updated: August 12, 2026*
 *Location: `C:\Users\Octopus\Documents\marlo\docs\DATA_MODEL.md`*
 
-> **Naming:** *Brown Bag* is the publication. *Marlo* is the backend system. No table, column, or user-visible string should contain "Marlo."
+> **Naming:** *Brown Bag* is the publication. *Marlo* is the backend. No user-visible string contains "Marlo."
 
 ---
 
@@ -11,22 +11,27 @@
 
 ```
 market
-  ├── vendors (hand-provisioned, each a scan point, each has a city)
-  │     ├── conversations → messages   (chat with the AI agent)
-  │     └── submissions               (raw material from those chats)
-  ├── editors                          (hand-provisioned, real login)
-  ├── blocks                           ★ everything publishable is a block
-  ├── subscribers                      (readers)
+  ├── invitation_codes                   ★ the gate — we generate, we distribute
+  ├── vendors (self-signup via code, live immediately)
+  │     ├── conversations → messages     (interviewer agent)
+  │     └── submissions                  (素材 — raw material)
+  ├── editors
+  ├── blocks                             ★ everything publishable
+  │     └── block_corrections            (vendor-flagged fact fixes)
+  ├── subscribers
   │     ├── scan_events
-  │     └── vendor_follows
+  │     ├── vendor_follows
+  │     └── seen_blocks                  ★ permanent exclusion set
   └── issues
-        └── issue_renders              (what each reader actually got)
+        └── issue_renders
 ```
 
-**Two ideas carry the whole model:**
+**Four ideas carry the model:**
 
-1. **Everything publishable is a block.** Stories, ads, greeting, events, referral, footer — one table, one approval lifecycle. They differ in how they're *selected*, not how they're *approved*.
-2. **The bank is "blocks with status = approved."** Not a separate table. Assembly reads from it; nothing enters without an editor.
+1. **The invitation code is the gate.** Control who signs up by controlling code distribution. No per-vendor editor work.
+2. **Everything publishable is a block.** One table, one approval lifecycle.
+3. **The bank is a query:** `status='approved' AND not expired AND no open corrections`.
+4. **Seen is permanent.** A story shown to a reader is never eligible for that reader again — distinct from vendor fatigue, which is a temporary penalty.
 
 ---
 
@@ -36,70 +41,123 @@ market
 |---|---|---|
 | id | UUID | PK |
 | name | string | e.g. "Seattle" |
-| slug | string | URL segment |
-| **publication_name** | string | **"Brown Bag"** — provisional, keep in config not code |
-| from_email | string | Sender address |
-| from_name | string | Display name on the email |
+| slug | string | |
+| **publication_name** | string | **"Brown Bag"** — in DB so renaming is config, not code |
+| from_email / from_name | string | Sender identity |
 | timezone | string | IANA |
-| send_day | string | e.g. "Thursday" |
-| send_hour | int | Local hour, e.g. 17 |
+| send_day / send_hour | string / int | Local send window |
+| **neighborhoods** | JSONB | Dropdown list + adjacency map |
 | is_active | bool | |
 
-**`publication_name` lives in the database on purpose.** The name is provisional; changing it should be a config edit, not a code change.
+**`neighborhoods` shape:**
+```json
+{
+  "Ballard":  {"adjacent": ["Fremont","Magnolia","Greenwood"], "city": "Seattle"},
+  "Fremont":  {"adjacent": ["Ballard","Wallingford","Queen Anne"], "city": "Seattle"},
+  "Bellevue": {"adjacent": ["Kirkland","Redmond"], "city": "Bellevue"}
+}
+```
+
+Powers the signup dropdown **and** proximity scoring. Hand-maintained — one afternoon for Seattle, and local knowledge beats any dataset.
 
 ---
 
-## vendors
+## invitation_codes ★
 
-**Hand-provisioned.** No self-serve signup.
+**The gate.** We generate codes and hand them out; vendors self-serve from there.
 
 | Column | Type | Description |
 |---|---|---|
 | id | UUID | PK |
 | market_id | UUID | FK → markets |
-| name | string | |
-| slug | string | |
-| **scan_code** | string | Short code on the QR, e.g. `A7K2` |
-| **city** | string | e.g. "Bellevue" — **drives reader location inference** |
-| neighborhood | string | Optional, finer grain |
-| categories | array | e.g. `["bakery","bread"]` — interest matching |
-| **complementary_categories** | array | e.g. `["cheese","jam","coffee"]` — discovery scoring |
-| vendor_type | string | Maps to `vendor_profiles.py` |
-| contact_email | string | Magic link + reminders |
-| description | string | Their own words |
-| booth_location | string | |
-| schedule_note | string | e.g. "Saturdays only" |
-| photo_url | string | |
-| vendor_memory | JSONB | Voice, known facts, prior topics — **fuels the agent's follow-up questions** |
-| **reply_pattern** | JSONB | Learned cadence: typical response day and lag |
-| **last_submitted_at** | datetime | Drives reminders and escalation |
-| **silent_cycles** | int | Consecutive cycles with no submission |
-| is_active | bool | |
+| **code** | string | e.g. `BALLARD26` — human-readable, spoken aloud, printed |
+| **neighborhood** | string | **Prefilled into signup. Codes carry location, not category.** |
+| label | string | Internal note, e.g. "Ballard Farmers Market, spring 2026" |
+| **max_uses** | int | NULL = unlimited |
+| **use_count** | int | Incremented on each signup |
+| expires_at | datetime | Optional |
+| created_by | UUID | FK → editors |
+| is_active | bool | Kill switch |
 | created_at | datetime | |
 
-**`scan_code`:** 4–5 chars, excluding confusable characters (0/O, 1/I/l), random not sequential.
-URL: `https://{brownbag_domain}/v/A7K2`
+**Two shapes in practice:**
 
-**`complementary_categories` is filled by hand at provisioning.** A human knows bread pairs with cheese. Cheap to type; expensive to infer.
+| Type | Config | Use |
+|---|---|---|
+| **Bulk** | `max_uses = 100` | Hand to a market manager; their whole vendor list self-serves |
+| **Single** | `max_uses = 1` | One specific vendor you're recruiting |
+
+**Codes carry market + neighborhood only.** Category is the vendor's own choice from the list — a code covering a whole market can't presume what each stall sells.
 
 ---
 
-## vendor_magic_links
+## category_pairs ★
+
+Makes `complementary_categories` automatic. **A property of the category, not the vendor.**
+
+| Column | Type | Description |
+|---|---|---|
+| category | string | PK part, e.g. `bakery` |
+| complements | array | e.g. `["cheese","jam","coffee","butter"]` |
+
+Maintained once. Every vendor picking `bakery` inherits the pairings — **zero editor work per signup**, which is what makes the flow scalable.
+
+---
+
+## vendors
+
+**Self-signup with a valid code. Live immediately.**
+
+| Column | Type | Description |
+|---|---|---|
+| id | UUID | PK |
+| market_id | UUID | From the code |
+| **invitation_code_id** | UUID | FK → invitation_codes — attribution |
+| name | string | |
+| slug | string | |
+| **email** | string | **Unique. Identity + magic links + reminders** |
+| status | string | `active` / `paused` / `removed` |
+| **scan_code** | string | **Generated at signup**, e.g. `A7K2` |
+| **neighborhood** | string | **Prefilled from the code**, vendor can change |
+| city | string | Derived from the neighborhood map |
+| **categories** | array | **Fixed list, multi-select — never free text** |
+| complementary_categories | array | **Derived from `category_pairs`** |
+| vendor_type | string | Maps to `vendor_profiles.py` |
+| description | string | Their own words |
+| booth_location | string | |
+| schedule_note | string | e.g. "Saturdays only" |
+| photo_url | string | **Optional at signup** — the interviewer asks later |
+| vendor_memory | JSONB | Voice, known facts, prior topics |
+| reply_pattern | JSONB | Learned cadence |
+| last_submitted_at | datetime | Drives reminders |
+| silent_cycles | int | Consecutive cycles with nothing |
+| created_at | datetime | |
+
+**Categories must come from a fixed list.** Free text produces "baked goods," "bakery," "Baked Goods," and "bread + pastry" — four spellings of one category, and interest matching quietly breaks.
+
+**Photo optional at signup.** Requiring one is where people abandon the form. Sending a photo mid-conversation is natural; uploading one to a signup form is a chore.
+
+---
+
+## vendor_sessions
+
+Magic link once, then a long session. **One click on first visit, then the site just opens.**
 
 | Column | Type | Description |
 |---|---|---|
 | id | UUID | PK |
 | vendor_id | UUID | FK → vendors |
-| token | string | Signed, single-use |
-| expires_at | datetime | 7 days typical |
-| used_at | datetime | NULL until clicked |
-| purpose | string | `reminder` / `manual_invite` |
+| **session_token** | string | Signed cookie, **90-day expiry** |
+| magic_token | string | Single-use, 7-day expiry |
+| magic_used_at | datetime | |
+| last_seen_at | datetime | |
+| created_at | datetime | |
 
 ---
 
 ## editors
 
-**Hand-provisioned. Real login** — editors can approve, so this is the one place a password is warranted.
+**Hand-provisioned. Real login** — editors approve, so a password is warranted here.
 
 | Column | Type | Description |
 |---|---|---|
@@ -107,12 +165,14 @@ URL: `https://{brownbag_domain}/v/A7K2`
 | email | string | Unique |
 | hashed_password | string | bcrypt |
 | name | string | |
-| market_ids | array | Which markets they can review |
+| market_ids | array | |
 | is_active | bool | |
 
 ---
 
 ## conversations / messages
+
+**No turn limit.** Conversations persist across sessions — vendors answer between customers.
 
 **conversations**
 
@@ -120,12 +180,15 @@ URL: `https://{brownbag_domain}/v/A7K2`
 |---|---|---|
 | id | UUID | PK |
 | vendor_id | UUID | FK → vendors |
-| cycle_start | date | Which week this belongs to |
+| cycle_start | date | |
 | status | string | `open` / `submitted` / `abandoned` |
 | opening_question | text | **Chosen before the reminder is sent** |
 | question_type | string | `whats_new` / `story` / `behind_scenes` / `seasonal` |
-| followups_used | int | **Hard cap: 1** |
-| escalated_at | datetime | When a human was flagged in |
+| **gaps_remaining** | array | Still missing: `person` / `stake` / `scene` / `detail` |
+| turns | int | Analytics only, **not capped** |
+| stalled_turns | int | Exchanges adding nothing — 2 means stop |
+| escalated_at | datetime | |
+| escalation_reason | string | `silent` / `sensitive` / `thin` |
 
 **messages**
 
@@ -135,80 +198,87 @@ URL: `https://{brownbag_domain}/v/A7K2`
 | conversation_id | UUID | FK → conversations |
 | role | string | `agent` / `vendor` |
 | content | text | |
-| image_urls | array | Photos from phone camera |
+| image_urls | array | |
 | created_at | datetime | |
 
 ---
 
 ## submissions
 
-Raw material out of a conversation. **Never edited** — the audit trail from published copy back to what the vendor actually said.
+**素材 — raw material, not copy.** Never edited. The audit trail from published text back to what the vendor said.
 
 | Column | Type | Description |
 |---|---|---|
 | id | UUID | PK |
-| vendor_id | UUID | FK → vendors |
-| conversation_id | UUID | FK → conversations |
-| raw_text | text | **Verbatim, never modified** |
+| vendor_id / conversation_id | UUID | |
+| **raw_text** | text | **Verbatim transcript, never modified** |
 | image_urls | array | |
-| **perishable** | bool | True = time-sensitive; False = evergreen, bank it |
-| **strength_signals** | array | Which of `detail` / `person` / `change` / `why` are present |
+| perishable | bool | Time-sensitive vs evergreen |
+| **material_notes** | JSONB | What the interviewer found: person, stake, scene, quotes |
+| **sensitive** | bool | **Blocks auto-drafting — routes to a human** |
 | status | string | `new` / `drafted` / `discarded` |
 | created_at | datetime | |
-
-**`perishable` decides shelf life.** "Peaches this week" expires in days. "Why I left nursing to make cheese" is good for a year.
-
-**`strength_signals`** is the agent's read on whether a story clears the bar. Two or more = strong enough. Drives whether the agent spends its one follow-up.
 
 ---
 
 ## blocks ★
 
-**Everything publishable.** One table, one lifecycle, five selection behaviors.
-
 | Column | Type | Description |
 |---|---|---|
 | id | UUID | PK |
-| market_id | UUID | FK → markets |
+| market_id | UUID | |
 | **block_class** | string | `story` / `ad` / `greeting` / `events` / `static` |
-| vendor_id | UUID | FK → vendors; NULL for non-story blocks |
-| submission_id | UUID | Source material; NULL for ads and editorial |
-| sponsor_id | UUID | FK → sponsors; ads only |
-| **status** | string | See lifecycle below |
+| vendor_id | UUID | NULL for non-story |
+| submission_id | UUID | Source 素材 |
+| sponsor_id | UUID | Ads only |
+| **status** | string | See lifecycle |
 | headline | string | ≤50 chars |
 | body | text | |
-| quote | text | Vendor's exact words, quoted |
-| image_urls | array | |
-| image_caption | string | |
-| word_count | int | Enforced against the slot budget |
-| categories | array | Inherited from vendor |
-| **quality_score** | int | **0–40, set by the editor at approval** |
-| **perishable** | bool | Inherited from submission |
-| **expires_at** | datetime | Perishable blocks only |
-| editor_id | UUID | Who approved or rejected |
-| reviewed_at | datetime | |
+| quote | text | Vendor's exact words |
+| image_urls / image_caption | | |
+| word_count | int | |
+| categories | array | |
+| **quality_score** | int | **0–40, set by the editor** |
+| perishable | bool | |
+| expires_at | datetime | |
+| **vendor_viewed_at** | datetime | When the vendor saw the draft |
+| editor_id / reviewed_at | | |
 | reject_reason | string | |
-| times_used | int | Across all readers, for reporting |
+| times_used | int | |
 | created_at | datetime | |
 
 **Lifecycle:**
 
 ```
-draft ──▶ pending_review ──▶ approved ──▶ (in the bank) ──▶ expired
-                        └──▶ rejected
+draft ──▶ vendor_preview ──▶ pending_review ──▶ approved ──▶ expired
+              │                            └──▶ rejected
+              └── vendor can flag corrections at any point, including post-approval
 ```
-
-**"The bank" = `status = 'approved'` AND (`expires_at` IS NULL OR `expires_at` > now).** Not a separate table.
 
 **Selection by class:**
 
-| Class | How it's chosen |
+| Class | How chosen |
 |---|---|
 | `story` | Scored per reader |
-| `ad` | Fixed slot, same for everyone |
-| `greeting` | Same for everyone (MVP). Location-matched later. |
-| `events` | Filtered to the reader's follows |
-| `static` | Always included — referral, social, footer |
+| `ad` | Fixed slot, same for all |
+| `greeting` | Same for all (MVP) |
+| `events` | Filtered to reader's follows |
+| `static` | Always included |
+
+---
+
+## block_corrections
+
+| Column | Type | Description |
+|---|---|---|
+| id | UUID | PK |
+| block_id / vendor_id | UUID | |
+| **note** | text | e.g. "north field, not the old orchard" |
+| status | string | `open` / `resolved` / `dismissed` |
+| resolved_by / resolved_at | | FK → editors |
+| created_at | datetime | |
+
+**An open correction pulls an approved block from the bank** until resolved.
 
 ---
 
@@ -217,12 +287,9 @@ draft ──▶ pending_review ──▶ approved ──▶ (in the bank) ──
 | Column | Type | Description |
 |---|---|---|
 | id | UUID | PK |
-| market_id | UUID | FK → markets |
-| name | string | |
-| contact_email | string | |
-| link_url | string | Click destination |
-| active_from | date | |
-| active_until | date | |
+| market_id | UUID | |
+| name / contact_email / link_url | string | |
+| active_from / active_until | date | |
 | is_active | bool | |
 
 ---
@@ -232,222 +299,196 @@ draft ──▶ pending_review ──▶ approved ──▶ (in the bank) ──
 | Column | Type | Description |
 |---|---|---|
 | id | UUID | PK |
-| market_id | UUID | FK → markets |
+| market_id | UUID | |
 | email | string | Unique within market |
-| auth_token | string | Signed, stored in cookie |
+| auth_token | string | Signed cookie |
 | status | string | `active` / `unsubscribed` / `bounced` |
-| **consent_at** | datetime | **Legally required** |
-| **consent_source** | string | e.g. `qr_scan:A7K2` |
+| **consent_at / consent_source** | | **Legally required** |
 | first_vendor_id | UUID | Attribution |
-| interest_vector | JSONB | Derived from scans |
-| **inferred_city** | string | **Computed from followed vendors — never asked** |
-| last_sent_at | datetime | |
-| last_opened_at | datetime | |
-| created_at | datetime | |
-| unsubscribed_at | datetime | |
-
-**No `send_frequency`** — everyone is weekly for MVP.
-
-**`interest_vector`:**
-```json
-{ "bakery": 0.9, "produce": 0.6, "flowers": 0.3, "updated_at": "2026-08-12" }
-```
-
-**`inferred_city`:** most common `city` among followed vendors. No form field; sharpens with every scan.
+| interest_vector | JSONB | From scans |
+| **inferred_neighborhood** | string | **Most common among followed vendors — never asked** |
+| inferred_city | string | |
+| last_sent_at / last_opened_at | datetime | |
+| created_at / unsubscribed_at | datetime | |
 
 ---
 
-## scan_events
+## seen_blocks ★
+
+**Permanent exclusion.** A story shown once is never eligible for that reader again.
+
+| Column | Type | Description |
+|---|---|---|
+| subscriber_id | UUID | PK part |
+| block_id | UUID | PK part |
+| seen_at | datetime | |
+
+**Why a table and not a scan of `issue_renders`:** checked for every block against every subscriber on every send. Needs an indexed lookup, not an array scan.
+
+| Rule | Scope | Effect |
+|---|---|---|
+| **Seen** | Story × reader | Hard exclusion, forever |
+| **Fatigue** | Vendor × reader | Score penalty, decays |
+
+---
+
+## scan_events / vendor_follows
+
+**scan_events**
 
 | Column | Type | Description |
 |---|---|---|
 | id | UUID | PK |
-| subscriber_id | UUID | NULL on a first-ever scan |
-| vendor_id | UUID | FK → vendors |
+| subscriber_id | UUID | NULL on first-ever scan |
+| vendor_id | UUID | |
 | scanned_at | datetime | |
 | is_signup | bool | |
 | session_token | string | Pre-signup identifier |
 
-**Dedup:** same subscriber + vendor + day counts once as an interest signal. All raw rows retained.
-
----
-
-## vendor_follows
-
-Created automatically by scanning. No user action.
+**vendor_follows** — created automatically by scanning.
 
 | Column | Type | Description |
 |---|---|---|
 | id | UUID | PK |
-| subscriber_id | UUID | FK → subscribers |
-| vendor_id | UUID | FK → vendors |
-| scan_count | int | **Strength signal** |
-| first_scanned_at | datetime | |
-| last_scanned_at | datetime | **Recency signal** |
+| subscriber_id / vendor_id | UUID | |
+| scan_count | int | **Strength** |
+| first_scanned_at / last_scanned_at | datetime | **Recency** |
 | is_muted | bool | |
 
+**Dedup:** same subscriber + vendor + day = one interest signal.
+
 ---
 
-## issues
+## issues / issue_renders
 
-**A content pool, not an email.**
+**issues** — a content pool, not an email.
 
 | Column | Type | Description |
 |---|---|---|
 | id | UUID | PK |
-| market_id | UUID | FK → markets |
+| market_id | UUID | |
 | issue_number | int | |
 | send_date | date | |
 | status | string | `assembling` / `sending` / `sent` |
-| bank_size_at_assembly | int | Diagnostics |
+| bank_size_at_assembly | int | |
 | sent_count | int | |
-| assembled_at | datetime | |
-| sent_at | datetime | |
+| assembled_at / sent_at | datetime | |
 
----
-
-## issue_renders
-
-**What each subscriber actually received.**
+**issue_renders** — what each reader actually got.
 
 | Column | Type | Description |
 |---|---|---|
 | id | UUID | PK |
-| issue_id | UUID | FK → issues |
-| subscriber_id | UUID | FK → subscribers |
-| **block_ids** | array | Which blocks, in slot order |
-| block_scores | JSONB | Per-block score, for debugging |
-| **followed_story_count** | int | How many came from followed vendors |
+| issue_id / subscriber_id | UUID | |
+| **block_ids** | array | Blocks in slot order |
+| block_scores | JSONB | Debugging |
+| **followed_story_count** | int | How many from followed vendors |
+| **eligible_pool_size** | int | **Unseen stories they had to choose from** |
 | total_words | int | |
-| sent_at | datetime | |
-| opened_at | datetime | |
+| sent_at / opened_at | datetime | |
 | clicked_vendor_ids | array | |
-| **unsubscribed_from_this** | bool | **The key negative signal** |
+| **unsubscribed_from_this** | bool | **Key negative signal** |
 
-**Why persist this:** without it there's no answering "why did this person leave?" `block_ids` + `unsubscribed_from_this` is the only data that can diagnose content quality.
-
-**`followed_story_count`** measures whether personalization is working. If most readers sit at 0, the follow model isn't earning its complexity.
+**`eligible_pool_size` is the early warning.** Dropping toward 3 for long-tenured readers means the bank is stagnating for the people you'd notice losing last.
 
 ---
 
 ## Story Scoring
 
-Applied to `block_class = 'story'` only.
-
 ```python
-score = 0
+# ── HARD EXCLUSIONS (run first)
+if block.id in seen_blocks[subscriber]:   EXCLUDE   # permanent
+if block.quality_score < 15:              EXCLUDE
+if block has open corrections:            EXCLUDE
 
-# ── QUALITY (0-40) — reader-independent, set by editor
-score += block.quality_score
+score = 0
+score += block.quality_score                        # QUALITY 0-40
 
 # ── RELEVANCE (0-100)
-if block.vendor_id in reader_follows:
+if block.vendor_id in follows:
     score += 60
-    score += min(follow.scan_count, 5) * 5          # up to +25
+    score += min(follow.scan_count, 5) * 5          # to +25
     if follow.last_scanned_at within 30 days:
         score += 15
 score += cosine(block.categories, interest_vector) * 40
 
 # ── DISCOVERY (0-25)
-if block.vendor.categories ∩ complementary_of(followed):
-    score += 25
-elif block.vendor.categories ∩ categories_of(followed):
-    score += 10
+if vendor.categories ∩ complementary_of(followed):  score += 25
+elif vendor.categories ∩ categories_of(followed):   score += 10
 
-# ── GEOGRAPHY (top-up only)
-if block.vendor.city == subscriber.inferred_city:
-    score += 20
+# ── PROXIMITY (0-20)
+if vendor.neighborhood == subscriber.inferred_neighborhood:      score += 20
+elif vendor.neighborhood in adjacent_to(subscriber.inferred_n):  score += 12
+elif vendor.city == subscriber.inferred_city:                    score += 6
 
-# ── FATIGUE
-if block.vendor_id in reader's last render:
-    score -= 40
-elif block.vendor_id in reader's last 3 renders:
-    score -= 15
-
-# ── HARD FLOOR
-if block.quality_score < 15:
-    score = -999                                    # never ships
+# ── FATIGUE (vendor-level, temporary)
+if vendor_id in reader's last render:        score -= 40
+elif vendor_id in reader's last 3 renders:   score -= 15
 ```
 
-**Selection:** top 3 by score → slots 2, 3, 5 (200 / 200 / 120 words).
-
-**Complementary outranks same-category deliberately.** A baker's follower would rather hear about cheese than a rival bakery.
-
-**If the bank yields fewer than 3 eligible stories**, top up with unfollowed stories ranked by interest, geography, and quality. **Never ship short** — the structure is fixed.
-
----
-
-## Supply Monitoring
-
-```sql
--- Approved vs pending, by class
-SELECT block_class, status, COUNT(*)
-FROM blocks
-WHERE market_id = :market
-  AND status IN ('pending_review','approved')
-  AND (expires_at IS NULL OR expires_at > now())
-GROUP BY block_class, status;
-
--- Vendors in rotation (fatigue needs 12+)
-SELECT COUNT(DISTINCT vendor_id)
-FROM blocks
-WHERE status = 'approved' AND block_class = 'story'
-  AND (expires_at IS NULL OR expires_at > now());
-
--- Vendors falling silent
-SELECT name, last_submitted_at, silent_cycles
-FROM vendors
-WHERE is_active AND silent_cycles >= 2
-ORDER BY silent_cycles DESC;
-```
-
-| Approved | Pending | Meaning |
-|---|---|---|
-| Low | High | **Editors** are the bottleneck |
-| Low | Low | **Vendors** are the bottleneck |
-| Healthy | — | Quiet |
+**Selection:** top 3 → slots 2, 3, 5 (200 / 200 / 120 words).
+**Fewer than 3 eligible:** top up by interest, proximity, quality. **Never ship short.**
+**After send:** write `seen_blocks` rows for every story delivered.
 
 ---
 
 ## Key Queries
 
 ```sql
--- Unsubscribe rate per issue — the only honest quality signal
+-- ★ VENDOR ROSTER — every vendor with their story history
+SELECT v.name, v.neighborhood, v.categories,
+       v.last_submitted_at, v.silent_cycles,
+       COUNT(b.id) FILTER (WHERE b.status = 'approved')       AS approved,
+       COUNT(b.id) FILTER (WHERE b.status = 'pending_review') AS awaiting_review,
+       COUNT(b.id) FILTER (WHERE b.status = 'vendor_preview') AS awaiting_vendor,
+       MAX(b.created_at)                                      AS last_story
+FROM vendors v
+LEFT JOIN blocks b ON b.vendor_id = v.id
+WHERE v.market_id = :market AND v.status = 'active'
+GROUP BY v.id, v.name, v.neighborhood, v.categories,
+         v.last_submitted_at, v.silent_cycles
+ORDER BY v.silent_cycles DESC, v.last_submitted_at ASC NULLS FIRST;
+
+-- Invitation code usage
+SELECT code, label, neighborhood, use_count, max_uses,
+       (SELECT COUNT(*) FROM vendors WHERE invitation_code_id = ic.id) AS signups
+FROM invitation_codes ic
+WHERE market_id = :market AND is_active
+ORDER BY created_at DESC;
+
+-- Supply: approved vs pending by class
+SELECT block_class, status, COUNT(*)
+FROM blocks
+WHERE market_id = :market
+  AND status IN ('vendor_preview','pending_review','approved')
+  AND (expires_at IS NULL OR expires_at > now())
+GROUP BY block_class, status;
+
+-- Readers running out of unseen stories (the loyalty warning)
+SELECT s.email, s.created_at, r.eligible_pool_size
+FROM issue_renders r JOIN subscribers s ON s.id = r.subscriber_id
+WHERE r.issue_id = :latest AND r.eligible_pool_size < 6
+ORDER BY r.eligible_pool_size ASC;
+
+-- Open corrections blocking blocks
+SELECT b.headline, v.name, c.note, c.created_at
+FROM block_corrections c
+JOIN blocks b ON b.id = c.block_id
+JOIN vendors v ON v.id = c.vendor_id
+WHERE c.status = 'open' ORDER BY c.created_at;
+
+-- Unsubscribe rate per issue
 SELECT i.issue_number, COUNT(*) AS sent,
        SUM(CASE WHEN r.unsubscribed_from_this THEN 1 ELSE 0 END) AS unsubs
-FROM issue_renders r
-JOIN issues i ON i.id = r.issue_id
+FROM issue_renders r JOIN issues i ON i.id = r.issue_id
 GROUP BY i.issue_number ORDER BY i.issue_number DESC;
-
--- Which blocks appear in issues people left from
-SELECT b.id, b.headline, v.name, COUNT(*) AS in_unsub_issues
-FROM issue_renders r
-JOIN blocks b ON b.id = ANY(r.block_ids)
-LEFT JOIN vendors v ON v.id = b.vendor_id
-WHERE r.unsubscribed_from_this
-GROUP BY b.id, b.headline, v.name
-ORDER BY in_unsub_issues DESC;
-
--- Is personalization working?
-SELECT followed_story_count, COUNT(*)
-FROM issue_renders
-GROUP BY followed_story_count ORDER BY followed_story_count;
-
--- Scan conversion by vendor
-SELECT v.name, v.scan_code,
-       COUNT(*) FILTER (WHERE s.is_signup) AS signups,
-       COUNT(*) AS total_scans
-FROM scan_events s JOIN vendors v ON v.id = s.vendor_id
-GROUP BY v.name, v.scan_code ORDER BY signups DESC;
 ```
 
 ---
 
 ## Deprecated From v1
 
-`businesses`, `agent_actions`, `platform_integrations`, `content_feedback` — all belong to the archived Instagram product. Leave in place, unused.
-
-`users` → keep only if editor auth reuses it; otherwise superseded by `editors`.
+`businesses`, `agent_actions`, `platform_integrations`, `content_feedback` — archived Instagram product. Leave in place, unused.
 
 **Migration:** new tables via `create_all` on startup.
 
@@ -455,7 +496,7 @@ GROUP BY v.name, v.scan_code ORDER BY signups DESC;
 
 ## Legal
 
-- `consent_at` and `consent_source` required at signup
-- One-click unsubscribe in every issue (CAN-SPAM), immediate effect
+- `consent_at` / `consent_source` required at signup
+- One-click unsubscribe in every issue (CAN-SPAM), immediate
 - Vendors never see subscriber emails — aggregate counts only
 - ⚠️ Scan history must never drive health-adjacent inference (WA My Health My Data)

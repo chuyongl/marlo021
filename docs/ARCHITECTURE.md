@@ -3,50 +3,69 @@
 *Last updated: August 12, 2026*
 *Location: `C:\Users\Octopus\Documents\marlo\docs\ARCHITECTURE.md`*
 
-> **Naming:** *Brown Bag* is the publication. *Marlo* is the backend system (repo name, API, internal docs). **"Marlo" in any reader- or vendor-facing output is a bug.**
+> **Naming:** *Brown Bag* is the publication. *Marlo* is the backend (repo, API, internal docs). **"Marlo" in any reader- or vendor-facing output is a bug.**
 
 ---
 
 ## Three Governing Constraints
 
-**1. The reader never sees the machinery.** Brown Bag is the only name that appears.
-
-**2. The issue ships every week.** Structure is fixed. Thin material means get more material, never shrink or skip.
-
-**3. Nothing ships without editor approval.** Every block passes a human before entering the bank. Assembly then runs with no human in the critical path.
+**1. The reader never sees the machinery.**
+**2. The issue ships every week** — thin material means get more material.
+**3. Nothing ships without editor approval.**
 
 ---
 
 ## Three Surfaces
 
 ```
-Vendors  → web app    chat with agent, upload photos       magic link
-Editors  → web app    review queue, approve/reject         real login
-Readers  → email      the newsletter                       cookie from QR scan
+Vendors  → web app   chat, drafts, library    invitation code → magic link → 90-day session
+Editors  → web app   queue, roster, editing   real login
+Readers  → email     the newsletter           cookie from QR scan
 ```
 
-**This replaces v1's "email is the only interface."** Email is now the reader delivery channel only. `email_system/inbound.py` (Postmark) is **no longer the content intake pipe** — intake moved to the vendor web app.
+Email is the reader delivery channel only. Postmark inbound is **no longer the intake path**.
+
+---
+
+## The Two-Agent Split ★
+
+```
+VENDOR ──▶ INTERVIEWER AGENT ──▶ 素材 ──▶ WRITER AGENT ──▶ DRAFT
+                                                             │
+                                                             ▼
+                                                    VENDOR PREVIEW
+                                                  (corrects facts)
+                                                             │
+                                                             ▼
+                                                 EDITOR: edit + approve
+                                                             │
+                                                             ▼
+                                                        THE BANK
+```
+
+**Vendors are not expected to write.** They supply raw material — what happened, why it mattered, photos. Most people can do that in conversation; almost nobody can do it in prose.
+
+| Agent | Model | Job |
+|---|---|---|
+| **Interviewer** | Sonnet | Draw out material. Output is 素材, never copy. |
+| **Writer** | Sonnet | Turn 素材 into a story that carries the quality bar. |
+
+The writer has what the vendor lacks mid-conversation: time, context, and no social pressure.
 
 ---
 
 ## Stack
 
-| Layer | Technology | Change |
-|---|---|---|
-| Backend | FastAPI (Python 3.12), async | unchanged |
-| Frontend | React (TypeScript) | **major expansion** — vendor + editor apps |
-| Database | PostgreSQL (Railway) | unchanged |
-| Hosting | Railway | unchanged |
-| Outbound email | Resend | newsletter + vendor reminders |
-| AI | Claude Sonnet (conversation, drafting) + Haiku (classify, strength check) | unchanged |
-| Images | fal.ai | **enhancement only — never generate** |
-| Scheduler | APScheduler | unchanged |
-| ~~Postmark inbound~~ | — | no longer the intake path |
-| ~~Instagram, Stripe, Google Ads~~ | — | archived |
-
-**Image policy:** real vendor photos, enhanced (crop, brighten, denoise). **No AI-generated imagery.** One fake bread photo destroys a local newsletter's credibility.
-
-**Why APScheduler, not Temporal** *(ADR-002)*: in-process is sufficient at this scale. Revisit if Railway restarts cause missed sends.
+| Layer | Technology |
+|---|---|
+| Backend | FastAPI (Python 3.12), async |
+| Frontend | React (TypeScript) — vendor + editor apps |
+| Database | PostgreSQL (Railway) |
+| Outbound email | Resend — newsletter + vendor reminders |
+| AI | Claude Sonnet (interviewer, writer) + Haiku (classify, gap analysis) |
+| Images | fal.ai — **enhancement only, never generate** |
+| Scheduler | APScheduler |
+| ~~Instagram, Stripe, Postmark inbound~~ | archived |
 
 ---
 
@@ -54,185 +73,225 @@ Readers  → email      the newsletter                       cookie from QR scan
 
 ```
 backend/
-├── main.py                       # app, routers, startup migrations
+├── main.py
 ├── database/
-│   ├── models.py                 # rewritten per DATA_MODEL.md
+│   ├── models.py                 # per DATA_MODEL.md
 │   └── session.py
 │
 ├── vendors/                      # ★ vendor-facing
-│   ├── router.py                 # magic link auth, profile
+│   ├── router.py                 # code validation, signup, magic link, session
 │   ├── conversation.py           # chat endpoints
-│   └── provisioning.py           # admin: create vendor, generate scan_code
+│   └── workspace.py              # my stories, library, corrections
 │
 ├── editors/                      # ★ NEW
-│   ├── router.py                 # login, review queue
-│   └── review.py                 # approve / reject / set quality_score
+│   ├── router.py                 # login, queue, roster
+│   ├── review.py                 # edit, approve, quality_score
+│   ├── codes.py                  # generate + manage invitation codes
+│   └── corrections.py            # resolve vendor-flagged facts
 │
 ├── subscribers/                  # ★ NEW
 │   ├── router.py                 # scan landing, subscribe, unsubscribe
-│   ├── identity.py               # cookie token issue + verify
-│   └── interests.py              # scan_events → interest_vector + inferred_city
+│   ├── identity.py               # cookie tokens
+│   └── interests.py              # scans → interest_vector + inferred_neighborhood
 │
-├── content/                      # ★ NEW — the supply pipeline
-│   ├── agent.py                  # the interviewing agent
-│   ├── questions.py              # question selection + rotation
-│   ├── strength.py               # detail / person / change / why check
-│   ├── drafter.py                # submission → draft block
+├── content/                      # ★ the supply pipeline
+│   ├── interviewer.py            # ★ conversation agent — gathers 素材
+│   ├── questions.py              # gap-driven question selection
+│   ├── gaps.py                   # what's missing: person / stake / scene / detail
+│   ├── sensitivity.py            # flags difficult material → human
+│   ├── writer.py                 # ★ 素材 → story draft
 │   ├── style_guard.py            # rejects marketing voice, invention, overlength
-│   └── supply_monitor.py         # two-sided: approved vs pending
+│   └── supply_monitor.py         # approved vs pending vs reader pool depth
 │
 ├── newsletter/                   # ★ NEW
 │   ├── assembler.py              # issue skeleton + block pool
-│   ├── personalizer.py           # score, select → issue_render
-│   ├── renderer.py               # issue_render → HTML
-│   └── dispatcher.py             # batch send via Resend
+│   ├── personalizer.py           # exclude seen → score → select
+│   ├── renderer.py               # → HTML
+│   └── dispatcher.py             # Resend + write seen_blocks
 │
 ├── agent/
-│   ├── vendor_memory.py          # ✅ reused (was user_memory.py)
+│   ├── vendor_memory.py          # ✅ reused
 │   ├── vendor_profiles.py        # ✅ reused
 │   ├── content_safety.py         # ✅ reused
-│   ├── brain.py                  # ✅ reused: Claude wrapper
-│   ├── scheduler.py              # ✅ framework; jobs to be added
-│   └── reply_handler.py          # ⚠️ salvage prompting patterns for agent.py
+│   ├── brain.py                  # ✅ Claude wrapper
+│   └── scheduler.py              # ✅ framework; jobs to add
 │
 ├── email_system/
 │   ├── sender.py                 # ✅ reused
-│   ├── templates.py              # ⚠️ rewritten: newsletter + reminders
-│   └── inbound.py                # ⚠️ no longer intake; keep for bounces
+│   └── templates.py              # ⚠️ rewritten
 │
-├── integrations/
-│   └── image_gen.py              # ⚠️ enhancement only
-│
-└── archive/                      # 🗄️ dead code, not imported
+└── archive/                      # 🗄️ dead code
 
 frontend/src/
-├── vendor/                       # ★ chat, photo upload, history
-├── editor/                       # ★ review queue, supply dashboard
-└── reader/                       # ★ Scan.tsx, Subscribe.tsx, Unsubscribe.tsx
+├── vendor/     # Signup, Chat, MyStories, Library
+├── editor/     # Queue, Editor, Roster, Codes, Supply
+└── reader/     # Scan, Subscribe, Unsubscribe
 ```
 
 ---
 
-## Flow ① — Vendor Conversation
+## Flow ① — Invitation Code Signup ★
+
+**We control who joins by controlling code distribution. The vendor's signup is unattended.**
+
+```
+EDITOR generates a code
+  ├── neighborhood (codes carry location, NOT category)
+  ├── max_uses — 100 for a market, 1 for one vendor
+  └── label, e.g. "Ballard Farmers Market, spring 2026"
+      ↓
+Code handed out — to a market manager, or direct to a vendor
+      ↓
+VENDOR visits /vendor/signup, enters the code
+      ↓
+Validate: active? not expired? use_count < max_uses?
+      ↓
+FORM — short by design
+  ├── market + neighborhood  PREFILLED from the code
+  ├── name, email
+  ├── categories            FIXED LIST, multi-select, never free text
+  ├── description, booth location, schedule
+  └── photo                 OPTIONAL — the interviewer asks later
+      ↓
+On submit:
+  ├── complementary_categories ← DERIVED from category_pairs
+  ├── scan_code generated immediately
+  ├── use_count += 1
+  └── magic link emailed
+      ↓
+VENDOR IS LIVE. No editor step.
+```
+
+**Three choices that make this scalable:**
+
+**Categories from a fixed list.** Free text produces "baked goods," "bakery," "Baked Goods," and "bread + pastry" — four spellings of one category, and interest matching quietly breaks.
+
+**`complementary_categories` derived from `category_pairs`**, not set per vendor. Bread pairs with cheese because of what bread *is*. One maintained table, zero editor work per signup.
+
+**Photo optional.** Requiring one at the form is where people abandon. Sending a photo mid-conversation is natural.
+
+---
+
+## Flow ② — The Conversation
 
 ```
 scheduler: vendor_reminder_cycle (hourly check)
       ↓
-For each vendor due this cycle:
-  content/questions.py picks the opening question
-    ├── rotates question_type, never same kind twice running
-    ├── reads vendor_memory for a specific hook
-    └── scales down with silent_cycles:
-          0-1 → open question
-          2   → narrower, easier
-          3+  → "just send a photo, we'll write around it"
+content/questions.py picks the opening question
+  ├── rotates question_type
+  ├── reads vendor_memory for a specific hook
+  └── scales down with silent_cycles:
+        0-1 → open question
+        2   → narrower
+        3+  → "just send a photo, we'll write around it"
       ↓
-  Create conversation, store opening_question
+Email — QUESTION IN THE SUBJECT LINE
+  "Cedar Bakery — is the sourdough back this week? [link]"
       ↓
-  Email reminder — QUESTION IN THE SUBJECT LINE
-    "Cedar Bakery — is the sourdough back this week? Two minutes: [link]"
+VENDOR ARRIVES (session valid, no login)
       ↓
-  Link = single-use magic link → logs them straight in
-
-VENDOR ARRIVES ON SITE
+content/interviewer.py — Sonnet + vendor_memory
       ↓
-  content/agent.py — Claude Sonnet, holds vendor_memory
+  LOOP, NO TURN LIMIT:
+    ├── content/gaps.py: what's missing? person / stake / scene / detail
+    ├── ask toward the gap — ALWAYS reference what they just said
+    ├── never generic ("tell me more" is banned)
+    ├── NEVER fish for pain — vendor volunteers or it doesn't exist
+    ├── content/sensitivity.py flags difficult material
+    └── stop when: enough material │ 2 stalled turns │ vendor says done
       ↓
-  Vendor answers, may attach photos (phone camera)
+  Conversation PERSISTS — vendor can leave and return
       ↓
-  content/strength.py — Haiku, checks for
-    detail / person / change / why
+Create submission (素材): raw_text verbatim · material_notes · perishable · sensitive
       ↓
-  ≥2 signals → accept, create submission
-      ↓
-  <2 signals AND followups_used == 0
-      → ONE specific follow-up, informed by vendor_memory
-        NOT "tell me more"
-        BUT "are these from the old orchard you mentioned?"
-      ↓
-  Still thin → accept as a short block, move on
-     ⚠️ HARD CAP: one follow-up. Two makes the agent a chore.
-      ↓
-  Classify perishable vs evergreen → submission
-      ↓
-  Photos → fal.ai enhancement → store URLs
+Photos → fal.ai enhancement
 ```
 
-**Escalation to a human editor:**
-`silent_cycles >= 2` · follow-up used and still thin · vendor followed by many readers · bank running low
+**Escalation:** `silent_cycles >= 2` · `sensitive = true` · thin after a full conversation · vendor followed by many readers
+
+**Sensitive material never auto-drafts.** A human sees it first.
 
 ---
 
-## Flow ② — Drafting and Review
+## Flow ③ — Writing, Preview, Review
 
 ```
-submission created
+submission (素材)
       ↓
-content/drafter.py — Claude Sonnet
-  ├── choose slot length (200 or 120 words)
+content/writer.py — Sonnet
+  Bar: is there a person, and is something at stake?
   ├── headline ≤50 chars
-  ├── body in the vendor's voice
-  ├── pull one direct quote
+  ├── body at slot length (200 or 120)
+  ├── one direct quote
+  ├── END ON THE CONCRETE THING — never explain the meaning
   └── select image + caption
       ↓
 content/style_guard.py — REJECTS ONLY, never writes
-  ├── ❌ marketing voice ("don't miss," "limited time," "hurry")
-  ├── ❌ any fact absent from submission.raw_text → reject
-  ├── ❌ over the slot budget → compress
-  └── ❌ contains "Marlo" → reject
+  ├── ❌ marketing voice
+  ├── ❌ any fact absent from raw_text
+  ├── ❌ no person / nothing at stake
+  ├── ❌ explains its own meaning
+  ├── ❌ over budget
+  └── ❌ contains "Marlo"
       ↓
-block created, status = pending_review
+status = vendor_preview
       ↓
-EDITOR REVIEW QUEUE (web app)
-  ├── approve → set quality_score (0-40) → status = approved
-  └── reject  → reason recorded, back to drafter or discarded
+VENDOR SEES THE DRAFT (before the editor)
+  └── flags corrections → block_corrections
       ↓
-approved + not expired = IN THE BANK
+status = pending_review
+      ↓
+EDITOR QUEUE — three lanes:
+  ├── new drafts
+  ├── vendor corrections
+  └── escalations
+      ↓
+  edit → set quality_score (0-40) → approved
+      ↓
+approved + not expired + no open corrections = THE BANK
 ```
 
-**The bank is a query, not a table:** `status='approved' AND (expires_at IS NULL OR expires_at > now())`.
-
-**Review happens as material arrives**, not in a rush before send. That's why editors gate blocks, not issues.
+**Vendor preview comes first on purpose.** They're the only one who knows whether a fact is wrong, and catching it before the editor spends time is cheaper for everyone.
 
 ---
 
-## Flow ③ — Assembly and Send
+## Flow ④ — Assembly and Send
 
 ```
-scheduler: send_issue (market local send_day + send_hour)
+scheduler: send_issue (market local send window)
       ↓
-newsletter/assembler.py
-  Pull the bank, grouped by block_class
-  Create issue record
+newsletter/assembler.py — pull the bank by block_class
       ↓
 For each active subscriber:
       ↓
   newsletter/personalizer.py
-    Score every story block (formula in DATA_MODEL.md)
-      QUALITY + RELEVANCE + DISCOVERY + GEOGRAPHY − FATIGUE
-      quality_score < 15 → never ships
+    HARD EXCLUDE:
+      ├── block.id in seen_blocks[subscriber]   ← permanent
+      ├── quality_score < 15
+      └── open corrections
+    THEN SCORE:
+      QUALITY + RELEVANCE + DISCOVERY + PROXIMITY − FATIGUE
       ↓
     Top 3 → slots 2, 3, 5
-    Fewer than 3 eligible?
-      → top up: interest match, then geography, then quality
-      → NEVER ship short. Structure is fixed.
+    Fewer than 3? top up by interest, proximity, quality
+    NEVER SHIP SHORT
       ↓
-    Fixed blocks: greeting (1), ad (4), events (6), ad (7),
-                  referral (8), footer (9)
-    Events filtered to the reader's follows
+    Fixed: greeting(1) ad(4) events(6) ad(7) referral(8) footer(9)
       ↓
-  Create issue_render — block_ids in slot order
+  issue_render — block_ids in order, eligible_pool_size recorded
       ↓
-  renderer.py → HTML  (4 font sizes, ≤1000 words)
+  renderer.py → HTML (4 font sizes, ≤1000 words)
       ↓
   dispatcher.py → Resend
+      ↓
+  ★ WRITE seen_blocks ROWS — permanent exclusion from here on
 ```
 
-**Structure check before send:** 9 slots filled, word count under 1000, at least one image. A render failing the check is logged and repaired, never sent malformed.
+**Structure check before send:** 9 slots filled, under 1000 words, at least one image.
 
 ---
 
-## Flow ④ — Scan to Subscribe
+## Flow ⑤ — Scan to Subscribe
 
 ```
 QR at the stall → /v/A7K2
@@ -243,8 +302,7 @@ subscribers/identity.py checks sub_token cookie
       │     → Landing: vendor name + photo + what Brown Bag is
       │     → One email field, one UNCHECKED consent box
       │     → create subscriber (consent_at, consent_source)
-      │     → cookie (signed, 2 years)
-      │     → vendor_follow + scan_event
+      │     → cookie (signed, 2 years) + vendor_follow + scan_event
       │     → welcome email
       │
       └── Cookie present (returning)
@@ -253,9 +311,19 @@ subscribers/identity.py checks sub_token cookie
             → zero input, about one second
 ```
 
-**New device:** no cookie but email exists → link to the existing account. **No password — the email is the identity.**
+**New device:** no cookie but email exists → link to the existing account. **No password.**
 
-**Every scan updates `inferred_city`** — the most common city among followed vendors. Reader location is never asked for.
+**Every scan updates `inferred_neighborhood`.** Never asked.
+
+---
+
+## Flow ⑥ — Editor Roster
+
+Editors get a vendor roster showing each vendor's story history — a single view that answers both *"who's here"* and *"who's gone quiet."*
+
+Columns: name, neighborhood, categories, last submission, silent cycles, counts of approved / awaiting-review / awaiting-vendor blocks, last story date.
+
+Sorted by silent cycles descending, so the vendors needing attention surface first. Query in `DATA_MODEL.md`.
 
 ---
 
@@ -263,29 +331,29 @@ subscribers/identity.py checks sub_token cookie
 
 | Job | Frequency | Purpose |
 |---|---|---|
-| `vendor_reminder_cycle` | hourly check | Pick question, send reminder to due vendors |
+| `vendor_reminder_cycle` | hourly check | Pick question, email due vendors |
 | `vendor_escalation` | daily | Flag silent vendors to the editor queue |
-| `supply_monitor` | every 6h | Approved vs pending; alert the right party |
+| `supply_monitor` | every 6h | Approved vs pending vs reader pool depth |
 | `expire_blocks` | daily | Perishable blocks past `expires_at` |
 | `send_issue` | hourly check | Assemble + send at market local time |
-| `recompute_interests` | daily | Rebuild `interest_vector`, `inferred_city` |
+| `recompute_interests` | daily | Rebuild `interest_vector`, `inferred_neighborhood` |
 
-**Job conventions** *(learned the hard way, keep them)*:
-- Import models and services **inside** the job function, never at module top
-- Open a fresh session: `async with AsyncSessionLocal() as db:` — never reuse one from elsewhere
-- Wrap in try/except, route through `log_error()`
+**Job conventions** *(learned the hard way)*:
+- Import models and services **inside** the job function
+- Fresh session: `async with AsyncSessionLocal() as db:` — never reuse
+- try/except through `log_error()`
 - `datetime.now(timezone.utc)`, never `utcnow()` *(ADR-005)*
-- Railway DNS blips → WARNING (no Sentry); real bugs → ERROR *(ADR-013)*
+- Railway DNS blips → WARNING; real bugs → ERROR *(ADR-013)*
 
 ---
 
 ## Design Patterns Carried From v1
 
-**Vendor profiles as central config** *(ADR-012)*: type-specific behavior in one dict. Adding a type = one entry.
+**Vendor profiles as central config** *(ADR-012)*.
 
-**Compact memory, not raw history** *(ADR-010)*: `vendor_memory` is ~200 tokens of summary, not a growing transcript. Updated asynchronously with Haiku. **Now doubles as the source of specific follow-up questions.**
+**Compact memory, not raw history** *(ADR-010)*: `vendor_memory` is ~200 tokens of summary. **Now the source of specific follow-up questions** — what makes the interviewer sound like it was listening.
 
-**Background tasks get their own DB session**: never pass a request's session into `create_task()`.
+**Background tasks get their own DB session.**
 
 ---
 
@@ -296,12 +364,19 @@ subscribers/identity.py checks sub_token cookie
 | `GET /v/{scan_code}` | Scan landing |
 | `POST /subscribe` | Create subscriber |
 | `GET /unsubscribe?token=` | One-click, immediate |
-| `GET /vendor/auth?token=` | Magic link login |
+| `POST /vendor/validate-code` | Check an invitation code |
+| `POST /vendor/signup` | Signup with code |
+| `GET /vendor/auth?token=` | Magic link → session |
 | `POST /vendor/message` | Chat turn |
 | `POST /vendor/upload` | Photo upload |
-| `POST /editor/login` | Editor auth |
-| `GET /editor/queue` | Pending review |
-| `POST /editor/review/{block_id}` | Approve / reject + quality score |
+| `GET /vendor/stories` | Drafts + published |
+| `POST /vendor/correction` | Flag a wrong fact |
+| `GET /vendor/library` | Other vendors' published stories |
+| `POST /editor/login` | |
+| `GET /editor/queue` | Drafts, corrections, escalations |
+| `GET /editor/roster` | Vendors + story history |
+| `POST /editor/codes` | Generate invitation codes |
+| `POST /editor/review/{block_id}` | Edit, approve, quality score |
 | `GET /editor/supply` | Supply dashboard |
 
 ---
@@ -316,8 +391,8 @@ RESEND_API_KEY=re_...
 APP_BASE_URL=https://api.marlo021.ai
 FRONTEND_URL=...                ★ Brown Bag domain — TBD
 JWT_SECRET_KEY=...
-SUBSCRIBER_TOKEN_SECRET=...     ★ signs subscriber cookies
-VENDOR_TOKEN_SECRET=...         ★ signs vendor magic links
+SUBSCRIBER_TOKEN_SECRET=...     ★ subscriber cookies
+VENDOR_TOKEN_SECRET=...         ★ vendor magic links + sessions
 ENVIRONMENT=production
 
 # Archived
@@ -328,6 +403,6 @@ ENVIRONMENT=production
 
 ## Open Questions
 
-- **Brown Bag sending domain** — can't be marlo021.ai; readers shouldn't see Marlo
+- **Brown Bag sending domain**
 - One React app with role routing, or separate vendor / editor apps?
 - Physical QR format
