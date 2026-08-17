@@ -1,32 +1,95 @@
-# Marlo — Task Board
+# Brown Bag — Task Board
 
-*Updated: August 11, 2026*
+*Updated: August 12, 2026*
 *Location: `C:\Users\Octopus\Documents\marlo\docs\TASKS.md`*
 
 > **Doc rule:** REPLACED each session, never appended. Finished work moves to the completed log.
 
 ---
 
-## 📐 P0 — Editorial Rules (design, no code)
+## The Organizing Question
 
-**Start here next session.** Everything downstream depends on these.
+**What's the shortest path to one real issue landing in one real inbox?**
 
-### Issue format
-- [ ] Word budget per issue — mix of short and longer, exact shape TBD
-- [ ] What sections exist; fixed or variable
-- [ ] How many vendors appear per issue
-- [ ] How many follows a reader needs for the issue to feel relevant
-- [ ] **Reader follows 1 vendor** — what fills the issue?
-- [ ] **Reader follows 40** — what gets cut? Does it feel like loss?
-- [ ] Minimum material required to assemble at full length
+Everything on that path is P0. Everything else waits — including things that feel core. The QR scan flow isn't P0 (hand-add test subscribers). The interviewer agent isn't P0 (paste in 素材 by hand). Neither is needed to prove an issue can be built and sent.
 
-### Content supply
-- [ ] Question set for vendors + rotation logic
-- [ ] Reserve-bank rules: what qualifies, when to hold vs use
-- [ ] Market-level content types (seasonal, how-to, logistics)
-- [ ] Supply runway metric and escalation thresholds
+---
 
-**Working assumption only, not a decision:** one deeper story + several short pieces.
+## ✅ P0 — Prerequisite (done)
+
+- [x] **Writer agent test** — validated the quality bar against realistic 素材 before building. See `WRITER_TEST.md`.
+  - Writer works when material is there
+  - Thin material still publishable at 120 words
+  - **Failure is upstream** — the interviewer is the harder build, not the writer
+  - Two design changes fell out: `style_guard` matters more than weighted; interviewer needs a "nothing here" exit
+
+---
+
+## 🔴 P0 — One issue, end to end
+
+| # | Task | Status |
+|---|---|---|
+| 1 | **`database/models.py`** — all 17 tables | ⬜ written, untested |
+| 2 | **Clean up broken imports** — `main.py` routers referencing dead models | ⬜ |
+| 3 | **Seed data** — one market, neighborhoods, category pairs, test vendors | ⬜ |
+| 4 | **Writer agent** (`content/writer.py`) — 素材 → draft | ⬜ |
+| 5 | **Style guard** (`content/style_guard.py`) — the rejector | ⬜ |
+| 6 | **Editor login + review queue** | ⬜ |
+| 7 | **Personalizer** — exclude seen → score → select | ⬜ |
+| 8 | **Renderer** — HTML template, 9 slots, 4 fonts, ≤1000 words | ⬜ |
+| 9 | **Dispatcher** — send via Resend + write `seen_blocks` | ⬜ |
+| 10 | **Unsubscribe** — one-click, immediate | ⬜ |
+
+**Build 4 and 5 together.** The style guard isn't a polish step — it's what stops filler ever reaching a reader. Building the writer without it produces something that can't be trusted.
+
+**Done means:** paste in three submissions → writer drafts them → you approve → an issue assembles and sends to three test addresses → **each address gets a different selection.**
+
+---
+
+## 🟡 P1 — Real vendors can participate
+
+| # | Task |
+|---|---|
+| 11 | Invitation codes — generate, validate, use tracking |
+| 12 | Vendor signup form — code prefill, fixed category list |
+| 13 | Magic link + 90-day session |
+| 14 | **Interviewer agent** (`content/interviewer.py`) |
+| 15 | Gap tracking (`content/gaps.py`) + question selection |
+| 16 | **"Nothing here" exit** — end a conversation with no submission |
+| 17 | Sensitivity flagging (`content/sensitivity.py`) |
+| 18 | Vendor reminder emails — question in the subject line |
+| 19 | Photo upload + fal.ai enhancement |
+
+**Done means:** a real vendor gets an email, talks to the agent, and their story reaches the bank without you touching it.
+
+**The risk lives here, not in P0.** Getting a vendor to mention her daughter is harder than writing the paragraph once she has.
+
+---
+
+## 🟢 P2 — Readers join, vendors collaborate
+
+| # | Task |
+|---|---|
+| 20 | Scan landing `/v/{scan_code}` + subscribe flow |
+| 21 | Interest vector + inferred neighborhood |
+| 22 | Vendor draft preview + corrections |
+| 23 | Vendor library — other vendors' published stories |
+| 24 | Editor roster — vendors + story history |
+| 25 | Supply monitor — approved vs pending vs reader pool depth |
+| 26 | Scheduler jobs (reminder cycle, escalation, expiry, send) |
+
+---
+
+## 🔵 P3 — Later
+
+- Ads and sponsors (⚠️ this is the revenue — pull forward if needed)
+- Events block
+- Referral block
+- Greeting workflow
+- Escalation queue UI
+- Reader preferences page
+- Open / click tracking
+- Multi-market
 
 ---
 
@@ -34,87 +97,37 @@
 
 | Decision | Blocks |
 |---|---|
-| **Newsletter brand name** | Any outbound email |
-| **Sending domain** (not marlo021.ai) | Any outbound email |
-| Issue format (above) | Assembly and personalization |
-| Physical QR format (sticker / table tent / bag) | Vendor onboarding |
-| Vendor onboarding: self-serve or bulk import | `vendors/router.py` |
-
----
-
-## 🏗️ P1 — Core Build
-
-Ordered so real vendor material arrives as early as possible.
-
-- [ ] **Rewrite `database/models.py`** — all new tables per `DATA_MODEL.md`
-- [ ] **Content intake** — vendor reply → `content_item` (repurpose `inbound.py`)
-- [ ] **Interview + chase** — weekly question, nudge non-responders
-- [ ] **Block builder** — `content_item` → `content_block`, written against the P0 spec
-- [ ] **Style guard** — reject marketing voice, invented facts, overlength, the word "Marlo"
-- [ ] **Scan → subscribe** — `GET /v/{scan_code}`, landing page, consent, cookie, follow
-- [ ] **Assembler + personalizer** — issue pool → per-reader selection
-- [ ] **Renderer** — newsletter HTML template
-- [ ] **Dispatcher** — batch send via Resend
-- [ ] **Unsubscribe** — one-click, immediate (legally required)
-
----
-
-## 🧱 P2 — Supply Infrastructure
-
-- [ ] **Reserve bank** — deposit, tag by season, hold, release
-- [ ] **Market content** — vendor-independent pieces written ahead
-- [ ] **Supply monitor** — continuous runway tracking + escalation
-- [ ] Vendor block approval flow
-- [ ] Photo enhancement via fal.ai (real photos only)
-- [ ] Interest vector computation from scan history
-- [ ] Vendor onboarding page + QR generation
-
----
-
-## 🎨 P3 — Later
-
-- [ ] Preferences page (mute vendor, change frequency)
-- [ ] Open / click tracking
-- [ ] Multi-market support
-- [ ] Fix missing `await` on `detect_vendor_type_from_industry` in `reply_handler.py`
-- [ ] Replace or remove `agent/router.py` and `agent/debug_router.py`
-- [ ] Delete `backend/archive/` once we're sure
-
----
-
-## 🧊 Backlog
-
-- Revenue model (deliberately unresolved)
-- Instagram posting — archived; revive only if the newsletter needs a social arm
+| **Brown Bag sending domain** (not marlo021.ai) | Any outbound email — P0 #9 |
+| One React app with role routing, or two? | P0 #6 (editor UI) |
+| Physical QR format | P2 #20 |
 
 ---
 
 ## ✅ Completed Log
 
-### August 11, 2026 — Cleanup and consolidation
-- [x] Moved 9 modules + `billing/` to `backend/archive/` via `git mv`
-- [x] Rewrote `main.py` — archived routers removed, fault-tolerant router loading, v`0.2.0`
-- [x] Rewrote `agent/scheduler.py` — removed all 7 Instagram-era jobs; kept Sentry filter and timezone helpers, generalized for markets
-- [x] Verified all 6 remaining routers load
-- [x] Consolidated docs 11 → 7; deleted `DECISIONS.md`, `PHASE_2_DIRECTION.md`, `FLOWS.md`, `ERRORS.md`
-- [x] Absorbed surviving ADRs into `PRODUCT.md` (principles) and `ARCHITECTURE.md` (patterns)
-- [x] Rewrote `API.md` for the newsletter endpoint surface
-- [x] Deployed
+### August 12, 2026 — Design settled, models written
+- [x] Named the publication **Brown Bag**; Marlo is now the backend system name
+- [x] **Two-agent split**: interviewer gathers 素材, writer writes the story
+- [x] **Invitation-code vendor signup** — codes carry market + neighborhood, live immediately, no editor activation
+- [x] `category_pairs` table — complementary categories derived, zero editor work per signup
+- [x] **Seen is permanent** — `seen_blocks` table, hard exclusion, distinct from vendor fatigue
+- [x] **Vendors see drafts before editors** — `vendor_preview` status + `block_corrections`
+- [x] **No turn limit** on conversations; they persist across sessions
+- [x] Neighborhood-tiered proximity scoring (same +20 / adjacent +12 / city +6)
+- [x] Content standards rewritten to a real quality bar; difficult material allowed, never fish for pain
+- [x] `sensitivity.py` — flagged material never auto-drafts
+- [x] Writer agent test (`WRITER_TEST.md`)
+- [x] `database/models.py` — all 17 tables written
 
-### August 4, 2026 — Pivot to newsletter
-- [x] Redefined the product: consumer newsletter, free both sides, Marlo invisible
-- [x] Established "the issue ships every week; the pipeline flexes" as a governing principle
-- [x] Designed the four-tier content supply model (fresh / chase / reserve / market)
-- [x] Designed scan-to-subscribe: QR → one-time signup → auto-follow, no password
-- [x] Designed personalization scoring, including forced discovery of unfollowed vendors
-- [x] Added Rule 4 to `COLLABORATION_GUIDE.md` — no unsolicited startup advice
-- [x] Set English as the default working language
-- [x] Reprioritized: editorial rules are P0, not the pipeline
+### August 11, 2026 — Cleanup
+- [x] Archived Instagram/Stripe code to `backend/archive/` via `git mv`
+- [x] Rewrote `main.py` (fault-tolerant router loading) and `scheduler.py` (jobs stripped)
+- [x] Consolidated docs 11 → 7
 
-### August 1, 2026 — Bug fixes (now moot, code archived)
-- [x] Fixed `create_pending_action_with_tokens` writing wrong `action_type` / `status` / null `scheduled_post_time`
-- [x] Fixed scheduler filtering on `subscription_id`, hiding all free users
-- [x] Ran life-moment inference tests on mock data (general store + jewelry)
+### August 4, 2026 — Pivot
+- [x] Redefined the product: consumer newsletter, free both sides
+- [x] "The issue ships every week; the pipeline flexes" as a governing principle
+- [x] Rule 4 in `COLLABORATION_GUIDE.md` — no unsolicited startup advice
 
 ### Earlier
-- [x] Instagram posting end-to-end, OAuth, user memory, vendor profiles, content safety, lifestyle image generation, all core email flows, privacy + terms pages
+- [x] Instagram posting, OAuth, user memory, vendor profiles, content safety, all core email flows, privacy + terms pages *(all archived)*

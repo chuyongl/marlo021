@@ -1,6 +1,6 @@
-# Marlo — Current Status
+# Brown Bag — Current Status
 
-*Last updated: August 11, 2026*
+*Last updated: August 12, 2026*
 *Location: `C:\Users\Octopus\Documents\marlo\docs\STATUS.md`*
 
 > **Doc rule:** REPLACED each session, never appended. One "Last updated" date only.
@@ -9,71 +9,57 @@
 
 ## Where Things Stand
 
-**Marlo pivoted to a local consumer newsletter.** Free for vendors and readers. Marlo itself is invisible to both sides — readers get a newsletter with its own brand, vendors get an email from the market.
+**Design is settled.** Product, architecture, and data model are all documented and agreed. The writer agent has been validated against realistic material.
 
-**Docs consolidated: 11 → 7.** **Code cleanup: done and deployed.**
-**The newsletter build has not started.**
+**Build has started.** `database/models.py` is written but not yet tested or deployed.
 
----
-
-## ✅ Cleanup Complete (Aug 11)
-
-- Instagram/Stripe/Google-Ads code moved to `backend/archive/` via `git mv` (history preserved)
-- `main.py` rewritten — archived routers removed, version bumped to `0.2.0`
-- `agent/scheduler.py` rewritten — all 7 Instagram-era jobs removed
-- All 6 remaining routers verified loading: `auth`, `email_system.inbound`, `agent.approval_router`, `businesses.router`, `agent.router`, `agent.debug_router`
-- Docs deleted: `DECISIONS.md`, `PHASE_2_DIRECTION.md`, `FLOWS.md`, `ERRORS.md` — surviving content absorbed into `PRODUCT.md` and `ARCHITECTURE.md`
-- Pushed and deployed
-
-**Verify live:** `https://api.marlo021.ai/health` should return version `0.2.0`.
+**Nothing else is built.** No writer, no editor UI, no scan flow, no sending.
 
 ---
 
-## 🔴 NEXT — P0: Editorial Rules (design, no code)
+## 🔴 IMMEDIATE — Next Steps
 
-**This is the real P0.** Content generation can be done unscalably at first; the rules cannot be missing.
+### 1. Test the models
+```powershell
+cd C:\Users\Octopus\Documents\marlo\backend
+Remove-Item -Recurse -Force __pycache__ -ErrorAction SilentlyContinue
+python -c "from database.models import Base; print(f'{len(Base.metadata.tables)} tables')"
+```
+Should print **17 tables**.
 
-**Issue format:**
-- Word budget and shape — mix of short and longer pieces
-- What sections exist; fixed or variable
-- How many vendors appear per issue
-- How many follows a reader needs for the issue to feel relevant
-- **Reader follows 1 vendor** — what fills the rest?
-- **Reader follows 40** — what gets cut? Does it feel like loss?
-- Minimum material to assemble at full length
+### 2. ⚠️ Fix broken imports before pushing
+`main.py` registers `businesses.router`, `agent.approval_router`, and `agent.router` — all import models that **no longer exist** in the new `models.py` (`Business`, `AgentAction`, `PlatformIntegration`).
 
-**Content supply:**
-- Question set for vendors + rotation logic
-- Reserve-bank rules: what qualifies as evergreen, when to hold vs use
-- Market-level content types (seasonal, how-to, logistics)
-- Supply runway metric and escalation thresholds
+The fault-tolerant `include()` helper will log them as SKIPPED rather than crash, but they should be removed properly rather than left failing.
 
-**Working assumption only, not a decision:** one deeper story + several short pieces.
+**Do not push until this is resolved.**
 
-**Best way to decide these:** get real material from a few real vendors and edit it by hand. Rules written against imagined replies won't survive contact.
+### 3. Then P0 items 3–10
+See `TASKS.md`.
 
 ---
 
-## 🚧 Blocking Open Questions
+## ✅ Done
 
-| Question | Blocks |
-|---|---|
-| **Issue format** | All assembly and personalization work |
-| **Newsletter brand name** | Any outbound email |
-| **Sending domain** (not marlo021.ai) | Any outbound email — readers shouldn't see Marlo |
+- Product definition, architecture, data model — all documented
+- Writer agent validated (`WRITER_TEST.md`) — bar is reachable, failure is upstream in the interviewer
+- Instagram/Stripe code archived to `backend/archive/`
+- `main.py` and `scheduler.py` cleaned of archived imports (Aug 11)
+- Docs consolidated to 8 files
+- `database/models.py` written — 17 tables
 
 ---
 
-## ✅ Working (reused from v1)
+## 🆕 Not Built
 
-- Email sending via Resend
-- Inbound email via Postmark — **this becomes the content intake pipe**
-- `reply_handler.py` — understands vendor replies
-- One-click approval by email token
-- Photo upload → fal.ai
-- `vendor_profiles.py`, `content_safety.py`, `user_memory.py`
-- APScheduler framework (running, zero jobs registered — correct for now)
-- Railway deploy, Postgres, Sentry
+Everything in P0 items 3–10 and all of P1–P3. Specifically:
+- Writer agent, style guard
+- Editor login, review queue
+- Personalizer, renderer, dispatcher
+- Unsubscribe
+- Invitation codes, vendor signup, interviewer agent
+- Scan flow, subscriber creation
+- All scheduler jobs (framework running, zero jobs registered — correct for now)
 
 ---
 
@@ -85,33 +71,35 @@
 
 ---
 
-## 🆕 Not Built Yet
+## 🚧 Blocking Decisions
 
-- New DB models (`markets`, `vendors`, `subscribers`, `scan_events`, `vendor_follows`, `content_items`, `content_blocks`, `issues`, `issue_renders`)
-- Scan → subscribe flow
-- Content supply pipeline (supply monitor, interview + chase, reserve bank, market content)
-- Block builder + style guard
-- Personalizer + renderer + dispatcher
-- Frontend pages (Scan, Subscribe, Preferences, VendorSignup)
-
----
-
-## 🐛 Known Issues
-
-**`debug_router` and `agent/router`** load fine but may reference archived modules inside functions. They'll fail at call time, not import time. Low priority — both are being replaced.
-
-**`reply_handler.py`** has a missing `await` on `detect_vendor_type_from_industry` in its fallback branch. **Still relevant** — that file is being reused. Fix when next touched.
-
-**Old Instagram bug fixes (Aug 1)** were never tested and are now moot — they lived in archived code.
+| Question | Blocks |
+|---|---|
+| **Brown Bag sending domain** — can't be marlo021.ai | Any outbound email |
+| One React app with role routing, or separate vendor / editor apps? | Editor UI |
+| Physical QR format | Vendor rollout |
 
 ---
 
-## Quick Reference
+## Reference
 
 | Item | Value |
 |---|---|
+| Publication name | **Brown Bag** (provisional, stored in `markets.publication_name`) |
+| Backend system name | Marlo (repo, API — never user-facing) |
 | API base | `https://api.marlo021.ai` |
-| Frontend | `https://marlo021.ai` |
 | Local repo | `C:\Users\Octopus\Documents\marlo\` |
 | Logs | `railway logs --tail` |
-| Health check | `GET /health` → should show `0.2.0` |
+| Health check | `GET /health` → `0.2.0` |
+
+---
+
+## Key Design Decisions (quick recall)
+
+- **Two agents:** interviewer gathers 素材, writer writes the story
+- **Everything publishable is a block** — one table, one approval lifecycle
+- **The bank is a query**, not a table: approved + not expired + no open corrections
+- **Seen is permanent** per reader; **fatigue** is a decaying penalty per vendor
+- **Vendors see drafts before editors** and can flag corrections
+- **Issue ships every week** — never shrink, never skip, get more material
+- **Nothing ships without editor approval**
