@@ -1,0 +1,183 @@
+# Writer Agent Test
+
+*August 12, 2026 · P0 item 3, tested before building*
+
+**The question:** can a writer agent turn a vendor's rambling conversation into something worth reading?
+
+**Method:** three samples of realistic 素材 — the way people actually talk, not the way they'd write. Draft each at the target length. Assess honestly against the bar.
+
+**The bar:**
+> Is there a person, and is something at stake for them?
+> Would a stranger want to know how it turned out?
+
+Plus: specificity carries the feeling, and **never explain the meaning at the end.**
+
+---
+
+# Sample A — Good material
+
+*The kind of conversation the interviewer should produce on a good day.*
+
+### 素材 (raw)
+
+> **Agent:** How did the weekend go?
+>
+> **Vendor (Mei, Fortune Noodle):** Sold out by 11. That never happens, usually we go till 2. I had to turn people away which I hate doing.
+>
+> **Agent:** What sold out?
+>
+> **Vendor:** The chili oil. I only made 40 jars because last month I made 60 and had 20 left. So this month I thought okay, 40. Wrong. There was a line before I even finished setting up.
+>
+> **Agent:** Any idea what changed?
+>
+> **Vendor:** Someone posted about it I think. A girl came up and showed me a video on her phone, it was me? Someone filmed me making it at the demo in July. I didn't know. It has like 90,000 views. I don't have TikTok.
+>
+> **Agent:** What was it like seeing that?
+>
+> **Vendor:** Honestly a little strange. My hands look old in it. But my daughter was so excited, she made me watch it four times. She's twelve. She said mom you're famous and I said I'm not famous, I'm out of chili oil.
+>
+> **Agent:** Are you making more this week?
+>
+> **Vendor:** I'm making 80. I was up until 1am Tuesday toasting the sichuan peppercorns. My whole apartment smells. My neighbor knocked to check if something was burning.
+
+**Signals:** person ✓ · stake ✓ · scene ✓ · detail ✓ · quotes ✓
+
+### Draft — 187 words
+
+**Headline:** She's not famous. She's out of chili oil.
+
+Mei sold out by 11 on Saturday. She usually goes till two.
+
+She'd made forty jars. Last month she made sixty and carried twenty home, so forty seemed like the sensible number. There was a line before she finished setting up.
+
+A woman in the queue held up her phone to show her why: a video of Mei at the July demo, toasting peppercorns, filmed by someone she never noticed. Ninety thousand views. She doesn't have TikTok.
+
+"Honestly a little strange," she said. "My hands look old in it."
+
+Her twelve-year-old made her watch it four times.
+
+> "She said mom you're famous, and I said I'm not famous, I'm out of chili oil."
+
+This week there will be eighty jars. She was up until one in the morning on Tuesday toasting peppercorns, and at some point her neighbor knocked on the door to ask whether something was burning.
+
+**Assessment: ✅ Clears the bar.**
+Person, stake, a real scene, and it ends on the neighbor knocking — concrete, no lesson attached. The daughter's line does the emotional work without anyone naming it.
+
+---
+
+# Sample B — Thin material
+
+*What most submissions will actually look like.*
+
+### 素材 (raw)
+
+> **Agent:** Anything new this week?
+>
+> **Vendor (Dan, Hollow Ridge Farm):** Just the usual. Kale, chard, some late tomatoes.
+>
+> **Agent:** How are the tomatoes doing this late in the season?
+>
+> **Vendor:** Not great honestly. The rain last week split a lot of them. I lost maybe a third.
+>
+> **Agent:** What happens to the split ones?
+>
+> **Vendor:** I usually feed them to the pigs but there were too many. So I've been making sauce. Never sold sauce before.
+>
+> **Agent:** How much sauce?
+>
+> **Vendor:** Thirty something jars. I don't have a label or anything, I wrote on masking tape.
+
+**Signals:** person ✓ · stake ✓ · change ✓ · scene ✗ · quotes ✗
+
+### Draft — 112 words
+
+**Headline:** A third of the tomatoes split. Now there's sauce.
+
+The rain last week split about a third of Dan's late tomatoes. Split tomatoes don't sell.
+
+Normally they go to the pigs. There were too many for the pigs.
+
+So there is sauce now — thirty-something jars of it, which Hollow Ridge has never made before and never sold. The jars are labeled in marker on masking tape.
+
+Kale and chard as usual. The sauce is at the end of the table.
+
+**Assessment: ✅ Clears the bar, at the shorter length.**
+Something went wrong, someone responded, there's a concrete image in the masking tape. No quote, so it's slot 5 material rather than slot 2. **This is the realistic median and it's fine.**
+
+---
+
+# Sample C — Nothing there
+
+*The failure case. Testing that the system says no.*
+
+### 素材 (raw)
+
+> **Agent:** What have you got this week?
+>
+> **Vendor (Karen, Sweet Pea Bakery):** Croissants, sourdough, the usual pastries. Everything's fresh!
+>
+> **Agent:** Anything different from last week?
+>
+> **Vendor:** Not really, we keep it consistent. People know what they like.
+>
+> **Agent:** Anything happen at the stall worth mentioning?
+>
+> **Vendor:** It was busy! Good crowd. We'd love to see everyone this Saturday.
+
+**Signals:** person ✗ · stake ✗ · change ✗ · scene ✗
+
+### Draft attempt
+
+**REJECTED by style_guard.**
+
+- ❌ No person — "we" throughout, nobody does anything
+- ❌ Nothing at stake, nothing changed
+- ❌ Marketing voice — "everything's fresh," "we'd love to see everyone"
+
+**Assessment: ✅ Correct rejection.**
+
+**But this is the important case**, because it's common. What should happen:
+
+1. The interviewer shouldn't have accepted this — it should have kept asking, or ended without a submission
+2. It doesn't reach the writer at all
+3. Karen shows up in the editor roster with rising `silent_cycles`
+4. Next cycle she gets an easier ask: *"just send a photo, we'll write around it"*
+
+**A no-submission is a correct outcome, not a failure.** The system needs to be comfortable producing nothing rather than producing filler.
+
+---
+
+# What this test showed
+
+**1. The writer works when the material is there.** Sample A is genuinely good. The technique that does the work is simple: **lift the vendor's own images and end on a concrete detail.** The neighbor knocking. The masking tape.
+
+**2. Thin material still produces something publishable at 120 words.** Sample B has no quote and no scene, but a real change and a real response. **This validates the slot-length design** — slot 5 exists precisely for this.
+
+**3. The failure is upstream, not in the writer.** Sample C fails because the interviewer accepted a conversation with nothing in it. **The interviewer is the harder build**, not the writer.
+
+**4. Rejection needs to be cheap and normal.** If the system treats "no story this week" as a failure state, it'll produce filler to avoid it. Some weeks a vendor has nothing, and that's fine — the bank carries it.
+
+---
+
+# What this changes in the plan
+
+**Nothing reorders.** The writer is buildable and the design holds.
+
+**Two adjustments:**
+
+**`style_guard` matters more than I weighted it.** It's not a polish step — it's what stops Sample C from ever reaching a reader. Build it alongside the writer, not after.
+
+**The interviewer needs a "nothing here" exit.** It must be able to end a conversation without producing a submission. Currently the flow assumes every conversation yields 素材. It shouldn't.
+
+---
+
+# Prompt notes for `writer.py`
+
+What produced the drafts above:
+
+- **Lift the vendor's images, don't invent new ones.** "My hands look old" is unimprovable.
+- **One quote maximum**, and only if it carries something a paraphrase would lose.
+- **End on the last concrete thing.** Never a summarizing line. The neighbor knocking, the masking tape.
+- **Short sentences at the emotional moments.** "Split tomatoes don't sell."
+- **Never name the feeling.** Not "she was overwhelmed" — show the daughter making her watch it four times.
+- **Length is a signal, not a target.** Rich material → 200. Thin material → 120. Don't pad to fill a slot.
