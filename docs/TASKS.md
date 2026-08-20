@@ -11,7 +11,7 @@
 
 **What's the shortest path to one real issue landing in one real inbox?**
 
-Everything on that path is P0. Everything else waits — including things that feel core. The QR scan flow isn't P0 (hand-add test subscribers). The interviewer agent isn't P0 (paste in 素材 by hand). Neither is needed to prove an issue can be built and sent.
+Everything on that path is P0. Everything else waits — including things that feel core. The QR scan flow isn't P0 (hand-add test subscribers). The interviewer agent isn't P0 (paste in 素材 by hand).
 
 ---
 
@@ -19,22 +19,22 @@ Everything on that path is P0. Everything else waits — including things that f
 
 | # | Task | Status |
 |---|---|---|
-| 1 | `database/models.py` — 19 tables | ✅ **deployed** |
-| 2 | Archive v1 routers, clean `main.py` | ✅ **deployed** |
-| 3 | **Seed data** — market, neighborhoods, category pairs, test vendors | ⬜ next |
-| 4 | **Writer agent** (`content/writer.py`) — 素材 → draft | ⬜ |
-| 5 | **Style guard** (`content/style_guard.py`) — the rejector | ⬜ |
+| 1 | `database/models.py` — 19 tables | ✅ deployed |
+| 2 | Archive v1 routers, clean `main.py` | ✅ deployed |
+| 3 | **Seed data** — market, neighbourhoods, category pairs, test vendors | ⬜ next |
+| 4 | **Writer agent** (`content/writer.py`) | ⬜ |
+| 5 | **Style guard** (`content/style_guard.py`) | ⬜ |
 | 6 | **Editor login + review queue** | ⬜ |
 | 7 | **Personalizer** — exclude seen → score → select | ⬜ |
-| 8 | **Renderer** — HTML, 9 slots, 4 fonts, ≤1000 words | ⬜ |
+| 8 | **Renderer** — HTML, 9 slots, ≤1000 words | ⬜ |
 | 9 | **Dispatcher** — Resend + write `seen_blocks` | ⬜ |
 | 10 | **Unsubscribe** — one-click, immediate | ⬜ |
 
-**Build 4 and 5 together.** The style guard isn't polish — it's what stops filler ever reaching a reader. A writer without it produces something that can't be trusted.
+**Build 4 and 5 together.** The style guard isn't polish — it's what stops filler ever reaching a reader.
 
 **Done means:** paste in three submissions → writer drafts → approve → issue assembles and sends to three test addresses → **each gets a different selection.**
 
-⚠️ **Prompt quality is deliberately deferred.** v1 writer output will be publishable but unremarkable. The craft pass happens after P1, when real vendor material exists. See `STATUS.md`.
+⚠️ Prompt quality deliberately deferred to after P1. See `STATUS.md`.
 
 ---
 
@@ -46,15 +46,13 @@ Everything on that path is P0. Everything else waits — including things that f
 | 12 | Vendor signup form — code prefill, fixed category list |
 | 13 | Magic link + 90-day session |
 | 14 | **Interviewer agent** (`content/interviewer.py`) |
-| 15 | Gap tracking (`content/gaps.py`) + question selection |
+| 15 | Gap tracking + question selection |
 | 16 | **"Nothing here" exit** — end a conversation with no submission |
-| 17 | Sensitivity flagging (`content/sensitivity.py`) |
+| 17 | Sensitivity flagging |
 | 18 | Vendor reminder emails — question in the subject line |
 | 19 | Photo upload + fal.ai enhancement |
 
-**Done means:** a real vendor gets an email, talks to the agent, and their story reaches the bank without you touching it.
-
-**The risk lives here, not in P0.** Getting a vendor to mention her daughter is harder than writing the paragraph once she has.
+**The risk lives here, not in P0.** Getting a maker to mention her daughter is harder than writing the paragraph once she has.
 
 ---
 
@@ -63,12 +61,12 @@ Everything on that path is P0. Everything else waits — including things that f
 | # | Task |
 |---|---|
 | 20 | Scan landing `/v/{scan_code}` + subscribe flow |
-| 21 | Interest vector + inferred neighborhood |
+| 21 | Interest vector + inferred neighbourhood |
 | 22 | Vendor draft preview + corrections |
-| 23 | Vendor library — other vendors' published stories |
-| 24 | Editor roster — vendors + story history |
-| 25 | Supply monitor — approved vs pending vs reader pool depth |
-| 26 | Scheduler jobs (reminder cycle, escalation, expiry, send) |
+| 23 | Vendor library |
+| 24 | Editor roster |
+| 25 | Supply monitor |
+| 26 | Scheduler jobs |
 
 ---
 
@@ -76,11 +74,17 @@ Everything on that path is P0. Everything else waits — including things that f
 
 - Ads and sponsors (⚠️ this is the revenue — pull forward if needed)
 - Events block · referral block · greeting workflow
-- Escalation queue UI
-- Reader preferences page
-- Open / click tracking
+- Escalation queue UI · reader preferences · open/click tracking
 - **Prompt craft pass** — tune writer and interviewer against real material
 - Multi-market
+
+---
+
+## 🧹 Cleanup Debt
+
+- [ ] **⚠️ Rewrite `Privacy.tsx` and `Terms.tsx`** — both describe the Instagram product and Stripe billing. They're legal documents currently making false statements. **Must be done before any real reader subscribes.**
+- [ ] Remove or rebuild `/blog`, `/help`, `/signup`, `/setup` — all stale, now unlinked
+- [ ] Brown Bag reader-facing site (separate from the Marlo page) — Morning Brew style, subscription options, featured story
 
 ---
 
@@ -96,20 +100,22 @@ Everything on that path is P0. Everything else waits — including things that f
 
 ## ✅ Completed Log
 
-### August 12, 2026 — Design settled, foundation deployed
+### August 12, 2026 — Design settled, foundation deployed, landing page rebuilt
 - [x] Named the publication **Brown Bag**; Marlo is the backend system name
 - [x] **Two-agent split**: interviewer gathers 素材, writer writes the story
-- [x] **Invitation-code vendor signup** — codes carry market + neighborhood, live immediately
+- [x] **Invitation-code vendor signup** — codes carry market + neighbourhood, live immediately
 - [x] `category_pairs` — complementary categories derived, zero editor work per signup
 - [x] **Seen is permanent** — `seen_blocks` table, distinct from vendor fatigue
 - [x] **Vendors see drafts before editors** — `vendor_preview` + `block_corrections`
 - [x] **No turn limit** on conversations; they persist across sessions
-- [x] Neighborhood-tiered proximity (same +20 / adjacent +12 / city +6)
+- [x] Neighbourhood-tiered proximity (same +20 / adjacent +12 / city +6)
 - [x] Content standards rewritten; difficult material allowed, never fish for pain
-- [x] `sensitivity.py` design — flagged material never auto-drafts
-- [x] **Writer agent test** (`WRITER_TEST.md`) — bar is reachable, failure is upstream
+- [x] Writer agent test (`WRITER_TEST.md`) — bar reachable, failure is upstream
+- [x] `TABLES_EXAMPLE.md` — all 19 tables with worked example data
 - [x] **`database/models.py` — 19 tables, deployed**
 - [x] **All v1 routers archived; `main.py` v0.3.0 deployed clean**
+- [x] **Marlo landing page rebuilt** — light editorial, six figures, live inbox-dealing and interview animations
+- [x] `LANDING_PAGE_REFERENCE.md` — NewForm design notes
 
 ### August 11, 2026 — Cleanup
 - [x] Archived Instagram/Stripe code via `git mv`

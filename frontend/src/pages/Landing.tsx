@@ -1,376 +1,725 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
+
+/* ── the conversation that plays out in Fig. 02 ── */
+const SCRIPT: { role: 'agent' | 'maker'; text: string; wait: number }[] = [
+  { role: 'agent', text: 'Is the sourdough back this week, or still on pause?', wait: 1500 },
+  { role: 'maker', text: "Not yet. But we sold out of chili oil by 11 — that never happens.", wait: 1900 },
+  { role: 'agent', text: 'Sold out by 11. How many jars did you bring?', wait: 1500 },
+  { role: 'maker', text: '40. Last month I made 60 and had 20 left, so I thought 40 was safe. Wrong.', wait: 2100 },
+  { role: 'agent', text: 'Any idea what changed?', wait: 1300 },
+  { role: 'maker', text: "Someone posted a video of me at the July demo. 90,000 views. I don't have TikTok.", wait: 2300 },
+  { role: 'maker', text: 'My daughter made me watch it four times. She’s twelve.', wait: 2000 },
+]
+
+const HARVEST = [
+  { k: 'Person', v: 'Mei — and her twelve-year-old' },
+  { k: 'Stake', v: 'Sold out early, unexpectedly' },
+  { k: 'Scene', v: 'A queue before setup finished' },
+  { k: 'Quote', v: '“I don’t have TikTok.”' },
+]
+
+/* ── the two inboxes, dealt block by block ── */
+type Blk = { slot: string; head: string; sub?: string; why?: string; own: boolean }
+
+const SAM: Blk[] = [
+  { slot: 'Slot 1 · Greeting', head: 'Week of August 12', own: false },
+  { slot: 'Slot 2 · Story', head: "She's not famous. She's out of chili oil.", sub: 'Cedar Bakery · Ballard', why: 'Follows Cedar · scanned 3×', own: true },
+  { slot: 'Slot 3 · Story', head: "A third of the tomatoes split. Now there's sauce.", sub: 'Hollow Ridge Farm', why: 'Follows Hollow Ridge · scanned 1×', own: true },
+  { slot: 'Slot 4 · Sponsor', head: 'Ballard Hardware', own: false },
+  { slot: 'Slot 5 · Story', head: 'The neighbours knocked to ask what was burning', sub: 'Cedar Bakery · Ballard', why: 'Follows Cedar · unseen', own: true },
+  { slot: 'Slot 6 · This week', head: 'Three stalls you follow are out on Saturday', own: false },
+]
+
+const JO: Blk[] = [
+  { slot: 'Slot 1 · Greeting', head: 'Week of August 12', own: false },
+  { slot: 'Slot 2 · Story', head: "A third of the tomatoes split. Now there's sauce.", sub: 'Hollow Ridge Farm', why: 'Follows Hollow Ridge · scanned 4×', own: true },
+  { slot: 'Slot 3 · Story', head: 'Twelve years of the same Saturday', sub: 'Fiber & Fawn · Ballard', why: 'Nearby · matches interests', own: true },
+  { slot: 'Slot 4 · Sponsor', head: 'Ballard Hardware', own: false },
+  { slot: 'Slot 5 · Story', head: "She's not famous. She's out of chili oil.", sub: 'Cedar Bakery · discovery', why: 'Discovery — a stall she hasn’t met', own: true },
+  { slot: 'Slot 6 · This week', head: 'One stall you follow is out on Saturday', own: false },
+]
+
+const TICKER = [
+  'She’s not famous. She’s out of chili oil.',
+  'A third of the tomatoes split. Now there’s sauce.',
+  'Twelve years of the same Saturday',
+  'The neighbours knocked to ask what was burning',
+  'He named the sourdough starter after his father',
+  'Forty jars, and a queue before setup finished',
+  'The dog got into the pumpkins again',
+]
 
 export function Landing() {
+  const [dealt, setDealt] = useState(0)
+  const [line, setLine] = useState(0)
+  const [typing, setTyping] = useState(false)
+  const [harvest, setHarvest] = useState(0)
+  const dealRef = useRef<HTMLDivElement>(null)
+  const chatRef = useRef<HTMLDivElement>(null)
+  const scrapRef = useRef<HTMLDivElement>(null)
+
+  /* fonts */
   useEffect(() => {
-    const link1 = document.createElement('link')
-    link1.rel = 'preconnect'
-    link1.href = 'https://fonts.googleapis.com'
-    document.head.appendChild(link1)
-
-    const link2 = document.createElement('link')
-    link2.rel = 'stylesheet'
-    link2.href = 'https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap'
-    document.head.appendChild(link2)
-
-    ;(window as any).toggleFaq = function(el: HTMLElement) {
-      const item = el.closest('.faq-item') as HTMLElement
-      const isOpen = item.classList.contains('open')
-      document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'))
-      if (!isOpen) item.classList.add('open')
-    }
-
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(e => {
-        if (e.isIntersecting) e.target.classList.add('visible')
-      })
-    }, { threshold: 0.1 })
-    document.querySelectorAll('.fade-in').forEach(el => observer.observe(el))
-
-    return () => { observer.disconnect() }
+    const pre = document.createElement('link')
+    pre.rel = 'preconnect'; pre.href = 'https://fonts.gstatic.com'; pre.crossOrigin = 'anonymous'
+    document.head.appendChild(pre)
+    const f = document.createElement('link')
+    f.rel = 'stylesheet'
+    f.href = 'https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..500&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap'
+    document.head.appendChild(f)
   }, [])
+
+  const reduced = typeof window !== 'undefined'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+  /* scroll reveals */
+  useEffect(() => {
+    if (reduced) {
+      document.querySelectorAll('.rise').forEach(el => el.classList.add('shown'))
+      setDealt(99); setLine(SCRIPT.length); setHarvest(HARVEST.length)
+      return
+    }
+    const io = new IntersectionObserver(
+      es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('shown'); io.unobserve(e.target) } }),
+      { threshold: 0.1, rootMargin: '0px 0px -60px 0px' }
+    )
+    document.querySelectorAll('.rise').forEach(el => io.observe(el))
+    return () => io.disconnect()
+  }, [reduced])
+
+  /* deal the blocks when Fig 01 arrives */
+  useEffect(() => {
+    if (reduced || !dealRef.current) return
+    const io = new IntersectionObserver(es => {
+      if (es[0].isIntersecting) {
+        io.disconnect()
+        let n = 0
+        const tick = () => {
+          n += 1; setDealt(n)
+          if (n < 12) setTimeout(tick, 190)
+        }
+        setTimeout(tick, 260)
+      }
+    }, { threshold: 0.25 })
+    io.observe(dealRef.current)
+    return () => io.disconnect()
+  }, [reduced])
+
+  /* play the conversation when Fig 02 arrives */
+  useEffect(() => {
+    if (reduced || !chatRef.current) return
+    const timers: number[] = []
+    const io = new IntersectionObserver(es => {
+      if (es[0].isIntersecting) {
+        io.disconnect()
+        let t = 400
+        SCRIPT.forEach((s, i) => {
+          timers.push(window.setTimeout(() => setTyping(true), t))
+          t += 520
+          timers.push(window.setTimeout(() => { setTyping(false); setLine(i + 1) }, t))
+          t += s.wait
+        })
+        HARVEST.forEach((_, i) => {
+          timers.push(window.setTimeout(() => setHarvest(i + 1), t + i * 320))
+        })
+      }
+    }, { threshold: 0.3 })
+    io.observe(chatRef.current)
+    return () => { io.disconnect(); timers.forEach(clearTimeout) }
+  }, [reduced])
+
+  /* gentle parallax on the hero scraps */
+  useEffect(() => {
+    if (reduced || !scrapRef.current) return
+    let raf = 0
+    const onScroll = () => {
+      if (raf) return
+      raf = requestAnimationFrame(() => {
+        const y = window.scrollY
+        scrapRef.current?.style.setProperty('--py', `${y * 0.06}px`)
+        scrapRef.current?.style.setProperty('--py2', `${y * -0.035}px`)
+        raf = 0
+      })
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => { window.removeEventListener('scroll', onScroll); if (raf) cancelAnimationFrame(raf) }
+  }, [reduced])
+
+  const chat = SCRIPT.slice(0, line)
 
   return (
     <>
       <style>{`
         :root {
-          --bg: #0a0a0a; --bg2: #111111; --bg3: #181818;
-          --border: rgba(255,255,255,0.08); --text: #f0ece4;
-          --muted: #888; --accent: #c8f060; --accent2: #f5a623;
-          --white: #ffffff; --card-bg: #141414;
+          --paper:#F7F5F0; --paper2:#FFFFFF; --tint:#EFEBE2;
+          --ink:#14130F; --ink2:#46433C; --dim:#8B877D;
+          --rule:#DCD6C9; --rule2:#C6BEAC;
+          --kraft:#8A6A45; --kraftbg:#F0E7D9; --moss:#6E7A55;
         }
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        html { scroll-behavior: smooth; }
-        body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 16px; line-height: 1.6; overflow-x: hidden; }
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+        html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+        body{
+          background:var(--paper);color:var(--ink2);
+          font-family:'Instrument Sans',system-ui,sans-serif;
+          font-size:16px;line-height:1.6;overflow-x:hidden;-webkit-font-smoothing:antialiased;
+        }
+        /* paper grain */
+        body::before{
+          content:'';position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.5;
+          background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.045'/%3E%3C/svg%3E");
+        }
+        a{color:inherit}
+        :focus-visible{outline:2px solid var(--kraft);outline-offset:3px}
 
-        nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 20px 48px; background: rgba(10,10,10,0.85); backdrop-filter: blur(16px); border-bottom: 1px solid var(--border); }
-        .logo { font-family: 'Instrument Serif', serif; font-size: 24px; color: var(--text); text-decoration: none; letter-spacing: -0.5px; }
-        .logo span { color: var(--accent); }
-        nav a.nav-link { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500; transition: color 0.2s; }
-        nav a.nav-link:hover { color: var(--text); }
-        .nav-links { display: flex; gap: 32px; align-items: center; }
-        .nav-cta { background: var(--accent); color: #0a0a0a; padding: 10px 22px; border-radius: 8px; font-size: 14px; font-weight: 600; text-decoration: none; transition: opacity 0.2s, transform 0.15s; }
-        .nav-cta:hover { opacity: 0.88; transform: translateY(-1px); }
+        .mono{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase}
+        .serif{font-family:'Newsreader',Georgia,serif;font-weight:400;color:var(--ink);letter-spacing:-.015em;line-height:1.08}
+        .serif em{font-style:italic;color:var(--kraft)}
+        .wrap{max-width:1140px;margin:0 auto;padding:0 32px;position:relative;z-index:2}
+        .rise{opacity:0;transform:translateY(22px);transition:opacity .8s ease,transform .8s ease}
+        .rise.shown{opacity:1;transform:none}
 
-        .hero { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 120px 24px 80px; position: relative; overflow: hidden; }
-        .hero-glow { position: absolute; top: 20%; left: 50%; transform: translateX(-50%); width: 700px; height: 400px; background: radial-gradient(ellipse, rgba(200,240,96,0.12) 0%, transparent 70%); pointer-events: none; }
-        .hero-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(200,240,96,0.1); border: 1px solid rgba(200,240,96,0.25); border-radius: 100px; padding: 6px 16px; font-size: 13px; font-weight: 500; color: var(--accent); margin-bottom: 32px; animation: fadeUp 0.6s ease both; }
-        .badge-dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; animation: pulse 2s ease infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        .hero h1 { font-family: 'Instrument Serif', serif; font-size: clamp(44px, 7vw, 88px); line-height: 1.05; letter-spacing: -2px; color: var(--white); max-width: 860px; margin-bottom: 28px; animation: fadeUp 0.7s 0.1s ease both; }
-        .hero h1 em { font-style: italic; color: var(--accent); }
-        .hero-sub { font-size: clamp(17px, 2.2vw, 20px); color: var(--muted); max-width: 520px; line-height: 1.6; margin-bottom: 44px; animation: fadeUp 0.7s 0.2s ease both; }
-        .hero-actions { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; justify-content: center; animation: fadeUp 0.7s 0.3s ease both; }
-        .btn-primary { background: var(--accent); color: #0a0a0a; padding: 15px 32px; border-radius: 10px; font-size: 16px; font-weight: 600; text-decoration: none; transition: opacity 0.2s, transform 0.15s; }
-        .btn-primary:hover { opacity: 0.88; transform: translateY(-2px); }
-        .btn-ghost { color: var(--muted); font-size: 15px; font-weight: 500; text-decoration: none; display: flex; align-items: center; gap: 6px; transition: color 0.2s; }
-        .btn-ghost:hover { color: var(--text); }
-        .hero-social-proof { margin-top: 56px; animation: fadeUp 0.7s 0.4s ease both; display: flex; flex-direction: column; align-items: center; gap: 12px; }
-        .hero-social-proof p { font-size: 13px; color: var(--muted); }
-        .avatars { display: flex; align-items: center; }
-        .avatar { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--bg); margin-left: -8px; font-size: 13px; display: flex; align-items: center; justify-content: center; font-weight: 600; background: var(--bg3); color: var(--text); }
-        .avatar:first-child { margin-left: 0; }
-        .avatar-row { display: flex; align-items: center; gap: 10px; }
+        /* nav */
+        .nav{position:fixed;inset:0 0 auto 0;z-index:60;display:flex;align-items:center;gap:26px;
+          padding:18px 32px;background:rgba(247,245,240,.9);backdrop-filter:blur(12px);border-bottom:1px solid var(--rule)}
+        .brandmark{font-family:'Newsreader',serif;font-weight:500;font-size:25px;color:var(--ink);text-decoration:none;letter-spacing:-.02em}
+        .brandsub{border-left:1px solid var(--rule2);padding-left:22px;color:var(--dim)}
+        .navspace{flex:1}
+        .navlinks{display:flex;gap:26px;align-items:center}
+        .navlinks a.mono{color:var(--ink2);text-decoration:none;transition:color .18s}
+        .navlinks a.mono:hover{color:var(--kraft)}
+        .navcta{background:var(--ink);color:var(--paper)!important;padding:11px 20px;border-radius:100px;
+          text-decoration:none;display:inline-flex;align-items:center;gap:8px;transition:background .2s}
+        .navcta:hover{background:var(--kraft)}
 
-        .phone-section { padding: 80px 24px 100px; display: flex; flex-direction: column; align-items: center; gap: 64px; }
-        .section-label { font-size: 12px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; }
-        .section-title { font-family: 'Instrument Serif', serif; font-size: clamp(32px, 5vw, 54px); line-height: 1.1; letter-spacing: -1px; color: var(--white); text-align: center; max-width: 600px; margin: 0 auto 16px; }
-        .section-sub { font-size: 17px; color: var(--muted); text-align: center; max-width: 480px; margin: 0 auto; }
-        .phone-wrapper { position: relative; display: flex; align-items: flex-start; gap: 32px; flex-wrap: wrap; justify-content: center; }
-        .phone-frame { width: 280px; background: #1a1a1a; border-radius: 40px; border: 2px solid rgba(255,255,255,0.12); overflow: hidden; box-shadow: 0 40px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04); flex-shrink: 0; }
-        .phone-notch { width: 100%; height: 32px; background: #1a1a1a; display: flex; align-items: center; justify-content: center; padding-top: 8px; }
-        .phone-notch-pill { width: 80px; height: 18px; background: #0a0a0a; border-radius: 100px; }
-        .phone-screen { background: #f5f5f0; padding: 0; min-height: 480px; }
-        .email-header { background: white; padding: 16px 16px 12px; border-bottom: 1px solid #eee; }
-        .email-from { font-size: 11px; color: #999; margin-bottom: 2px; font-family: 'DM Sans', sans-serif; }
-        .email-subject { font-size: 13px; font-weight: 700; color: #1a1a1a; font-family: 'DM Sans', sans-serif; }
-        .email-body { padding: 16px; background: #f9f9f6; }
-        .email-greeting { font-size: 13px; color: #333; margin-bottom: 10px; font-family: 'DM Sans', sans-serif; line-height: 1.5; }
-        .email-metric-row { display: flex; gap: 8px; margin-bottom: 12px; }
-        .email-metric { flex: 1; background: white; border-radius: 8px; padding: 10px 8px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-        .email-metric-num { font-size: 16px; font-weight: 700; color: #1a1a1a; font-family: 'DM Sans', sans-serif; }
-        .email-metric-num.green { color: #2d9654; }
-        .email-metric-label { font-size: 9px; color: #999; font-family: 'DM Sans', sans-serif; margin-top: 2px; }
-        .email-plan-title { font-size: 11px; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-family: 'DM Sans', sans-serif; }
-        .email-plan-item { background: white; border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; font-size: 12px; color: #333; font-family: 'DM Sans', sans-serif; line-height: 1.4; box-shadow: 0 1px 3px rgba(0,0,0,0.06); display: flex; align-items: flex-start; gap: 8px; }
-        .email-cta-row { display: flex; gap: 8px; margin-top: 14px; }
-        .email-btn-approve { flex: 2; background: #1a1a1a; color: white; border: none; border-radius: 8px; padding: 12px 0; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; }
-        .email-btn-decline { flex: 1; background: white; color: #999; border: 1px solid #ddd; border-radius: 8px; padding: 12px 0; font-size: 13px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
-        .phone-callouts { display: flex; flex-direction: column; gap: 20px; max-width: 280px; padding-top: 60px; }
-        .callout { background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; }
-        .callout-emoji { font-size: 20px; margin-bottom: 6px; }
-        .callout-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
-        .callout-body { font-size: 12px; color: var(--muted); line-height: 1.5; }
+        /* hero */
+        .frame{position:relative;padding:132px 0 70px}
+        .corner{position:absolute;width:18px;height:18px;border:1px solid var(--rule2);z-index:2}
+        .corner.tl{top:108px;left:32px;border-right:0;border-bottom:0}
+        .corner.tr{top:108px;right:32px;border-left:0;border-bottom:0}
+        .kicker{display:flex;align-items:center;justify-content:center;gap:18px;margin-bottom:40px}
+        .kicker .mono{color:var(--dim)}
+        .kicker i{display:block;width:54px;height:1px;background:var(--rule2)}
+        .hero-inner{position:relative;text-align:center}
+        .hero-inner h1{font-size:clamp(40px,7vw,84px);max-width:16ch;margin:0 auto}
+        .subline{margin:30px auto 0;max-width:58ch;font-size:clamp(16px,1.6vw,19px);color:var(--ink2);line-height:1.62}
+        .acts{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:36px}
+        .btn{display:inline-flex;align-items:center;gap:9px;padding:13px 26px;border-radius:100px;
+          font-size:14.5px;text-decoration:none;transition:background .2s,border-color .2s,color .2s,transform .2s}
+        .btn-dark{background:var(--ink);color:var(--paper);font-weight:500}
+        .btn-dark:hover{background:var(--kraft);transform:translateY(-2px)}
+        .btn-line{border:1px solid var(--rule2);color:var(--ink)}
+        .btn-line:hover{border-color:var(--ink);transform:translateY(-2px)}
 
-        .how-section { padding: 80px 24px 100px; max-width: 1100px; margin: 0 auto; }
-        .steps-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin-top: 56px; background: var(--border); border-radius: 20px; overflow: hidden; }
-        .step { background: var(--card-bg); padding: 40px 36px; position: relative; transition: background 0.3s; }
-        .step:hover { background: var(--bg3); }
-        .step-number { font-family: 'Instrument Serif', serif; font-size: 64px; color: rgba(255,255,255,0.04); position: absolute; top: 20px; right: 24px; line-height: 1; }
-        .step-icon { width: 48px; height: 48px; background: rgba(200,240,96,0.1); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; margin-bottom: 20px; }
-        .step h3 { font-family: 'Instrument Serif', serif; font-size: 22px; color: var(--white); margin-bottom: 10px; letter-spacing: -0.3px; }
-        .step p { font-size: 14px; color: var(--muted); line-height: 1.65; }
+        /* scraps */
+        .scrap{position:absolute;width:208px;background:var(--paper2);border:1px solid var(--rule);
+          border-radius:3px;padding:15px 16px 17px;box-shadow:0 12px 30px rgba(20,19,15,.07);
+          text-align:left;pointer-events:none;animation:drop .9s cubic-bezier(.2,.7,.3,1) both}
+        .scrap .mono{color:var(--kraft);font-size:9px;display:block;margin-bottom:8px}
+        .scrap .st{font-family:'Newsreader',serif;font-size:16px;color:var(--ink);line-height:1.24}
+        .scrap .sv{font-size:11px;color:var(--dim);margin-top:8px}
+        .scrap .band{height:58px;border-radius:2px;margin-bottom:11px}
+        @keyframes drop{from{opacity:0;transform:translateY(-26px) rotate(0deg)}}
+        .s1{top:4px;left:-8px;transform:translateY(var(--py,0)) rotate(-6.5deg);animation-delay:.15s}
+        .s2{top:250px;left:30px;transform:translateY(var(--py2,0)) rotate(3.5deg);animation-delay:.35s}
+        .s3{top:30px;right:-6px;transform:translateY(var(--py2,0)) rotate(5.5deg);animation-delay:.25s}
+        .s4{top:274px;right:26px;transform:translateY(var(--py,0)) rotate(-4deg);animation-delay:.45s}
+        @media(max-width:1180px){.scrap{display:none}}
 
-        .photo-section { padding: 80px 24px 100px; max-width: 1100px; margin: 0 auto; }
-        .photo-feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; margin-top: 56px; }
-        .photo-demo { background: var(--card-bg); border: 1px solid var(--border); border-radius: 24px; padding: 32px; }
-        .chat-bubble { border-radius: 18px; padding: 12px 16px; font-size: 14px; line-height: 1.5; max-width: 85%; margin-bottom: 10px; }
-        .chat-bubble.outgoing { background: #1a1a1a; border: 1px solid rgba(255,255,255,0.08); color: var(--text); margin-left: auto; border-bottom-right-radius: 4px; }
-        .chat-bubble.incoming { background: rgba(200,240,96,0.1); border: 1px solid rgba(200,240,96,0.2); color: var(--text); border-bottom-left-radius: 4px; }
-        .chat-time { font-size: 11px; color: var(--muted); text-align: right; margin-bottom: 14px; }
-        .timer-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(245,166,35,0.12); border: 1px solid rgba(245,166,35,0.25); border-radius: 100px; padding: 4px 12px; font-size: 12px; color: var(--accent2); font-weight: 500; margin-bottom: 12px; }
-        .photo-copy h3 { font-family: 'Instrument Serif', serif; font-size: clamp(28px, 4vw, 42px); line-height: 1.1; letter-spacing: -1px; color: var(--white); margin-bottom: 16px; }
-        .photo-copy p { font-size: 16px; color: var(--muted); line-height: 1.7; margin-bottom: 24px; }
-        .feature-list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
-        .feature-list li { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: var(--text); }
-        .feature-list .check { width: 20px; height: 20px; background: rgba(200,240,96,0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; margin-top: 1px; color: var(--accent); }
+        /* ticker */
+        .ticker{border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);
+          padding:15px 0;overflow:hidden;background:var(--tint);position:relative;z-index:2}
+        .ticker-track{display:flex;gap:0;width:max-content;animation:slide 46s linear infinite}
+        .ticker:hover .ticker-track{animation-play-state:paused}
+        @keyframes slide{to{transform:translateX(-50%)}}
+        .tick{font-family:'Newsreader',serif;font-size:19px;color:var(--ink);
+          padding:0 30px;white-space:nowrap;display:flex;align-items:center;gap:30px}
+        .tick::after{content:'';width:5px;height:5px;border-radius:50%;background:var(--kraft);flex-shrink:0}
 
-        .metrics-bar { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 48px 24px; display: flex; justify-content: center; gap: 0; }
-        .metric-item { flex: 1; max-width: 240px; text-align: center; padding: 0 32px; position: relative; }
-        .metric-item + .metric-item::before { content: ''; position: absolute; left: 0; top: 10%; bottom: 10%; width: 1px; background: var(--border); }
-        .metric-num { font-family: 'Instrument Serif', serif; font-size: 48px; color: var(--white); line-height: 1; letter-spacing: -2px; margin-bottom: 8px; }
-        .metric-num span { color: var(--accent); }
-        .metric-label { font-size: 14px; color: var(--muted); }
+        /* sections */
+        .sec{padding:92px 0;border-top:1px solid var(--rule);position:relative;z-index:2}
+        .sechead{display:flex;align-items:center;gap:18px;margin-bottom:38px;flex-wrap:wrap}
+        .sechead .mono{color:var(--dim)}
+        .sechead .mono.k{color:var(--kraft)}
+        .sechead i{flex:1;height:1px;background:var(--rule);min-width:20px}
+        .sec h2{font-size:clamp(30px,4.4vw,50px);max-width:20ch;margin-bottom:20px}
+        .note{color:var(--ink2);max-width:60ch;font-size:16.5px}
 
-        .integrations-section { padding: 80px 24px; max-width: 900px; margin: 0 auto; text-align: center; }
-        .integration-logos { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 40px; }
-        .integration-chip { display: flex; align-items: center; gap: 8px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 100px; padding: 10px 20px; font-size: 14px; font-weight: 500; color: var(--text); transition: border-color 0.2s, background 0.2s; }
-        .integration-chip:hover { border-color: rgba(255,255,255,0.2); background: var(--bg3); }
-        .integration-chip .icon { font-size: 18px; }
+        /* inboxes */
+        .split{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:40px}
+        .inbox{background:var(--paper2);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+        .inbox-top{display:flex;align-items:center;justify-content:space-between;padding:13px 17px;
+          border-bottom:1px solid var(--rule);background:var(--tint)}
+        .inbox-top .who{font-size:13px;color:var(--ink);font-weight:500}
+        .inbox-top .mono{color:var(--dim)}
+        .inbox-body{padding:16px 17px 20px;min-height:392px}
+        .blk{border:1px solid var(--rule);border-radius:3px;padding:12px 14px;margin-bottom:9px;
+          position:relative;opacity:0;transform:translateY(10px) scale(.98);
+          transition:opacity .45s ease,transform .45s cubic-bezier(.2,.7,.3,1),box-shadow .2s}
+        .blk.in{opacity:1;transform:none}
+        .blk .mono{color:var(--dim);font-size:9px;display:block;margin-bottom:6px}
+        .blk .h{font-family:'Newsreader',serif;font-size:16px;color:var(--ink);line-height:1.26;display:block}
+        .blk .v{font-size:11.5px;color:var(--dim);margin-top:5px;display:block}
+        .blk.same{background:var(--tint)}
+        .blk.pers{background:var(--kraftbg);border-color:#E0CFB4;cursor:default}
+        .blk.pers .mono{color:var(--kraft)}
+        .blk.pers:hover{box-shadow:0 6px 18px rgba(20,19,15,.09)}
+        .why{position:absolute;left:12px;right:12px;bottom:calc(100% + 7px);
+          background:var(--ink);color:var(--paper);padding:8px 11px;border-radius:4px;
+          font-size:11.5px;line-height:1.4;opacity:0;transform:translateY(5px);
+          transition:opacity .2s,transform .2s;pointer-events:none;z-index:5}
+        .why::after{content:'';position:absolute;top:100%;left:22px;border:5px solid transparent;border-top-color:var(--ink)}
+        .blk.pers:hover .why{opacity:1;transform:none}
+        .legend{display:flex;gap:26px;flex-wrap:wrap;margin-top:24px;align-items:center}
+        .legend div{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink2)}
+        .sw{width:12px;height:12px;border-radius:2px;border:1px solid var(--rule2)}
+        .sw.k{background:var(--kraftbg);border-color:#E0CFB4}
+        .sw.n{background:var(--tint)}
+        .mockmark{margin-top:16px;color:var(--dim);font-size:12.5px;font-style:italic}
 
-        .pricing-section { padding: 80px 24px 100px; max-width: 560px; margin: 0 auto; text-align: center; }
-        .pricing-card { background: var(--card-bg); border: 1px solid rgba(200,240,96,0.25); border-radius: 24px; padding: 48px 40px; margin-top: 48px; position: relative; overflow: hidden; }
-        .pricing-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--accent), transparent); }
-        .price-amount { font-family: 'Instrument Serif', serif; font-size: 72px; color: var(--white); letter-spacing: -3px; line-height: 1; }
-        .price-period { font-size: 16px; color: var(--muted); margin-left: 4px; }
-        .price-desc { font-size: 15px; color: var(--muted); margin-bottom: 36px; margin-top: 8px; }
-        .price-features { list-style: none; text-align: left; display: flex; flex-direction: column; gap: 14px; margin-bottom: 40px; }
-        .price-features li { display: flex; align-items: center; gap: 12px; font-size: 15px; color: var(--text); }
-        .price-features .check { width: 22px; height: 22px; background: rgba(200,240,96,0.12); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--accent); flex-shrink: 0; }
-        .btn-cta-large { display: block; background: var(--accent); color: #0a0a0a; padding: 18px 0; border-radius: 12px; font-size: 17px; font-weight: 700; text-decoration: none; transition: opacity 0.2s, transform 0.15s; width: 100%; text-align: center; }
-        .btn-cta-large:hover { opacity: 0.88; transform: translateY(-2px); }
-        .pricing-note { font-size: 13px; color: var(--muted); margin-top: 16px; }
+        /* conversation demo */
+        .demo{display:grid;grid-template-columns:1.1fr .85fr;gap:24px;margin-top:38px}
+        .chatbox{background:var(--paper2);border:1px solid var(--rule);border-radius:4px;
+          padding:20px;min-height:400px;display:flex;flex-direction:column;gap:11px}
+        .chatbox .hd{display:flex;justify-content:space-between;align-items:center;
+          padding-bottom:14px;border-bottom:1px solid var(--rule);margin-bottom:4px}
+        .chatbox .hd .mono{color:var(--dim)}
+        .live{display:flex;align-items:center;gap:7px;color:var(--moss)}
+        .live i{width:6px;height:6px;border-radius:50%;background:var(--moss);animation:blip 1.6s ease infinite}
+        @keyframes blip{0%,100%{opacity:1}50%{opacity:.25}}
+        .bub{max-width:84%;padding:11px 14px;border-radius:12px;font-size:14.5px;line-height:1.5;
+          animation:pop .4s cubic-bezier(.2,.7,.3,1) both}
+        @keyframes pop{from{opacity:0;transform:translateY(8px)}}
+        .bub.agent{background:var(--tint);color:var(--ink2);border-bottom-left-radius:3px;align-self:flex-start}
+        .bub.maker{background:var(--kraftbg);color:var(--ink);border-bottom-right-radius:3px;align-self:flex-end}
+        .dots{display:flex;gap:4px;padding:13px 15px;background:var(--tint);border-radius:12px;
+          border-bottom-left-radius:3px;align-self:flex-start;width:fit-content}
+        .dots i{width:5px;height:5px;border-radius:50%;background:var(--dim);animation:bob 1.1s ease infinite}
+        .dots i:nth-child(2){animation-delay:.16s}
+        .dots i:nth-child(3){animation-delay:.32s}
+        @keyframes bob{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
+        .harvest{background:var(--paper2);border:1px solid var(--rule);border-radius:4px;padding:22px 22px 24px}
+        .harvest .mono{color:var(--kraft);display:block;margin-bottom:16px}
+        .hrow{display:flex;gap:14px;padding:12px 0;border-bottom:1px solid var(--rule);
+          opacity:0;transform:translateX(-8px);transition:opacity .45s ease,transform .45s ease}
+        .hrow.in{opacity:1;transform:none}
+        .hrow:last-child{border-bottom:0}
+        .hrow .k{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;
+          text-transform:uppercase;color:var(--dim);min-width:52px;padding-top:3px}
+        .hrow .v{font-size:14.5px;color:var(--ink);line-height:1.42}
+        .harvest .foot{margin-top:16px;padding-top:14px;border-top:1px solid var(--rule);
+          font-size:12.5px;color:var(--dim)}
 
-        .faq-section { padding: 60px 24px 100px; max-width: 680px; margin: 0 auto; }
-        .faq-item { border-bottom: 1px solid var(--border); padding: 24px 0; }
-        .faq-question { font-size: 16px; font-weight: 600; color: var(--text); cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 16px; user-select: none; }
-        .faq-chevron { color: var(--muted); font-size: 18px; transition: transform 0.25s; flex-shrink: 0; }
-        .faq-item.open .faq-chevron { transform: rotate(45deg); }
-        .faq-answer { font-size: 14px; color: var(--muted); line-height: 1.7; max-height: 0; overflow: hidden; transition: max-height 0.3s ease, padding 0.3s ease; }
-        .faq-item.open .faq-answer { max-height: 300px; padding-top: 14px; }
+        /* pipeline */
+        .pipe{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--rule);
+          border-radius:4px;overflow:hidden;background:var(--paper2);margin-top:34px}
+        .stage{padding:30px 26px 32px;border-right:1px solid var(--rule);transition:background .3s}
+        .stage:last-child{border-right:0}
+        .stage:hover{background:var(--tint)}
+        .stage .mono{color:var(--kraft);display:block;margin-bottom:18px}
+        .stage h3{font-family:'Newsreader',serif;font-weight:500;font-size:21px;color:var(--ink);margin-bottom:11px;line-height:1.2}
+        .stage p{font-size:14px;color:var(--ink2);line-height:1.62}
+        .stage .out{margin-top:18px;padding-top:14px;border-top:1px solid var(--rule);font-size:12px;color:var(--dim)}
+        .stage .out b{color:var(--ink);font-weight:500}
 
-        footer { border-top: 1px solid var(--border); padding: 40px 48px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
-        .footer-links { display: flex; gap: 24px; }
-        .footer-links a { font-size: 13px; color: var(--muted); text-decoration: none; transition: color 0.2s; }
-        .footer-links a:hover { color: var(--text); }
+        /* limits */
+        .bounds{display:grid;grid-template-columns:repeat(3,1fr);gap:26px}
+        .bound{border-top:2px solid var(--kraft);padding-top:20px;transition:transform .3s}
+        .bound:hover{transform:translateY(-4px)}
+        .bound p{font-family:'Newsreader',serif;font-size:22px;color:var(--ink);line-height:1.26;margin-bottom:12px}
+        .bound span{font-size:14.5px;color:var(--ink2)}
 
-        @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        .fade-in { opacity: 0; transform: translateY(24px); transition: opacity 0.6s ease, transform 0.6s ease; }
-        .fade-in.visible { opacity: 1; transform: translateY(0); }
+        /* matching */
+        .matchgrid{display:grid;grid-template-columns:1.02fr 1fr;gap:52px;align-items:start;margin-top:34px}
+        .rules{border:1px solid var(--rule);border-radius:4px;overflow:hidden;background:var(--paper2)}
+        .rule-row{padding:17px 20px;display:flex;gap:18px;align-items:baseline;
+          border-bottom:1px solid var(--rule);transition:background .2s}
+        .rule-row:last-child{border-bottom:0}
+        .rule-row:hover{background:var(--kraftbg)}
+        .rule-row .mono{color:var(--kraft);white-space:nowrap;min-width:82px}
+        .rule-row .t{font-size:14.5px;color:var(--ink)}
+        .rule-row .t em{font-style:normal;color:var(--dim);display:block;margin-top:4px;font-size:13px}
+        .prose p{color:var(--ink2);margin-bottom:17px;font-size:16px}
+        .prose p strong{color:var(--ink);font-weight:500}
+        .prose p:last-child{margin-bottom:0}
 
-        @media (max-width: 768px) {
-          nav { padding: 16px 20px; }
-          .nav-links { display: none; }
-          .steps-grid { grid-template-columns: 1fr; }
-          .photo-feature-grid { grid-template-columns: 1fr; }
-          .metrics-bar { flex-direction: column; align-items: center; gap: 32px; }
-          .metric-item + .metric-item::before { display: none; }
-          footer { flex-direction: column; text-align: center; }
+        /* partners */
+        .cols{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:34px}
+        .card{background:var(--paper2);border:1px solid var(--rule);border-radius:4px;
+          padding:32px 30px 34px;transition:transform .3s,box-shadow .3s}
+        .card:hover{transform:translateY(-4px);box-shadow:0 14px 32px rgba(20,19,15,.07)}
+        .card .mono{color:var(--kraft);display:block;margin-bottom:17px}
+        .card h3{font-family:'Newsreader',serif;font-weight:500;font-size:24px;color:var(--ink);margin-bottom:12px;line-height:1.2}
+        .card p{font-size:15px;color:var(--ink2);margin-bottom:18px}
+        .facts{list-style:none;display:flex;flex-direction:column;gap:10px}
+        .facts li{display:flex;gap:12px;font-size:14.5px;color:var(--ink);align-items:baseline}
+        .facts li::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--kraft);flex-shrink:0;transform:translateY(-2px)}
+
+        /* close */
+        .close{padding:100px 0 110px;border-top:1px solid var(--rule);text-align:center;position:relative;z-index:2}
+        .close h2{font-size:clamp(30px,4.2vw,48px);max-width:21ch;margin:0 auto 24px}
+        .close p{color:var(--ink2);max-width:54ch;margin:0 auto 32px;font-size:16.5px}
+
+        footer{border-top:1px solid var(--rule);padding:32px 32px 48px;position:relative;z-index:2}
+        .foot{max-width:1140px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
+        .footlinks{display:flex;gap:24px;flex-wrap:wrap}
+        .footlinks a{text-decoration:none;color:var(--dim);transition:color .18s}
+        .footlinks a:hover{color:var(--ink)}
+        .foot .mono{color:var(--dim)}
+
+        @media(max-width:940px){
+          .split,.bounds,.cols,.matchgrid,.demo{grid-template-columns:1fr}
+          .pipe{grid-template-columns:1fr 1fr}
+          .stage:nth-child(2){border-right:0}
+          .stage:nth-child(1),.stage:nth-child(2){border-bottom:1px solid var(--rule)}
+          .matchgrid{gap:36px}
+          .inbox-body{min-height:0}
+        }
+        @media(max-width:620px){
+          .navlinks a.mono:not(.navcta){display:none}
+          .brandsub{display:none}
+          .pipe{grid-template-columns:1fr}
+          .stage{border-right:0;border-bottom:1px solid var(--rule)}
+          .stage:last-child{border-bottom:0}
+          .frame{padding-top:116px}
+          .sec{padding:66px 0}
+          .corner{display:none}
+          .tick{font-size:16px;padding:0 20px}
+        }
+        @media(prefers-reduced-motion:reduce){
+          *{animation:none!important;transition:none!important}
+          .blk{opacity:1;transform:none}
+          .hrow{opacity:1;transform:none}
         }
       `}</style>
 
-      {/* NAV */}
-      <nav>
-        <a className="logo" href="/">marlo<span>021.</span></a>
-        <div className="nav-links">
-          <a className="nav-link" href="#how">How it works</a>
-          <a className="nav-link" href="#features">Features</a>
-          <a className="nav-link" href="#pricing">Pricing</a>
-          <a className="nav-link" href="/blog">Blog</a>
-          <a className="nav-cta" href="/signup">Start free trial</a>
+      <nav className="nav">
+        <a className="brandmark" href="/">Marlo</a>
+        <span className="mono brandsub">The system behind Brown Bag</span>
+        <span className="navspace" />
+        <div className="navlinks">
+          <a className="mono" href="#pipeline">Pipeline</a>
+          <a className="mono" href="#limits">Limits</a>
+          <a className="mono" href="#matching">Matching</a>
+          <a className="mono" href="#partners">Partners</a>
+          <a className="mono navcta" href="mailto:hello@marlo021.ai">Get in touch →</a>
         </div>
       </nav>
 
-      {/* HERO */}
-      <section className="hero">
-        <div className="hero-glow"></div>
-        <div className="hero-badge"><div className="badge-dot"></div>Now in beta — 14-day free trial</div>
-        <h1>Your marketing,<br /><em>handled by email.</em></h1>
-        <p className="hero-sub">No app. No dashboard. No learning curve.<br />Marlo runs your ads, posts, and emails — you just tap Approve every morning.</p>
-        <div className="hero-actions">
-          <a href="/signup" className="btn-primary">Start free trial →</a>
-          <a href="#how" className="btn-ghost">See how it works ↓</a>
-        </div>
-        <div className="hero-social-proof">
-          <div className="avatar-row">
-            <div className="avatars">
-              <div className="avatar" style={{background:'#2a3a2a'}}>🧁</div>
-              <div className="avatar" style={{background:'#2a2a3a'}}>🌿</div>
-              <div className="avatar" style={{background:'#3a2a2a'}}>🛍️</div>
-              <div className="avatar" style={{background:'#2a3a3a'}}>☕</div>
+      {/* ── HERO ── */}
+      <header className="frame">
+        <span className="corner tl" /><span className="corner tr" />
+        <div className="wrap">
+          <div className="kicker"><i /><span className="mono">Seattle · Weekly · Est. 2026</span><i /></div>
+          <div className="hero-inner" ref={scrapRef}>
+            <div className="scrap s1">
+              <span className="mono">Cedar Bakery</span>
+              <div className="st">She's not famous. She's out of chili oil.</div>
+              <div className="sv">Ballard · 187 words</div>
+            </div>
+            <div className="scrap s2">
+              <div className="band" style={{ background: 'linear-gradient(150deg,#E8DFCD,#D9CDB4)' }} />
+              <span className="mono">Hollow Ridge</span>
+              <div className="st">A third of the tomatoes split. Now there's sauce.</div>
+            </div>
+            <div className="scrap s3">
+              <div className="band" style={{ background: 'linear-gradient(150deg,#DFE3D5,#CBD2BE)' }} />
+              <span className="mono">Fiber &amp; Fawn</span>
+              <div className="st">Twelve years of the same Saturday</div>
+            </div>
+            <div className="scrap s4">
+              <span className="mono">Pike Fish Co</span>
+              <div className="st">The neighbours knocked to ask what was burning</div>
+              <div className="sv">Ballard · 120 words</div>
+            </div>
+
+            <h1 className="serif">
+              Vendors tell the stories.<br />
+              Marlo works out <em>who should read them.</em>
+            </h1>
+            <p className="subline">
+              Brown Bag is a weekly local newsletter. Marlo is the machinery underneath —
+              it interviews makers, drafts what they said into a story, hands it to an editor,
+              and builds a different issue for every reader.
+            </p>
+            <div className="acts">
+              <a className="btn btn-dark" href="#pipeline">See how it works →</a>
+              <a className="btn btn-line" href="mailto:hello@marlo021.ai">Talk to us</a>
             </div>
           </div>
-          <p>Trusted by small business owners who'd rather be running their business</p>
         </div>
-      </section>
+      </header>
 
-      {/* METRICS BAR */}
-      <div className="metrics-bar fade-in">
-        <div className="metric-item"><div className="metric-num"><span>2</span> min</div><div className="metric-label">From photo to live ad</div></div>
-        <div className="metric-item"><div className="metric-num"><span>1</span> tap</div><div className="metric-label">To approve your daily plan</div></div>
-        <div className="metric-item"><div className="metric-num"><span>$99</span></div><div className="metric-label">Per month, everything included</div></div>
-        <div className="metric-item"><div className="metric-num"><span>0</span></div><div className="metric-label">Apps to learn or log into</div></div>
+      {/* ── TICKER ── */}
+      <div className="ticker">
+        <div className="ticker-track">
+          {[...TICKER, ...TICKER].map((t, i) => <span className="tick" key={i}>{t}</span>)}
+        </div>
       </div>
 
-      {/* PHONE SECTION */}
-      <section className="phone-section" id="how">
-        <div style={{textAlign:'center'}}>
-          <div className="section-label">Every morning at 8am</div>
-          <h2 className="section-title">Your marketing brief,<br />straight to your inbox</h2>
-          <p className="section-sub">Marlo reviews your metrics overnight and plans your day. You wake up to a briefing — approve it in one tap.</p>
-        </div>
-        <div className="phone-wrapper fade-in">
-          <div className="phone-frame">
-            <div className="phone-notch"><div className="phone-notch-pill"></div></div>
-            <div className="phone-screen">
-              <div className="email-header">
-                <div className="email-from">From: Marlo &lt;hello@marlo021.ai&gt; · 8:02 AM</div>
-                <div className="email-subject">☀️ Good morning, Sarah. Here's today's plan.</div>
-              </div>
-              <div className="email-body">
-                <div className="email-greeting">Your latte ad is performing — CTR jumped to 4.2%. I've drafted 3 new posts and adjusted your Instagram budget. Here's the plan:</div>
-                <div className="email-metric-row">
-                  <div className="email-metric"><div className="email-metric-num green">4.2%</div><div className="email-metric-label">CTR ↑ 1.1%</div></div>
-                  <div className="email-metric"><div className="email-metric-num">$12.40</div><div className="email-metric-label">CPC today</div></div>
-                  <div className="email-metric"><div className="email-metric-num green">18</div><div className="email-metric-label">New followers</div></div>
+      {/* ── FIG 01 · TWO INBOXES ── */}
+      <section className="sec rise" ref={dealRef}>
+        <div className="wrap">
+          <div className="sechead">
+            <span className="mono k">Fig. 01</span>
+            <span className="mono">One issue · Two readers</span><i />
+          </div>
+          <h2 className="serif">The same week. Two different emails.</h2>
+          <p className="note">
+            Sam scans the bakery's code most Saturdays. Jo scans the farm's. They both get
+            Brown Bag No. 6, and the stories inside are not the same.
+            <br /><span style={{ color: 'var(--dim)', fontSize: 14 }}>Hover a highlighted block to see why it was chosen.</span>
+          </p>
+
+          <div className="split">
+            {[{ who: 'Sam · follows Cedar Bakery', rows: SAM, off: 0 },
+              { who: 'Jo · follows Hollow Ridge Farm', rows: JO, off: 1 }].map((box, bi) => (
+              <div className="inbox" key={bi}>
+                <div className="inbox-top">
+                  <span className="who">{box.who}</span>
+                  <span className="mono">No. 06</span>
                 </div>
-                <div className="email-plan-title">Today's plan</div>
-                <div className="email-plan-item"><span>📸</span><span>Post latte art Reel on Instagram · 11am</span></div>
-                <div className="email-plan-item"><span>📣</span><span>Boost Saturday special ad · $8 budget</span></div>
-                <div className="email-plan-item"><span>📧</span><span>Send loyalty email to 340 subscribers</span></div>
-                <div className="email-cta-row">
-                  <button className="email-btn-approve">✓ Approve all</button>
-                  <button className="email-btn-decline">Edit</button>
+                <div className="inbox-body">
+                  {box.rows.map((b, i) => (
+                    <div
+                      key={i}
+                      className={`blk ${b.own ? 'pers' : 'same'} ${dealt > i * 2 + box.off ? 'in' : ''}`}
+                    >
+                      {b.why && <span className="why">{b.why}</span>}
+                      <span className="mono">{b.slot}</span>
+                      <span className="h">{b.head}</span>
+                      {b.sub && <span className="v">{b.sub}</span>}
+                    </div>
+                  ))}
                 </div>
               </div>
-            </div>
-          </div>
-          <div className="phone-callouts">
-            <div className="callout"><div className="callout-emoji">📊</div><div className="callout-title">Overnight analysis</div><div className="callout-body">Marlo checks your Google Ads, Instagram, and email stats while you sleep — so the plan is already optimized by morning.</div></div>
-            <div className="callout"><div className="callout-emoji">✅</div><div className="callout-title">One-tap approve</div><div className="callout-body">No login required. Tap Approve in the email and everything goes live — posts, ads, emails. Done in 10 seconds.</div></div>
-            <div className="callout"><div className="callout-emoji">💬</div><div className="callout-title">Reply in plain English</div><div className="callout-body">Not happy with the plan? Just reply. "Focus on the new menu item this week" — Marlo understands and adjusts.</div></div>
-          </div>
-        </div>
-      </section>
-
-      {/* HOW IT WORKS */}
-      <section className="how-section fade-in">
-        <div style={{textAlign:'center'}}>
-          <div className="section-label">The setup</div>
-          <h2 className="section-title">Up and running<br />in 10 minutes</h2>
-        </div>
-        <div className="steps-grid">
-          <div className="step"><div className="step-number">1</div><div className="step-icon">✉️</div><h3>Sign up & connect</h3><p>Create your account and connect Google Ads, Meta, Instagram, and Mailchimp. Marlo walks you through everything via email — no tech skills needed.</p></div>
-          <div className="step"><div className="step-number">2</div><div className="step-icon">🧠</div><h3>Marlo learns your business</h3><p>Answer 5 questions about your business over email. Marlo builds a marketing strategy around your goals, audience, and budget. No forms, no dashboards.</p></div>
-          <div className="step"><div className="step-number">3</div><div className="step-icon">☀️</div><h3>Approve every morning</h3><p>Every day at 8am, Marlo sends your briefing. Review, tap approve, go make coffee. Your marketing runs itself for the rest of the day.</p></div>
-        </div>
-      </section>
-
-      {/* PHOTO FEATURE */}
-      <section className="photo-section" id="features">
-        <div className="photo-feature-grid fade-in">
-          <div className="photo-demo">
-            <div className="timer-badge">⚡ Live in ~2 minutes</div>
-            <div className="chat-bubble outgoing">
-              <div style={{width:'100%',height:'120px',background:'linear-gradient(135deg,#2a2a1a,#1a2a1a)',borderRadius:'12px',marginBottom:'6px',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'32px',border:'1px solid rgba(200,240,96,0.1)'}}>📸</div>
-              <div>New seasonal latte — can you run an ad for this?</div>
-            </div>
-            <div className="chat-time">Sent 2:14 PM · replied to Marlo morning email</div>
-            <div className="chat-bubble incoming">Got it! I've enhanced the photo and created 4 versions for Instagram Feed, Story, Facebook, and Google Display. Here's a preview — tap Approve to go live. 🚀</div>
-            <div style={{marginTop:'14px',display:'flex',gap:'8px'}}>
-              <div style={{flex:1,height:'70px',background:'linear-gradient(135deg,#1a2a1a,#2a1a2a)',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'11px',color:'#666',border:'1px solid rgba(255,255,255,0.06)'}}>Instagram Feed</div>
-              <div style={{flex:1,height:'70px',background:'linear-gradient(135deg,#2a1a1a,#1a1a2a)',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'11px',color:'#666',border:'1px solid rgba(255,255,255,0.06)'}}>Story</div>
-              <div style={{flex:1,height:'70px',background:'linear-gradient(135deg,#1a1a2a,#2a2a1a)',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'11px',color:'#666',border:'1px solid rgba(255,255,255,0.06)'}}>Facebook</div>
-            </div>
-          </div>
-          <div className="photo-copy">
-            <div className="section-label">The photo feature</div>
-            <h3>Text a photo.<br />Ads are live in 2 minutes.</h3>
-            <p>Just reply to any Marlo email with a photo. Marlo enhances it, resizes for every platform, writes the caption, and sends you an approval email — with the images right there to preview.</p>
-            <ul className="feature-list">
-              <li><span className="check">✓</span>AI enhances photo quality automatically</li>
-              <li><span className="check">✓</span>Sized for Instagram, Stories, Facebook & Google</li>
-              <li><span className="check">✓</span>Captions written to match your brand voice</li>
-              <li><span className="check">✓</span>One-tap to approve and post everywhere</li>
-              <li><span className="check">✓</span>No apps, no uploading, no resizing manually</li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      {/* INTEGRATIONS */}
-      <section className="integrations-section fade-in">
-        <div className="section-label">Integrations</div>
-        <h2 className="section-title" style={{fontSize:'clamp(28px,4vw,42px)'}}>Connects to the tools<br />you already use</h2>
-        <div className="integration-logos">
-          <div className="integration-chip"><span className="icon">📊</span>Google Ads</div>
-          <div className="integration-chip"><span className="icon">📘</span>Meta Ads</div>
-          <div className="integration-chip"><span className="icon">📸</span>Instagram</div>
-          <div className="integration-chip"><span className="icon">📧</span>Mailchimp</div>
-          <div className="integration-chip"><span className="icon">📈</span>Google Analytics</div>
-        </div>
-      </section>
-
-      {/* PRICING */}
-      <section className="pricing-section" id="pricing">
-        <div className="section-label">Pricing</div>
-        <h2 className="section-title">Simple, flat pricing.</h2>
-        <p className="section-sub" style={{marginTop:'12px'}}>One plan. Everything included. Cancel anytime.</p>
-        <div className="pricing-card fade-in">
-          <div><span className="price-amount">$99</span><span className="price-period">/ month</span></div>
-          <p className="price-desc">Full AI marketing agent for your business</p>
-          <ul className="price-features">
-            {['Daily morning briefing email','Google Ads & Meta ad management','Instagram post scheduling & publishing','Mailchimp email campaigns','Photo → ad pipeline (reply with a photo)','Weekly ROI performance report','Unlimited email replies & instructions','Budget guardrails — never overspends'].map((f,i) => (
-              <li key={i}><span className="check">✓</span>{f}</li>
             ))}
-          </ul>
-          <a href="/signup" className="btn-cta-large">Start your free 14-day trial →</a>
-          <p className="pricing-note">No credit card required to start. Cancel anytime.</p>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section className="faq-section fade-in">
-        <div style={{textAlign:'center',marginBottom:'48px'}}>
-          <div className="section-label">FAQ</div>
-          <h2 className="section-title" style={{fontSize:'clamp(28px,4vw,42px)'}}>Common questions</h2>
-        </div>
-        {[
-          ['Do I need to know anything about marketing?', 'Not at all. Marlo is designed for small business owners who are great at their business but don\'t have time to learn Google Ads or Meta\'s ad manager. You answer a few questions about your business during setup, and Marlo handles the strategy and execution.'],
-          ['What if I don\'t like the plan Marlo sends?', 'Just reply in plain English. "Skip the email today" or "Focus on our weekend special" — Marlo will adjust. You\'re always in control. You can also decline individual actions without approving everything.'],
-          ['Will Marlo overspend my ad budget?', 'Never. Marlo has built-in budget guardrails that hard-cap your daily and monthly spend. Every ad action requires your approval before anything goes live. You set the limits, Marlo stays within them.'],
-          ['How is this different from Hootsuite or Buffer?', 'Those tools let you schedule content — but you still have to create it, decide the strategy, and manage your ad spend separately. Marlo does all of that for you. It\'s not a scheduling tool, it\'s an autonomous agent that runs your whole marketing operation.'],
-          ['What kind of businesses is Marlo best for?', 'Local service businesses, restaurants, cafes, retail shops, salons, studios — any small business that has a Google Ads or Meta presence and wants to stay active on social without hiring a marketing agency or spending hours doing it themselves.'],
-        ].map(([q, a], i) => (
-          <div className="faq-item" key={i}>
-            <div className="faq-question" onClick={(e) => (window as any).toggleFaq(e.currentTarget)}>
-              {q}<span className="faq-chevron">+</span>
-            </div>
-            <div className="faq-answer">{a}</div>
           </div>
-        ))}
+
+          <div className="legend">
+            <div><span className="sw k" /> Chosen for this reader</div>
+            <div><span className="sw n" /> Same for everyone</div>
+          </div>
+          <p className="mockmark">Illustration. Real issues follow the same nine-slot structure and stay under 1,000 words.</p>
+        </div>
       </section>
 
-      {/* FOOTER */}
-      <footer>
-        <a className="logo" href="/">marlo<span>021.</span></a>
-        <div className="footer-links">
-          <a href="/blog">Blog</a>
-          <a href="/help">Help & FAQ</a>
-          <a href="/privacy">Privacy</a>
-          <a href="/terms">Terms</a>
-          <a href="mailto:hello@marlo021.ai">Contact</a>
+      {/* ── FIG 02 · THE INTERVIEW ── */}
+      <section className="sec rise" id="pipeline" ref={chatRef}>
+        <div className="wrap">
+          <div className="sechead">
+            <span className="mono k">Fig. 02</span>
+            <span className="mono">Gathering · What an interview looks like</span><i />
+          </div>
+          <h2 className="serif">It asks about the week, not about the product.</h2>
+          <p className="note">
+            The interviewer holds what it already knows about a maker, so it can ask something
+            specific. "Anything new?" gets nothing. "Is the sourdough back?" gets a conversation.
+          </p>
+
+          <div className="demo">
+            <div className="chatbox">
+              <div className="hd">
+                <span className="mono">Cedar Bakery · Tuesday</span>
+                <span className="mono live"><i />Live</span>
+              </div>
+              {chat.map((m, i) => (
+                <div className={`bub ${m.role}`} key={i}>{m.text}</div>
+              ))}
+              {typing && <div className="dots"><i /><i /><i /></div>}
+            </div>
+
+            <div className="harvest">
+              <span className="mono">What it kept</span>
+              {HARVEST.map((h, i) => (
+                <div className={`hrow ${harvest > i ? 'in' : ''}`} key={i}>
+                  <span className="k">{h.k}</span>
+                  <span className="v">{h.v}</span>
+                </div>
+              ))}
+              <p className="foot">
+                The transcript is stored word for word. Nothing published can say more than
+                the maker said here.
+              </p>
+            </div>
+          </div>
         </div>
-        <p style={{fontSize:'13px',color:'var(--muted)'}}>© 2026 Marlo. All rights reserved.</p>
+      </section>
+
+      {/* ── FIG 03 · PIPELINE ── */}
+      <section className="sec rise">
+        <div className="wrap">
+          <div className="sechead">
+            <span className="mono k">Fig. 03</span>
+            <span className="mono">Pipeline · Conversation to inbox</span><i />
+          </div>
+          <h2 className="serif">Four stages. A person in the middle of every one.</h2>
+          <p className="note">
+            Marlo runs two separate agents on purpose. One is good at getting people to talk.
+            The other is good at writing. Those are different jobs.
+          </p>
+
+          <div className="pipe">
+            <div className="stage">
+              <span className="mono">01 — Gather</span>
+              <h3>Someone asks good questions</h3>
+              <p>An agent talks to the maker about their week — what changed, what went wrong, what
+                surprised them. Photos welcome. It never fishes for anything personal.</p>
+              <div className="out">Output: <b>raw material</b>, kept word for word</div>
+            </div>
+            <div className="stage">
+              <span className="mono">02 — Write</span>
+              <h3>A second agent writes it up</h3>
+              <p>It works only from what the maker actually said. It keeps their phrasing where it's
+                good, uses one quote, and ends on a concrete detail rather than a moral.</p>
+              <div className="out">Output: <b>a draft</b>, 120–200 words</div>
+            </div>
+            <div className="stage">
+              <span className="mono">03 — Check</span>
+              <h3>The maker sees it first</h3>
+              <p>Before anyone else reads it, they can flag anything wrong. Then a human editor reads
+                every draft and decides whether it runs.</p>
+              <div className="out">Output: <b>approved</b>, or it doesn't go</div>
+            </div>
+            <div className="stage">
+              <span className="mono">04 — Match</span>
+              <h3>Each reader gets their own issue</h3>
+              <p>Marlo builds one email per reader from the approved pool, led by the stalls they
+                actually visit, with room kept for something they haven't met yet.</p>
+              <div className="out">Output: <b>one issue</b>, many versions</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FIG 04 · LIMITS ── */}
+      <section className="sec rise" id="limits">
+        <div className="wrap">
+          <div className="sechead">
+            <span className="mono k">Fig. 04</span>
+            <span className="mono">Limits · What the system will not do</span><i />
+          </div>
+          <h2 className="serif">The rules matter more than the features.</h2>
+          <p className="note" style={{ marginBottom: 40 }}>
+            Three things are fixed. They're the reason a maker can hand us their story and a
+            reader can keep opening the email.
+          </p>
+          <div className="bounds">
+            <div className="bound">
+              <p>Nothing is published without a person reading it first.</p>
+              <span>Every story, every sponsor, every line. An editor approves it or it doesn't run.
+                There is no automatic path to a reader's inbox.</span>
+            </div>
+            <div className="bound">
+              <p>We never write a fact a maker didn't tell us.</p>
+              <span>The transcript is kept unedited. Every published sentence traces back to something
+                they actually said, and they can correct it at any point.</span>
+            </div>
+            <div className="bound">
+              <p>We never tell a reader what we've worked out about them.</p>
+              <span>Marlo says the cheese stall is back this week. It never says "because you keep
+                buying bread." The targeting is invisible, and it stays that way.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FIG 05 · MATCHING ── */}
+      <section className="sec rise" id="matching">
+        <div className="wrap">
+          <div className="sechead">
+            <span className="mono k">Fig. 05</span>
+            <span className="mono">Matching · How an issue gets built</span><i />
+          </div>
+          <h2 className="serif">Nobody fills in a form.</h2>
+
+          <div className="matchgrid">
+            <div className="rules">
+              {[['Follows', 'Scanning a code at a stall', 'One scan starts it. More scans mean more weight.'],
+                ['Interest', 'What those stalls sell', 'Bread, cheese, flowers — from where they stop.'],
+                ['Nearby', 'Which part of town', 'Inferred from the stalls they visit, never asked.'],
+                ['New', "A story they haven't seen", 'Once read, never sent again. Permanently.'],
+                ['Variety', 'Not the same stall every week', 'A maker rests for a few issues after they appear.'],
+                ['Discovery', "One stall they don't follow yet", "Held back on purpose, so the issue doesn't narrow."]
+              ].map(([k, t, e], i) => (
+                <div className="rule-row" key={i}>
+                  <span className="mono">{k}</span>
+                  <span className="t">{t}<em>{e}</em></span>
+                </div>
+              ))}
+            </div>
+            <div className="prose">
+              <p>A reader never picks interests or sets preferences. They scan a code at a stall to
+                subscribe, and every scan after that quietly says something about what they care about.</p>
+              <p><strong>Most people follow one or two stalls</strong>, so most of an issue is made up
+                of things they haven't chosen. That part matters more than the personalisation — it's
+                how someone finds the cheese maker two rows over.</p>
+              <p>And the seat kept for an unfamiliar maker is deliberate. Without it, a reader's issue
+                narrows week by week until it only tells them what they already knew.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FIG 06 · PARTNERS ── */}
+      <section className="sec rise" id="partners">
+        <div className="wrap">
+          <div className="sechead">
+            <span className="mono k">Fig. 06</span>
+            <span className="mono">Working with Marlo</span><i />
+          </div>
+          <h2 className="serif">One market at a time, on purpose.</h2>
+          <div className="cols">
+            <div className="card">
+              <span className="mono">For markets and platforms</span>
+              <h3>Bring your makers, keep your relationship</h3>
+              <p>A market gets one code to hand out. Makers sign themselves up with it and are live
+                the same day — no account setup on your side, no data to hand over.</p>
+              <ul className="facts">
+                <li>Makers join with a code, not an approval queue</li>
+                <li>Nobody sees anyone else's subscriber list</li>
+                <li>Consent recorded at signup, unsubscribe is one click</li>
+                <li>Every issue reports what ran and who opened it</li>
+              </ul>
+            </div>
+            <div className="card">
+              <span className="mono">For technical partners</span>
+              <h3>The parts that could be an API</h3>
+              <p>Marlo is built as separate stages, so any one of them can stand alone. Nothing is
+                public yet — this is what we'd open first if there's a reason to.</p>
+              <ul className="facts">
+                <li>Interview → structured material from a conversation</li>
+                <li>Draft → a story from material, with the source kept</li>
+                <li>Match → a per-reader issue from an approved pool</li>
+                <li>Deliver → sending, tracking, unsubscribes</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── CLOSE ── */}
+      <section className="close rise">
+        <div className="wrap">
+          <h2 className="serif">If you make something and sell it near people, we'd like to talk.</h2>
+          <p>Brown Bag is starting in Seattle. We're looking for makers and stallholders who have
+            something to say and no good place to say it.</p>
+          <div className="acts">
+            <a className="btn btn-dark" href="mailto:hello@marlo021.ai">hello@marlo021.ai</a>
+            <a className="btn btn-line" href="#pipeline">Read it again ↑</a>
+          </div>
+        </div>
+      </section>
+
+      <footer>
+        <div className="foot">
+          <a className="brandmark" href="/" style={{ fontSize: 21 }}>Marlo</a>
+          <div className="footlinks">
+            <a className="mono" href="/privacy">Privacy</a>
+            <a className="mono" href="/terms">Terms</a>
+            <a className="mono" href="mailto:hello@marlo021.ai">Contact</a>
+          </div>
+          <span className="mono">© 2026 · Seattle</span>
+        </div>
       </footer>
     </>
   )
