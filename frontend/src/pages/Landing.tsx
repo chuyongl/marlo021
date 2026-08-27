@@ -11,13 +11,15 @@ import { useEffect, useRef, useState } from 'react'
 
     What to shoot (phone is fine, natural light, no flash):
 
-      hero-a     tall  3:4   hands doing the work — kneading, wrapping,
+      strip-1..3  DONE, in public/photos/
+      hero-a     tall  3:4   hands doing the work: kneading, wrapping,
                              tying, weighing. Faces optional.
       hero-b     tall  3:4   a stall from the customer's side, mid-morning
-      strip-1..5 wide  4:3   produce, bread, flowers, a hand exchanging
-                             change, a chalkboard sign
-      ask-1..3   wide  4:3   quieter moments — an empty stall at setup,
+      ask-1..3   wide  16:9  quieter moments: an empty stall at setup,
                              a half-packed crate, a dog under a table
+
+    KEEP EVERY FILE UNDER ~400KB. A 3MB phone photo will visibly slow
+    the page on mobile, which is where most people will open it.
 
     Avoid: anything that looks like stock. No smiling models, no
     perfectly styled flat-lays, no aerial market shots. Slightly
@@ -96,12 +98,12 @@ const ASKS = [
   { q: 'What do people always ask you about?', a: 'You’ve answered it a hundred times at the counter. Nobody’s written it down.', tone: 'wheat' as const },
 ]
 
-const STRIP: { tone: 'wheat' | 'sage' | 'clay' | 'plum' | 'ash'; cap: string }[] = [
-  { tone: 'wheat', cap: 'Cedar Bakery' },
-  { tone: 'sage', cap: 'Hollow Ridge Farm' },
-  { tone: 'clay', cap: 'Fiber & Fawn' },
-  { tone: 'plum', cap: 'Marigold Flowers' },
-  { tone: 'ash', cap: 'Pike Fish Co' },
+/*  Photos in public/photos/. Add more by extending this list and
+    dropping the matching file in. Keep each under ~400KB.          */
+const STRIP: { src?: string; tone: 'wheat' | 'sage' | 'clay' | 'plum' | 'ash'; cap: string }[] = [
+  { src: '/photos/strip-1.jpg', tone: 'wheat', cap: 'Pike Place' },
+  { src: '/photos/strip-2.jpg', tone: 'clay', cap: 'Flower row' },
+  { src: '/photos/strip-3.jpg', tone: 'sage', cap: 'Market Center' },
 ]
 
 export function Landing() {
@@ -301,13 +303,17 @@ export function Landing() {
         .pstrip .lab{display:flex;align-items:center;gap:16px;margin-bottom:22px}
         .pstrip .lab .mono{color:var(--kraft)}
         .pstrip .lab i{flex:1;height:1px;background:var(--rule2)}
-        .prow{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+        .prow{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
         .pcell{position:relative;transition:transform .4s cubic-bezier(.2,.8,.25,1)}
         .pcell:hover{transform:translateY(-6px)}
-        .pcell .cap{margin-top:9px;font-size:12px;color:var(--dim);
+        .pcell .ph{box-shadow:0 8px 22px rgba(20,19,15,.07);transition:box-shadow .4s ease}
+        .pcell:hover .ph{box-shadow:0 18px 40px rgba(20,19,15,.13)}
+        /* slow zoom on hover — keeps the photos from feeling pasted on */
+        .pcell .ph img{transition:transform .8s cubic-bezier(.2,.8,.25,1)}
+        .pcell:hover .ph img{transform:scale(1.05)}
+        .pcell .cap{margin-top:10px;font-size:12px;color:var(--dim);
           font-family:'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
-        .pcell:nth-child(2){margin-top:20px}
-        .pcell:nth-child(4){margin-top:20px}
+        .pcell:nth-child(2){margin-top:26px}
 
         /* ── reassurance ── */
         .reassure{border-top:1px solid var(--rule);background:var(--paper);position:relative;z-index:2}
@@ -477,8 +483,7 @@ export function Landing() {
           .rgrid{grid-template-columns:repeat(3,1fr)}
           .rcell:nth-child(3){border-right:0}
           .rcell:nth-child(1),.rcell:nth-child(2),.rcell:nth-child(3){border-bottom:1px solid var(--rule)}
-          .prow{grid-template-columns:repeat(3,1fr)}
-          .pcell:nth-child(4),.pcell:nth-child(5){display:none}
+          .prow{gap:14px}
         }
         @media(max-width:1000px){
           .herogrid{grid-template-columns:1fr;gap:44px}
@@ -492,8 +497,8 @@ export function Landing() {
           .rgrid{grid-template-columns:1fr}
           .rcell{border-right:0;border-bottom:1px solid var(--rule)}
           .rcell:last-child{border-bottom:0}
-          .prow{grid-template-columns:repeat(2,1fr)}
-          .pcell:nth-child(3){display:none}
+          .prow{grid-template-columns:1fr;gap:20px}
+          .pcell:nth-child(2){margin-top:0}
         }
         @media(max-width:620px){
           .navlinks a.mono:not(.navcta){display:none}
@@ -617,8 +622,7 @@ export function Landing() {
           <div className="prow">
             {STRIP.map((s, i) => (
               <div className="pcell" key={i}>
-                {/* src="/photos/strip-1.jpg" */}
-                <Photo alt={s.cap} tone={s.tone} ratio="4 / 3" />
+                <Photo src={s.src} alt={s.cap} tone={s.tone} ratio="4 / 3" />
                 <div className="cap">{s.cap}</div>
               </div>
             ))}
