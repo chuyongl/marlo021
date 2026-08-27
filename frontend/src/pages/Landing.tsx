@@ -220,7 +220,7 @@ export function Landing() {
 
         /* ── nav ── */
         .nav{position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:26px;
-          padding:16px 32px;background:rgba(247,245,240,.92);backdrop-filter:blur(12px);
+          padding:16px 32px;background:rgba(255,255,255,.94);backdrop-filter:blur(12px);
           border-bottom:1px solid var(--rule)}
         .brandmark{font-family:'Newsreader',serif;font-weight:500;font-size:25px;color:var(--ink);
           text-decoration:none;letter-spacing:-.02em}
@@ -234,7 +234,7 @@ export function Landing() {
         .navcta:hover{background:var(--kraft)}
 
         /* ── hero ── */
-        .hero{padding:66px 0 0}
+        .hero{padding:66px 0 78px;background:var(--paper2)}
         .herogrid{display:grid;grid-template-columns:1.04fr .96fr;gap:58px;align-items:center}
         .hero h1{font-size:clamp(33px,3.7vw,50px);margin-bottom:24px}
         .lede{font-size:17px;color:var(--ink2);line-height:1.66;max-width:47ch}
