@@ -3,13 +3,45 @@ import { useEffect, useRef, useState } from 'react'
 /*  ──────────────────────────────────────────────────────────────
     PHOTOS  →  frontend/public/photos/
 
-      strip-1..3  DONE
-      hero-a  tall 3:4   hands doing the work: kneading, wrapping, weighing
-      hero-b  tall 3:4   a stall from the customer's side, mid-morning
-      ask-1..3  wide 16:9  quieter moments: an empty stall at setup,
-                           a half-packed crate, a dog under a table
+    DONE:  strip-1..3   ask-1..3
 
-    KEEP EVERY FILE UNDER ~400KB.
+    STILL NEEDED — the two in the dark "Why we're doing this" section.
+    They sit side by side against near-black, so they need to hold up
+    at small size and read instantly.
+
+    ── hero-a.jpg ── portrait 3:4, sits LOWER in the pair
+       A pair of hands mid-task. Kneading, wrapping, tying string,
+       weighing something out, counting change.
+
+       Crop tight. Hands and the thing being made should fill most of
+       the frame. A face is fine but not the point.
+
+       This one carries "somebody made this." It should look like work,
+       not like a product shot.
+
+    ── hero-b.jpg ── portrait 3:4, sits HIGHER in the pair
+       A stall or counter from where a customer would stand.
+       Mid-morning, people around, slightly busy.
+
+       Wider than hero-a on purpose. The two shouldn't be the same
+       distance from the subject, or they read as a matched pair
+       instead of two moments.
+
+       This one carries "and they're a few streets away."
+
+    ── For both ──
+       Natural light. No flash.
+       Slightly imperfect beats polished. Blur, a stray hand, a
+       cluttered table are all fine and usually better.
+       Warm tones sit best against the dark background.
+       Avoid: posed smiles at the camera, styled flat-lays,
+       anything that could pass for stock.
+
+    KEEP EVERY FILE UNDER ~400KB. Around 1200px on the long edge is
+    plenty for these two.
+
+    To add: drop the file in, then set src="/photos/hero-a.jpg" on
+    the matching <Photo> in the vision section.
 
     TYPOGRAPHY NOTE
     Plus Jakarta Sans is the site's voice: friendly, modern, round.
@@ -87,10 +119,10 @@ const TICKER = [
   'The dog got into the pumpkins again',
 ]
 
-const ASKS: { q: string; a: string; tone: Tone }[] = [
-  { q: 'What went wrong this week?', a: 'Usually the best one. Things going wrong is how people find out you’re real.', tone: 'coral' },
-  { q: 'What surprised you?', a: 'A customer, a delivery, the weather. Something you didn’t see coming.', tone: 'leaf' },
-  { q: 'What do people always ask you about?', a: 'You’ve answered it a hundred times at the counter. Nobody’s written it down.', tone: 'amber' },
+const ASKS: { q: string; a: string; tone: Tone; src: string }[] = [
+  { q: 'What went wrong this week?', a: 'Usually the best one. Things going wrong is how people find out you’re real.', tone: 'coral', src: '/photos/ask-1.jpg' },
+  { q: 'What surprised you?', a: 'A customer, a delivery, the weather. Something you didn’t see coming.', tone: 'leaf', src: '/photos/ask-2.jpg' },
+  { q: 'What do people always ask you about?', a: 'You’ve answered it a hundred times at the counter. Nobody’s written it down.', tone: 'amber', src: '/photos/ask-3.jpg' },
 ]
 
 const STRIP: { src?: string; tone: Tone; cap: string }[] = [
@@ -761,7 +793,7 @@ export function Landing() {
           <div className="asks">
             {ASKS.map((a, i) => (
               <div className="ask" key={i}>
-                <Photo alt="" tone={a.tone} ratio="16 / 9" />
+                <Photo src={a.src} alt="" tone={a.tone} ratio="16 / 9" />
                 <div className="inner">
                   <span className="mono" style={{ color: `var(--${a.tone})` }}>Question {i + 1}</span>
                   <h3>{a.q}</h3>
@@ -944,7 +976,9 @@ export function Landing() {
               </p>
             </div>
             <div className="vispair">
+              {/* hero-a: hands mid-task, tight crop. src="/photos/hero-a.jpg" */}
               <Photo alt="Hands at work" tone="coral" ratio="3 / 4" />
+              {/* hero-b: a stall from the customer's side. src="/photos/hero-b.jpg" */}
               <Photo alt="A stall on a Saturday" tone="leaf" ratio="3 / 4" />
             </div>
           </div>
