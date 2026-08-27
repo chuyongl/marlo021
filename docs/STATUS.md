@@ -1,6 +1,6 @@
 # Brown Bag — Current Status
 
-*Last updated: August 12, 2026*
+*Last updated: August 27, 2026*
 *Location: `C:\Users\Octopus\Documents\marlo\docs\STATUS.md`*
 
 > **Doc rule:** REPLACED each session, never appended. One "Last updated" date only.
@@ -9,95 +9,104 @@
 
 ## Where Things Stand
 
-**Design is settled** — product, architecture, data model documented and agreed.
+**Design settled. Foundation deployed. Marlo's landing page is finished.**
 
-**The foundation is deployed.** 19 tables live in production. All v1 Instagram code archived. The API boots clean with zero routers, which is correct at this stage.
+**The pipeline is not built.** No seed data, no writer, no editor UI, no scan flow, no sending.
 
-**The Marlo landing page is rebuilt** — it now explains the system rather than selling the old product.
+---
 
-**The pipeline itself is not built.** No writer, no editor UI, no scan flow, no sending.
+## 🔴 FIRST THING NEXT SESSION
+
+### Apply the subscriber schema change, then seed
+
+We decided to **remove `market_id` from `subscribers`** (see below) but `models.py` still has the old shape. **This must land before the seed script**, or the seed writes rows against a schema we've already agreed is wrong.
+
+Three edits to `database/models.py`:
+1. Drop `market_id` from `Subscriber`
+2. `email` becomes globally unique — remove the `UniqueConstraint("market_id","email")`
+3. Add `home_market_id` (nullable, FK → markets) — derived, not chosen
+
+Then drop the stale column in Railway's SQL console. The table is empty, so this is clean:
+```sql
+ALTER TABLE subscribers DROP COLUMN IF EXISTS market_id;
+```
+
+Then P0 #3, seed data.
+
+---
+
+## 📐 Decision: Subscribers Are Not Owned By A Market
+
+**The problem:** a traveler who scans in Seattle and New York became **two rows with the same email**. Two newsletters every week, two unsubscribe links, two interest vectors that never learn from each other. Silent — nothing errors.
+
+**The insight:** `market_id` on a subscriber was a fiction. Nobody chooses a market; they scan a stall. **The market is a property of the vendor.**
+
+**The change:** drop it. A person follows vendors; vendors belong to markets; what lands in the inbox is decided by follows. The traveler gets **one email**, mostly Seattle with one New York story — arguably the better product.
+
+**`home_market_id`** is a derived tiebreak, recomputed with the interest vector. It only decides which greeting and which ads a reader sees. Ties go to most recently scanned.
+
+**Location tracking is unchanged.** It always came from `inferred_neighborhood`, computed from followed vendors' neighborhoods. Two guards worth keeping in mind when we build scoring:
+- Weight by follow count and recency, so one trip doesn't flip someone's home neighborhood
+- **Proximity scores 0 across markets.** "Is Ballard near Williamsburg" has no answer; each market has its own map
+
+Full note in `SUBSCRIBER_MARKET_CHANGE.md` — fold into `DATA_MODEL.md` and delete when that file is next updated.
 
 ---
 
 ## ✅ Deployed and Verified
 
-**Backend (Aug 12)**
-- `database/models.py` — **19 tables**, live
+**Backend**
+- `database/models.py` — 19 tables live
 - `main.py` v`0.3.0` — v1 routers archived, router checklist ready to uncomment
-- `agent/scheduler.py` — framework running, zero jobs registered
+- `agent/scheduler.py` — framework running, zero jobs (correct for now)
 
 ```
 https://api.marlo021.ai/health           → {"version": "0.3.0"}
 https://api.marlo021.ai/health/detailed  → tables_defined: 19
 ```
 
-**Frontend (Aug 12)**
-- `pages/Landing.tsx` rebuilt — light editorial style, six numbered figures
-- `public/index.html` — meta description and theme colour updated
-
----
-
-## 🎨 Landing Page — What It Is Now
-
-**Audience:** makers deciding whether to join · markets and platforms (Etsy, market managers) · future API partners. Layered so each reads as deep as they need.
-
-**Not a sales page.** No pricing, no signup, no trial. Only CTA is an email address.
-
-**Six figures:**
-| Fig | Section |
-|---|---|
-| — | Hero + headline ticker |
-| 01 | Two inboxes, dealt live — the signature |
-| 02 | A live interview playing out |
-| 03 | The four-stage pipeline |
-| 04 | Limits — what the system won't do |
-| 05 | Matching — how an issue gets built |
-| 06 | Partners + possible API surface |
-
-**The three stated limits** are the trust argument and the most distinctive copy on the page:
-- Nothing is published without a person reading it first
-- We never write a fact a maker didn't tell us
-- We never tell a reader what we've worked out about them
-
-**Design reference:** newform.com — see `LANDING_PAGE_REFERENCE.md`.
-
----
-
-## 🗄️ Fully Archived
-
-`backend/archive/` — nothing imports from it:
-`auth/` · `businesses/` · `approval_router.py` · `router.py` · `debug_router.py` · `inbound.py` · `content_pipeline.py` · `strategy_agent.py` · `executor.py` · `google_ads_agent.py` · `analytics_agent.py` · `meta.py` · `oauth.py` · `google_ads.py` · `billing/`
-
-Old v1 database tables also remain in production, untouched and unread.
+**Frontend — Marlo landing page, done**
+- Business-focused copy: *"Some of your best customers will never join your mailing list. They'll read this one."*
+- Five information layers: stat bar → headline → mechanism → reassurance → routed CTAs
+- Three sections answering the real objections: *doesn't this compete with my list*, *what would I even say*, and the vision
+- `/why-local` — cited sources, the Apple MPP caveat, and what the numbers **don't** prove
+- Plus Jakarta Sans throughout; Newsreader reserved for mocked Brown Bag content only
+- Saturated vendor colour system (amber, leaf, coral, sky, plum)
+- Eight real photos wired in
+- Hero hover: the stack fans, picked blocks step forward
+- Live interview animation, dealing animation, headline ticker
 
 ---
 
 ## 🔴 NEXT — P0 items 3–10
 
-**3.** Seed data — market, neighbourhoods, category pairs, test vendors
-**4 + 5.** Writer agent **and** style guard — build together
-**6.** Editor login + review queue
-**7.** Personalizer · **8.** Renderer · **9.** Dispatcher · **10.** Unsubscribe
+| # | Task |
+|---|---|
+| 3 | **Seed data** — market, neighborhoods, category pairs, test vendors, editor, readers |
+| 4 + 5 | **Writer agent + style guard** — build together |
+| 6 | Editor login + review queue |
+| 7 | Personalizer |
+| 8 | Renderer |
+| 9 | Dispatcher |
+| 10 | Unsubscribe |
 
 **Done means:** paste in three submissions → writer drafts → approve → issue assembles and sends to three test addresses → **each gets a different selection.**
+
+**Seed should include awkward cases on purpose:** a silent vendor, an unapproved block, and a reader with zero follows. Otherwise it hides the bugs it exists to surface.
 
 ---
 
 ## ⚠️ Deliberately Deferred: Prompt Quality
 
-**The writer and interviewer prompts are not expected to be good in v1.** Build the skeleton first, tune the craft later. This is a decision, not an oversight.
-
-**You can't tune a writing voice against invented material.** The `WRITER_TEST.md` samples were imagined. Real conversations will be messier and differently messy.
-
-**Expect from P0:** publishable but unremarkable copy. The craft pass happens after P1, when real 素材 exists.
+v1 writer output will be publishable but unremarkable. **You can't tune a writing voice against invented material.** The craft pass happens after P1, when real 素材 exists.
 
 ---
 
-## 🧹 Known Stale, Not Urgent
+## 🧹 Known Stale
 
-**Orphaned routes** — `/blog`, `/help`, `/signup`, `/setup` all still describe the Instagram product. The new landing page doesn't link to them, so they're unreachable rather than broken. Clean up in a later pass.
+**`Privacy.tsx` and `Terms.tsx` describe the Instagram product and Stripe billing.** They are legal documents currently making false statements. **Must be rewritten before any real reader subscribes.**
 
-**`Privacy.tsx` and `Terms.tsx` are wrong.** They describe the Instagram product and Stripe billing. The new model has a genuinely different data story — QR scans, inferred interests, vendor content. **These are legal documents currently making false statements** and should be rewritten before any real reader subscribes.
+Orphaned page files still in `src/pages/` but unrouted: `Signup`, `Setup`, `Help`, `Blog`, `BlogPost_HowMarloThinks`.
 
 ---
 
@@ -130,6 +139,7 @@ Old v1 database tables also remain in production, untouched and unread.
 - **Everything publishable is a block** — one table, one approval lifecycle
 - **The bank is a query**, not a table: approved + not expired + no open corrections
 - **Seen is permanent** per reader; **fatigue** is a decaying penalty per vendor
+- **Subscribers belong to no market** — follows decide what they get
 - **Vendors see drafts before editors** and can flag corrections
 - **Issue ships every week** — never shrink, never skip, get more material
 - **Nothing ships without editor approval**

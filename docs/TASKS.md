@@ -1,6 +1,6 @@
 # Brown Bag — Task Board
 
-*Updated: August 12, 2026*
+*Updated: August 27, 2026*
 *Location: `C:\Users\Octopus\Documents\marlo\docs\TASKS.md`*
 
 > **Doc rule:** REPLACED each session, never appended. Finished work moves to the completed log.
@@ -11,7 +11,7 @@
 
 **What's the shortest path to one real issue landing in one real inbox?**
 
-Everything on that path is P0. Everything else waits — including things that feel core. The QR scan flow isn't P0 (hand-add test subscribers). The interviewer agent isn't P0 (paste in 素材 by hand).
+Everything on that path is P0. Everything else waits. The QR scan flow isn't P0 (hand-add test subscribers). The interviewer agent isn't P0 (paste in 素材 by hand).
 
 ---
 
@@ -21,20 +21,38 @@ Everything on that path is P0. Everything else waits — including things that f
 |---|---|---|
 | 1 | `database/models.py` — 19 tables | ✅ deployed |
 | 2 | Archive v1 routers, clean `main.py` | ✅ deployed |
-| 3 | **Seed data** — market, neighbourhoods, category pairs, test vendors | ⬜ next |
+| **2b** | **Subscriber schema fix** — drop `market_id`, add `home_market_id` | **← do first** |
+| 3 | **Seed data** | ⬜ |
 | 4 | **Writer agent** (`content/writer.py`) | ⬜ |
-| 5 | **Style guard** (`content/style_guard.py`) | ⬜ |
-| 6 | **Editor login + review queue** | ⬜ |
-| 7 | **Personalizer** — exclude seen → score → select | ⬜ |
-| 8 | **Renderer** — HTML, 9 slots, ≤1000 words | ⬜ |
-| 9 | **Dispatcher** — Resend + write `seen_blocks` | ⬜ |
-| 10 | **Unsubscribe** — one-click, immediate | ⬜ |
+| 5 | **Style guard** (`content/style_guard.py`) | ⬜ build with #4 |
+| 6 | Editor login + review queue | ⬜ |
+| 7 | Personalizer | ⬜ |
+| 8 | Renderer | ⬜ |
+| 9 | Dispatcher | ⬜ |
+| 10 | Unsubscribe | ⬜ |
 
-**Build 4 and 5 together.** The style guard isn't polish — it's what stops filler ever reaching a reader.
+### 2b — the schema fix, before anything writes rows
+
+Three edits to `Subscriber` in `database/models.py`:
+- Drop `market_id`
+- Remove `UniqueConstraint("market_id","email")`; `email` becomes globally unique
+- Add `home_market_id` (nullable, FK → markets)
+
+Then in Railway SQL:
+```sql
+ALTER TABLE subscribers DROP COLUMN IF EXISTS market_id;
+```
+Safe — the table is empty.
+
+### 3 — seed data
+
+One market, the neighborhood adjacency map, category pairs, three or four vendors with scan codes, one editor, a few readers with different follow patterns.
+
+**Include awkward cases on purpose:** a silent vendor, an unapproved block, a reader with zero follows. Seed data that's too tidy hides the bugs it exists to surface.
+
+Idempotent, runnable on demand, gated so it can't inject test rows into a live market.
 
 **Done means:** paste in three submissions → writer drafts → approve → issue assembles and sends to three test addresses → **each gets a different selection.**
-
-⚠️ Prompt quality deliberately deferred to after P1. See `STATUS.md`.
 
 ---
 
@@ -45,7 +63,7 @@ Everything on that path is P0. Everything else waits — including things that f
 | 11 | Invitation codes — generate, validate, use tracking |
 | 12 | Vendor signup form — code prefill, fixed category list |
 | 13 | Magic link + 90-day session |
-| 14 | **Interviewer agent** (`content/interviewer.py`) |
+| 14 | **Interviewer agent** |
 | 15 | Gap tracking + question selection |
 | 16 | **"Nothing here" exit** — end a conversation with no submission |
 | 17 | Sensitivity flagging |
@@ -61,7 +79,7 @@ Everything on that path is P0. Everything else waits — including things that f
 | # | Task |
 |---|---|
 | 20 | Scan landing `/v/{scan_code}` + subscribe flow |
-| 21 | Interest vector + inferred neighbourhood |
+| 21 | Interest vector + inferred neighborhood + `home_market_id` |
 | 22 | Vendor draft preview + corrections |
 | 23 | Vendor library |
 | 24 | Editor roster |
@@ -82,9 +100,10 @@ Everything on that path is P0. Everything else waits — including things that f
 
 ## 🧹 Cleanup Debt
 
-- [ ] **⚠️ Rewrite `Privacy.tsx` and `Terms.tsx`** — both describe the Instagram product and Stripe billing. They're legal documents currently making false statements. **Must be done before any real reader subscribes.**
-- [ ] Remove or rebuild `/blog`, `/help`, `/signup`, `/setup` — all stale, now unlinked
-- [ ] Brown Bag reader-facing site (separate from the Marlo page) — Morning Brew style, subscription options, featured story
+- [ ] **⚠️ Rewrite `Privacy.tsx` and `Terms.tsx`** — both describe the Instagram product and Stripe billing. Legal documents currently making false statements. **Before any real reader subscribes.**
+- [ ] Delete the orphaned page files: `Signup`, `Setup`, `Help`, `Blog`, `BlogPost_HowMarloThinks`
+- [ ] Fold `SUBSCRIBER_MARKET_CHANGE.md` into `DATA_MODEL.md`, then delete it
+- [ ] Brown Bag reader-facing page (separate from the Marlo site) — subscribe, featured story
 
 ---
 
@@ -100,32 +119,30 @@ Everything on that path is P0. Everything else waits — including things that f
 
 ## ✅ Completed Log
 
-### August 12, 2026 — Design settled, foundation deployed, landing page rebuilt
-- [x] Named the publication **Brown Bag**; Marlo is the backend system name
-- [x] **Two-agent split**: interviewer gathers 素材, writer writes the story
-- [x] **Invitation-code vendor signup** — codes carry market + neighbourhood, live immediately
-- [x] `category_pairs` — complementary categories derived, zero editor work per signup
-- [x] **Seen is permanent** — `seen_blocks` table, distinct from vendor fatigue
-- [x] **Vendors see drafts before editors** — `vendor_preview` + `block_corrections`
-- [x] **No turn limit** on conversations; they persist across sessions
-- [x] Neighbourhood-tiered proximity (same +20 / adjacent +12 / city +6)
-- [x] Content standards rewritten; difficult material allowed, never fish for pain
-- [x] Writer agent test (`WRITER_TEST.md`) — bar reachable, failure is upstream
-- [x] `TABLES_EXAMPLE.md` — all 19 tables with worked example data
-- [x] **`database/models.py` — 19 tables, deployed**
-- [x] **All v1 routers archived; `main.py` v0.3.0 deployed clean**
-- [x] **Marlo landing page rebuilt** — light editorial, six figures, live inbox-dealing and interview animations
-- [x] `LANDING_PAGE_REFERENCE.md` — NewForm design notes
+### August 27, 2026 — Marlo landing page finished
+- [x] Rewrote the page for businesses, not makers — *"Some of your best customers will never join your mailing list"*
+- [x] Five information layers: stat bar → headline → mechanism → reassurance → routed CTAs
+- [x] Added the three sections that answer the real objections: *doesn't this compete with my list*, *what would I even say*, and the vision
+- [x] Built `/why-local` — cited sources, Apple MPP caveat, and what the numbers **don't** prove
+- [x] Voice pass: short sentences, no em dashes, "brand" not "bakery", American spelling
+- [x] Plus Jakarta Sans throughout; Newsreader reserved for mocked Brown Bag content
+- [x] Vendor colour system, later resaturated after it read too vintage
+- [x] Eight real photos wired in; placeholder system kept for future swaps
+- [x] Hero hover animation — the stack fans, picked blocks step forward
+- [x] Live interview animation, dealing animation, ticker, floating accents
+- [x] Warm cream hero with a white nav band, alternating section backgrounds
+- [x] **Decided:** subscribers belong to no market; follows decide what they get
 
-### August 11, 2026 — Cleanup
-- [x] Archived Instagram/Stripe code via `git mv`
-- [x] Rewrote `main.py` and `scheduler.py`
+### August 12, 2026 — Design settled, foundation deployed
+- [x] Named the publication **Brown Bag**
+- [x] Two-agent split: interviewer gathers 素材, writer writes
+- [x] Invitation-code vendor signup; `category_pairs` for automatic complements
+- [x] Seen is permanent; vendors see drafts before editors; no turn limit on conversations
+- [x] Writer agent test (`WRITER_TEST.md`)
+- [x] `database/models.py` — 19 tables, deployed
+- [x] All v1 routers archived; `main.py` v0.3.0 clean
+
+### August 11 and earlier
+- [x] Archived Instagram/Stripe code; rewrote `main.py` and `scheduler.py`
 - [x] Consolidated docs 11 → 8
-
-### August 4, 2026 — Pivot
-- [x] Redefined the product: consumer newsletter, free both sides
-- [x] "The issue ships every week; the pipeline flexes"
-- [x] Rule 4 in `COLLABORATION_GUIDE.md` — no unsolicited startup advice
-
-### Earlier
-- [x] Instagram posting, OAuth, user memory, vendor profiles, content safety, email flows *(all archived)*
+- [x] Pivoted from Instagram tool to consumer newsletter
