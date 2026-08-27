@@ -3,45 +3,21 @@ import { useEffect, useRef, useState } from 'react'
 /*  ──────────────────────────────────────────────────────────────
     PHOTOS  →  frontend/public/photos/
 
-    DONE:  strip-1..3   ask-1..3
+    ALL SLOTS FILLED:
+      strip-1..3   photo strip under the hero, wide 4:3
+      ask-1..3     the three question cards, wide 16:9
+      hero-a       vision section left, portrait 3:4, hands mid-task
+      hero-b       vision section right, portrait 3:4, a stall
 
-    STILL NEEDED — the two in the dark "Why we're doing this" section.
-    They sit side by side against near-black, so they need to hold up
-    at small size and read instantly.
+    Swapping one out: replace the file, keep the name. Nothing in the
+    code needs to change.
 
-    ── hero-a.jpg ── portrait 3:4, sits LOWER in the pair
-       A pair of hands mid-task. Kneading, wrapping, tying string,
-       weighing something out, counting change.
-
-       Crop tight. Hands and the thing being made should fill most of
-       the frame. A face is fine but not the point.
-
-       This one carries "somebody made this." It should look like work,
-       not like a product shot.
-
-    ── hero-b.jpg ── portrait 3:4, sits HIGHER in the pair
-       A stall or counter from where a customer would stand.
-       Mid-morning, people around, slightly busy.
-
-       Wider than hero-a on purpose. The two shouldn't be the same
-       distance from the subject, or they read as a matched pair
-       instead of two moments.
-
-       This one carries "and they're a few streets away."
-
-    ── For both ──
-       Natural light. No flash.
-       Slightly imperfect beats polished. Blur, a stray hand, a
-       cluttered table are all fine and usually better.
-       Warm tones sit best against the dark background.
-       Avoid: posed smiles at the camera, styled flat-lays,
-       anything that could pass for stock.
-
-    KEEP EVERY FILE UNDER ~400KB. Around 1200px on the long edge is
-    plenty for these two.
-
-    To add: drop the file in, then set src="/photos/hero-a.jpg" on
-    the matching <Photo> in the vision section.
+    House rules for any future photo:
+      Under ~400KB. Natural light, no flash.
+      Slightly imperfect beats polished. Blur, a stray hand, a
+      cluttered table are usually better, not worse.
+      No posed smiles at the camera, no styled flat-lays, nothing
+      that could pass for stock.
 
     TYPOGRAPHY NOTE
     Plus Jakarta Sans is the site's voice: friendly, modern, round.
@@ -204,19 +180,19 @@ export function Landing() {
     <>
       <style>{`
         :root{
-          --paper:#FAF4ED;--white:#FFFFFF;--tint:#F3EBE0;
-          --ink:#171512;--ink2:#4A463F;--dim:#8E8A80;
-          --rule:#E3DED3;--rule2:#CDC6B7;
+          --paper:#FBF7F3;--white:#FFFFFF;--tint:#F4F2EE;
+          --ink:#15130F;--ink2:#4A463F;--dim:#8E8A80;
+          --rule:#E7E2DA;--rule2:#CFC8BC;
 
-          /* vendor colours — drawn from what people actually sell */
-          --amber:#D99A3C;  --amber-bg:#FBF0DC;  --amber-br:#EFD5A8;
-          --leaf:#5E9464;   --leaf-bg:#E7F0E4;   --leaf-br:#C2DAB9;
-          --coral:#DB7663;  --coral-bg:#FBE7E1;  --coral-br:#F0C4B6;
-          --sky:#5B8CB0;    --sky-bg:#E3EDF4;    --sky-br:#B9D2E2;
-          --plum:#96699F;   --plum-bg:#F0E7F2;   --plum-br:#D8C2DD;
+          /* vendor colours — saturated, clean. no dust. */
+          --amber:#E08A0C;  --amber-bg:#FFF6E4;  --amber-br:#FFDFA3;
+          --leaf:#28A05C;   --leaf-bg:#E6F8EC;   --leaf-br:#AFE7C5;
+          --coral:#E64F35;  --coral-bg:#FFEEEA;  --coral-br:#FFC5B8;
+          --sky:#1F7FCC;    --sky-bg:#E6F2FD;    --sky-br:#B3D9F7;
+          --plum:#8A46C9;   --plum-bg:#F4ECFE;   --plum-br:#DCC6F7;
 
-          --brand:#C4622E;  /* the one loud accent */
-          --brand-hi:#DB7639;
+          --brand:#DB552A;  /* the one loud accent */
+          --brand-hi:#F0672F;
         }
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
         html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
@@ -264,16 +240,16 @@ export function Landing() {
         .navlinks a.mono:hover{color:var(--brand)}
         .navcta{background:var(--brand);color:#fff!important;padding:12px 22px;border-radius:100px;
           text-decoration:none;display:inline-flex;align-items:center;gap:8px;
-          transition:background .2s,transform .2s;box-shadow:0 4px 14px rgba(196,98,46,.28)}
+          transition:background .2s,transform .2s;box-shadow:0 4px 14px rgba(219,85,42,.32)}
         .navcta:hover{background:var(--brand-hi);transform:translateY(-1px)}
 
         /* ── hero ── */
         .hero{padding:74px 0 88px;background:var(--paper);position:relative;overflow:hidden}
         /* soft colour washes behind the hero, so it isn't a flat white box */
         .hero::before{content:'';position:absolute;width:640px;height:640px;right:-170px;top:-230px;
-          background:radial-gradient(circle,rgba(217,154,60,.20) 0%,transparent 66%);pointer-events:none}
+          background:radial-gradient(circle,rgba(224,138,12,.16) 0%,transparent 66%);pointer-events:none}
         .hero::after{content:'';position:absolute;width:540px;height:540px;left:-210px;bottom:-250px;
-          background:radial-gradient(circle,rgba(94,148,100,.16) 0%,transparent 66%);pointer-events:none}
+          background:radial-gradient(circle,rgba(40,160,92,.13) 0%,transparent 66%);pointer-events:none}
         .herogrid{display:grid;grid-template-columns:1.02fr .98fr;gap:56px;align-items:center}
         .hero h1{font-size:clamp(34px,3.9vw,53px);margin-bottom:24px}
         .hero h1 span{color:var(--brand)}
@@ -286,8 +262,8 @@ export function Landing() {
           padding:14px 26px;border-radius:100px;transition:transform .2s,background .2s,border-color .2s,box-shadow .2s}
         .route .rk{font-size:10.5px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;opacity:.72}
         .route .rt{font-size:15.5px;font-weight:700}
-        .route.dark{background:var(--brand);color:#fff;box-shadow:0 6px 20px rgba(196,98,46,.3)}
-        .route.dark:hover{background:var(--brand-hi);transform:translateY(-3px);box-shadow:0 12px 28px rgba(196,98,46,.36)}
+        .route.dark{background:var(--brand);color:#fff;box-shadow:0 6px 20px rgba(219,85,42,.34)}
+        .route.dark:hover{background:var(--brand-hi);transform:translateY(-3px);box-shadow:0 12px 28px rgba(219,85,42,.42)}
         .route.light{border:2px solid var(--rule2);color:var(--ink)}
         .route.light:hover{border-color:var(--ink);transform:translateY(-3px)}
 
@@ -307,12 +283,12 @@ export function Landing() {
         @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-13px)}}
 
         .mini{background:var(--white);border:1px solid var(--rule);border-radius:20px;
-          box-shadow:0 20px 44px rgba(23,21,18,.11);overflow:hidden;position:relative;z-index:5;
+          box-shadow:0 20px 44px rgba(21,19,15,.11);overflow:hidden;position:relative;z-index:5;
           transform:rotate(-1.4deg);
           transition:transform .55s cubic-bezier(.2,.8,.25,1),box-shadow .55s ease;
           animation:drop .8s cubic-bezier(.2,.7,.3,1) both}
         .herovis:hover .mini{transform:rotate(0deg) translateY(-9px) scale(1.02);
-          box-shadow:0 38px 74px rgba(23,21,18,.17)}
+          box-shadow:0 38px 74px rgba(21,19,15,.17)}
         .mini-top{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;
           border-bottom:1px solid var(--rule);background:var(--tint)}
         .mini-top .t{font-family:'Newsreader',serif;font-size:19px;color:var(--ink);font-weight:500}
@@ -330,11 +306,11 @@ export function Landing() {
         .mrow.leaf{background:var(--leaf-bg);border-color:var(--leaf-br)}
         .mrow.leaf .mono{color:var(--leaf)}
         .herovis:hover .mrow.amber,.herovis:hover .mrow.leaf{transform:translateX(10px);
-          box-shadow:-5px 6px 18px rgba(23,21,18,.11)}
+          box-shadow:-5px 6px 18px rgba(21,19,15,.11)}
         .herovis:hover .mrow.leaf{transition-delay:.07s}
 
         .peek{position:absolute;background:var(--white);border:1.5px solid var(--rule);border-radius:14px;
-          padding:14px 15px;width:198px;box-shadow:0 12px 26px rgba(23,21,18,.10);
+          padding:14px 15px;width:198px;box-shadow:0 12px 26px rgba(21,19,15,.10);
           transition:transform .6s cubic-bezier(.2,.8,.25,1),box-shadow .5s ease;
           animation:drop .9s cubic-bezier(.2,.7,.3,1) both}
         .peek .mono{font-size:9.5px;display:block;margin-bottom:7px}
@@ -348,8 +324,8 @@ export function Landing() {
         .p1{top:-18px;right:-20px;transform:rotate(6deg);z-index:3;animation-delay:.2s}
         .p2{bottom:-10px;left:-28px;transform:rotate(-5deg);z-index:4;animation-delay:.34s}
         .p3{top:46%;right:-38px;transform:rotate(-2deg) scale(.93);z-index:2;animation-delay:.46s}
-        .herovis:hover .p1{transform:rotate(10deg) translate(28px,-26px);box-shadow:0 24px 42px rgba(23,21,18,.15)}
-        .herovis:hover .p2{transform:rotate(-9.5deg) translate(-32px,20px);box-shadow:0 24px 42px rgba(23,21,18,.15)}
+        .herovis:hover .p1{transform:rotate(10deg) translate(28px,-26px);box-shadow:0 24px 42px rgba(21,19,15,.15)}
+        .herovis:hover .p2{transform:rotate(-9.5deg) translate(-32px,20px);box-shadow:0 24px 42px rgba(21,19,15,.15)}
         .herovis:hover .p3{transform:rotate(2deg) translate(46px,12px) scale(.98)}
         @keyframes drop{from{opacity:0;transform:translateY(-20px)}}
         @media(max-width:1080px){.peek,.stackhint,.blob{display:none}}
@@ -363,8 +339,8 @@ export function Landing() {
         .prow{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
         .pcell{position:relative;transition:transform .4s cubic-bezier(.2,.8,.25,1)}
         .pcell:hover{transform:translateY(-7px)}
-        .pcell .ph{box-shadow:0 8px 22px rgba(23,21,18,.08);transition:box-shadow .4s ease}
-        .pcell:hover .ph{box-shadow:0 20px 42px rgba(23,21,18,.15)}
+        .pcell .ph{box-shadow:0 8px 22px rgba(21,19,15,.08);transition:box-shadow .4s ease}
+        .pcell:hover .ph{box-shadow:0 20px 42px rgba(21,19,15,.15)}
         .pcell .ph img{transition:transform .8s cubic-bezier(.2,.8,.25,1)}
         .pcell:hover .ph img{transform:scale(1.06)}
         .pcell .cap{margin-top:11px;font-size:11.5px;color:var(--dim);font-weight:700;
@@ -383,7 +359,7 @@ export function Landing() {
         /* ── dark claim ── */
         .claim{background:var(--ink);color:#fff;position:relative;z-index:2;overflow:hidden}
         .claim::before{content:'';position:absolute;width:460px;height:460px;right:-120px;top:-180px;
-          background:radial-gradient(circle,rgba(196,98,46,.28) 0%,transparent 68%)}
+          background:radial-gradient(circle,rgba(219,85,42,.32) 0%,transparent 68%)}
         .claim .wrap{padding-top:58px;padding-bottom:58px;display:grid;
           grid-template-columns:1.15fr 1fr;gap:52px;align-items:center}
         .claim .mono{color:var(--brand-hi);display:block;margin-bottom:16px}
@@ -425,7 +401,7 @@ export function Landing() {
         .asks{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:34px}
         .ask{border:1.5px solid var(--rule);border-radius:20px;overflow:hidden;background:var(--white);
           transition:transform .35s cubic-bezier(.2,.8,.25,1),box-shadow .35s}
-        .ask:hover{transform:translateY(-6px);box-shadow:0 18px 38px rgba(23,21,18,.1)}
+        .ask:hover{transform:translateY(-6px);box-shadow:0 18px 38px rgba(21,19,15,.1)}
         .ask .ph{border-radius:0}
         .ask .inner{padding:24px 26px 28px}
         .ask .mono{display:block;margin-bottom:12px}
@@ -454,7 +430,7 @@ export function Landing() {
         .blk.leaf .mono{color:var(--leaf)}
         .blk.plum{background:var(--plum-bg);border-color:var(--plum-br)}
         .blk.plum .mono{color:var(--plum)}
-        .blk.own:hover{box-shadow:0 8px 20px rgba(23,21,18,.1)}
+        .blk.own:hover{box-shadow:0 8px 20px rgba(21,19,15,.1)}
         .why{position:absolute;left:12px;right:12px;bottom:calc(100% + 7px);background:var(--ink);
           color:#fff;padding:9px 12px;border-radius:9px;font-size:11.5px;line-height:1.4;font-weight:600;
           opacity:0;transform:translateY(5px);transition:opacity .2s,transform .2s;pointer-events:none;z-index:5}
@@ -514,7 +490,7 @@ export function Landing() {
         .cols{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:34px}
         .card{background:var(--white);border:1.5px solid var(--rule);border-radius:20px;
           padding:34px 32px 36px;transition:transform .3s,box-shadow .3s}
-        .card:hover{transform:translateY(-5px);box-shadow:0 18px 38px rgba(23,21,18,.09)}
+        .card:hover{transform:translateY(-5px);box-shadow:0 18px 38px rgba(21,19,15,.09)}
         .card .mono{color:var(--brand);display:block;margin-bottom:17px}
         .card h3{font-size:22px;margin-bottom:12px;line-height:1.24;letter-spacing:-.024em}
         .card p{font-size:15px;color:var(--ink2);margin-bottom:18px}
@@ -524,7 +500,7 @@ export function Landing() {
 
         .vision{background:var(--ink);color:#fff;position:relative;z-index:2;overflow:hidden}
         .vision::before{content:'';position:absolute;width:500px;height:500px;left:-140px;bottom:-220px;
-          background:radial-gradient(circle,rgba(94,148,100,.22) 0%,transparent 68%)}
+          background:radial-gradient(circle,rgba(40,160,92,.20) 0%,transparent 68%)}
         .vision .wrap{padding-top:86px;padding-bottom:90px}
         .visgrid{display:grid;grid-template-columns:.86fr 1.14fr;gap:56px;align-items:center}
         .vision .mono{color:var(--brand-hi);display:block;margin-bottom:20px}
@@ -976,10 +952,8 @@ export function Landing() {
               </p>
             </div>
             <div className="vispair">
-              {/* hero-a: hands mid-task, tight crop. src="/photos/hero-a.jpg" */}
-              <Photo alt="Hands at work" tone="coral" ratio="3 / 4" />
-              {/* hero-b: a stall from the customer's side. src="/photos/hero-b.jpg" */}
-              <Photo alt="A stall on a Saturday" tone="leaf" ratio="3 / 4" />
+              <Photo src="/photos/hero-a.jpg" alt="Hands at work" tone="coral" ratio="3 / 4" />
+              <Photo src="/photos/hero-b.jpg" alt="A stall on a Saturday" tone="leaf" ratio="3 / 4" />
             </div>
           </div>
         </div>
