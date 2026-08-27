@@ -1,40 +1,35 @@
 import { useEffect, useRef, useState } from 'react'
 
 /*  ──────────────────────────────────────────────────────────────
-    PHOTOS
+    PHOTOS  →  frontend/public/photos/
 
-    Every <Photo> below renders an on-brand placeholder until a real
-    image is dropped in. To add one:
+      strip-1..3  DONE
+      hero-a  tall 3:4   hands doing the work: kneading, wrapping, weighing
+      hero-b  tall 3:4   a stall from the customer's side, mid-morning
+      ask-1..3  wide 16:9  quieter moments: an empty stall at setup,
+                           a half-packed crate, a dog under a table
 
-        1. Put the file in  frontend/public/photos/
-        2. Set  src="/photos/your-file.jpg"  on the <Photo>
+    KEEP EVERY FILE UNDER ~400KB.
 
-    What to shoot (phone is fine, natural light, no flash):
-
-      strip-1..3  DONE, in public/photos/
-      hero-a     tall  3:4   hands doing the work: kneading, wrapping,
-                             tying, weighing. Faces optional.
-      hero-b     tall  3:4   a stall from the customer's side, mid-morning
-      ask-1..3   wide  16:9  quieter moments: an empty stall at setup,
-                             a half-packed crate, a dog under a table
-
-    KEEP EVERY FILE UNDER ~400KB. A 3MB phone photo will visibly slow
-    the page on mobile, which is where most people will open it.
-
-    Avoid: anything that looks like stock. No smiling models, no
-    perfectly styled flat-lays, no aerial market shots. Slightly
-    imperfect and specific beats polished and generic.
+    TYPOGRAPHY NOTE
+    Plus Jakarta Sans is the site's voice: friendly, modern, round.
+    Newsreader (serif) appears ONLY inside mocked Brown Bag content —
+    the email preview and the story cards. That separation is
+    deliberate: the newsletter has its own typography, and this site
+    is not the newsletter.
    ────────────────────────────────────────────────────────────── */
 
+type Tone = 'amber' | 'leaf' | 'coral' | 'sky' | 'plum'
+
 function Photo({
-  src, alt, tone = 'wheat', ratio = '4 / 3', className = '',
-}: { src?: string; alt: string; tone?: 'wheat' | 'sage' | 'clay' | 'plum' | 'ash'; ratio?: string; className?: string }) {
-  const tones: Record<string, string> = {
-    wheat: 'linear-gradient(148deg,#EFE3CC 0%,#DCC9A6 55%,#CDB88F 100%)',
-    sage:  'linear-gradient(148deg,#E3E7D9 0%,#C9D2BB 55%,#B6C2A5 100%)',
-    clay:  'linear-gradient(148deg,#EEDCD1 0%,#D9BCA9 55%,#C9A891 100%)',
-    plum:  'linear-gradient(148deg,#E4DBE2 0%,#C9BAC6 55%,#B7A5B4 100%)',
-    ash:   'linear-gradient(148deg,#E6E4DF 0%,#CFCBC2 55%,#BDB8AD 100%)',
+  src, alt, tone = 'amber', ratio = '4 / 3', className = '',
+}: { src?: string; alt: string; tone?: Tone; ratio?: string; className?: string }) {
+  const tones: Record<Tone, string> = {
+    amber: 'linear-gradient(148deg,#F6E2BE 0%,#E8C48A 100%)',
+    leaf:  'linear-gradient(148deg,#DDE9D6 0%,#B3CDA9 100%)',
+    coral: 'linear-gradient(148deg,#F8DCD5 0%,#EDB3A6 100%)',
+    sky:   'linear-gradient(148deg,#D9E5EE 0%,#A9C4D8 100%)',
+    plum:  'linear-gradient(148deg,#E7DCE9 0%,#C2A9CB 100%)',
   }
   return (
     <div className={`ph ${className}`} style={{ aspectRatio: ratio }}>
@@ -62,24 +57,24 @@ const HARVEST = [
   { k: 'Quote', v: '“I don’t have TikTok.”' },
 ]
 
-type Blk = { slot: string; head: string; sub?: string; why?: string; own: boolean }
+type Blk = { slot: string; head: string; sub?: string; why?: string; own: boolean; tone?: Tone }
 
 const SAM: Blk[] = [
-  { slot: 'Slot 1 · Greeting', head: 'Week of August 12', own: false },
-  { slot: 'Slot 2 · Story', head: "She's not famous. She's out of chili oil.", sub: 'Cedar Bakery · Ballard', why: 'Follows Cedar · scanned 3×', own: true },
-  { slot: 'Slot 3 · Story', head: "A third of the tomatoes split. Now there's sauce.", sub: 'Hollow Ridge Farm', why: 'Follows Hollow Ridge · scanned 1×', own: true },
-  { slot: 'Slot 4 · Sponsor', head: 'Ballard Hardware', own: false },
-  { slot: 'Slot 5 · Story', head: 'The neighbors knocked to ask what was burning', sub: 'Cedar Bakery · Ballard', why: 'Follows Cedar · hasn’t seen it', own: true },
-  { slot: 'Slot 6 · This week', head: 'Three shops you follow are out on Saturday', own: false },
+  { slot: 'Everyone', head: 'Week of August 12', own: false },
+  { slot: 'Picked for Sam', head: "She's not famous. She's out of chili oil.", sub: 'Cedar Bakery · Ballard', why: 'Follows Cedar · scanned 3×', own: true, tone: 'amber' },
+  { slot: 'Picked for Sam', head: "A third of the tomatoes split. Now there's sauce.", sub: 'Hollow Ridge Farm', why: 'Follows Hollow Ridge · scanned 1×', own: true, tone: 'leaf' },
+  { slot: 'Everyone', head: 'Ballard Hardware', own: false },
+  { slot: 'Picked for Sam', head: 'The neighbors knocked to ask what was burning', sub: 'Cedar Bakery · Ballard', why: 'Follows Cedar · hasn’t seen it', own: true, tone: 'amber' },
+  { slot: 'Everyone', head: 'Three shops you follow are out on Saturday', own: false },
 ]
 
 const JO: Blk[] = [
-  { slot: 'Slot 1 · Greeting', head: 'Week of August 12', own: false },
-  { slot: 'Slot 2 · Story', head: "A third of the tomatoes split. Now there's sauce.", sub: 'Hollow Ridge Farm', why: 'Follows Hollow Ridge · scanned 4×', own: true },
-  { slot: 'Slot 3 · Story', head: 'Twelve years of the same Saturday', sub: 'Fiber & Fawn · Ballard', why: 'Nearby · matches what she stops for', own: true },
-  { slot: 'Slot 4 · Sponsor', head: 'Ballard Hardware', own: false },
-  { slot: 'Slot 5 · Story', head: "She's not famous. She's out of chili oil.", sub: 'Cedar Bakery · new to her', why: 'A shop she hasn’t met yet', own: true },
-  { slot: 'Slot 6 · This week', head: 'One shop you follow is out on Saturday', own: false },
+  { slot: 'Everyone', head: 'Week of August 12', own: false },
+  { slot: 'Picked for Jo', head: "A third of the tomatoes split. Now there's sauce.", sub: 'Hollow Ridge Farm', why: 'Follows Hollow Ridge · scanned 4×', own: true, tone: 'leaf' },
+  { slot: 'Picked for Jo', head: 'Twelve years of the same Saturday', sub: 'Fiber & Fawn · Ballard', why: 'Nearby · matches what she stops for', own: true, tone: 'plum' },
+  { slot: 'Everyone', head: 'Ballard Hardware', own: false },
+  { slot: 'Picked for Jo', head: "She's not famous. She's out of chili oil.", sub: 'Cedar Bakery · new to her', why: 'A shop she hasn’t met yet', own: true, tone: 'amber' },
+  { slot: 'Everyone', head: 'One shop you follow is out on Saturday', own: false },
 ]
 
 const TICKER = [
@@ -92,18 +87,16 @@ const TICKER = [
   'The dog got into the pumpkins again',
 ]
 
-const ASKS = [
-  { q: 'What went wrong this week?', a: 'Usually the best one. Things going wrong is how people find out you’re real.', tone: 'clay' as const },
-  { q: 'What surprised you?', a: 'A customer, a delivery, the weather. Something you didn’t see coming.', tone: 'sage' as const },
-  { q: 'What do people always ask you about?', a: 'You’ve answered it a hundred times at the counter. Nobody’s written it down.', tone: 'wheat' as const },
+const ASKS: { q: string; a: string; tone: Tone }[] = [
+  { q: 'What went wrong this week?', a: 'Usually the best one. Things going wrong is how people find out you’re real.', tone: 'coral' },
+  { q: 'What surprised you?', a: 'A customer, a delivery, the weather. Something you didn’t see coming.', tone: 'leaf' },
+  { q: 'What do people always ask you about?', a: 'You’ve answered it a hundred times at the counter. Nobody’s written it down.', tone: 'amber' },
 ]
 
-/*  Photos in public/photos/. Add more by extending this list and
-    dropping the matching file in. Keep each under ~400KB.          */
-const STRIP: { src?: string; tone: 'wheat' | 'sage' | 'clay' | 'plum' | 'ash'; cap: string }[] = [
-  { src: '/photos/strip-1.jpg', tone: 'wheat', cap: 'Pike Place' },
-  { src: '/photos/strip-2.jpg', tone: 'clay', cap: 'Flower row' },
-  { src: '/photos/strip-3.jpg', tone: 'sage', cap: 'Market Center' },
+const STRIP: { src?: string; tone: Tone; cap: string }[] = [
+  { src: '/photos/strip-1.jpg', tone: 'sky', cap: 'Pike Place' },
+  { src: '/photos/strip-2.jpg', tone: 'coral', cap: 'Flower row' },
+  { src: '/photos/strip-3.jpg', tone: 'plum', cap: 'Market Center' },
 ]
 
 export function Landing() {
@@ -120,7 +113,7 @@ export function Landing() {
     document.head.appendChild(pre)
     const f = document.createElement('link')
     f.rel = 'stylesheet'
-    f.href = 'https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..500&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap'
+    f.href = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,500&family=Newsreader:ital,opsz,wght@0,6..72,400..600;1,6..72,400..500&display=swap'
     document.head.appendChild(f)
   }, [])
 
@@ -179,300 +172,343 @@ export function Landing() {
     <>
       <style>{`
         :root{
-          --paper:#F7F5F0;--paper2:#FFFFFF;--tint:#EFEBE2;
-          --ink:#14130F;--ink2:#46433C;--dim:#8B877D;
-          --rule:#DCD6C9;--rule2:#C6BEAC;
-          --kraft:#8A6A45;--kraftbg:#F0E7D9;--moss:#6E7A55;
+          --paper:#FAF4ED;--white:#FFFFFF;--tint:#F3EBE0;
+          --ink:#171512;--ink2:#4A463F;--dim:#8E8A80;
+          --rule:#E3DED3;--rule2:#CDC6B7;
+
+          /* vendor colours — drawn from what people actually sell */
+          --amber:#D99A3C;  --amber-bg:#FBF0DC;  --amber-br:#EFD5A8;
+          --leaf:#5E9464;   --leaf-bg:#E7F0E4;   --leaf-br:#C2DAB9;
+          --coral:#DB7663;  --coral-bg:#FBE7E1;  --coral-br:#F0C4B6;
+          --sky:#5B8CB0;    --sky-bg:#E3EDF4;    --sky-br:#B9D2E2;
+          --plum:#96699F;   --plum-bg:#F0E7F2;   --plum-br:#D8C2DD;
+
+          --brand:#C4622E;  /* the one loud accent */
+          --brand-hi:#DB7639;
         }
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
         html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
-        body{background:var(--paper);color:var(--ink2);font-family:'Instrument Sans',system-ui,sans-serif;
+        body{background:var(--paper);color:var(--ink2);
+          font-family:'Plus Jakarta Sans',system-ui,sans-serif;
           font-size:16px;line-height:1.6;overflow-x:hidden;-webkit-font-smoothing:antialiased}
-        body::before{content:'';position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.5;
-          background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.045'/%3E%3C/svg%3E")}
         a{color:inherit}
-        :focus-visible{outline:2px solid var(--kraft);outline-offset:3px}
+        :focus-visible{outline:2px solid var(--brand);outline-offset:3px;border-radius:6px}
 
-        .mono{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase}
-        .serif{font-family:'Newsreader',Georgia,serif;font-weight:400;color:var(--ink);letter-spacing:-.015em;line-height:1.1}
-        .serif em{font-style:italic;color:var(--kraft)}
+        .mono{font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:700;
+          letter-spacing:.14em;text-transform:uppercase}
+        /* Newsreader is reserved for Brown Bag's own content */
+        .bb{font-family:'Newsreader',Georgia,serif}
+        h1,h2,h3,h4{font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);
+          letter-spacing:-.028em;line-height:1.1;font-weight:800}
         .wrap{max-width:1200px;margin:0 auto;padding:0 32px;position:relative;z-index:2}
         .rise{opacity:0;transform:translateY(22px);transition:opacity .8s ease,transform .8s ease}
         .rise.shown{opacity:1;transform:none}
 
-        /* ── photo primitive ── */
-        .ph{position:relative;overflow:hidden;border-radius:4px;background:var(--tint);
-          border:1px solid var(--rule)}
+        .ph{position:relative;overflow:hidden;border-radius:16px;background:var(--tint)}
         .ph img{width:100%;height:100%;object-fit:cover;display:block}
-        .ph-fill{width:100%;height:100%;position:relative}
-        .ph-fill::after{content:'';position:absolute;inset:0;opacity:.5;
-          background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23g)' opacity='.1'/%3E%3C/svg%3E")}
+        .ph-fill{width:100%;height:100%}
 
         /* ── stat bar ── */
-        .statbar{background:var(--ink);color:var(--paper);position:relative;z-index:70}
+        .statbar{background:var(--ink);color:#fff;position:relative;z-index:70}
         .statbar .wrap{display:flex;align-items:center;justify-content:center;gap:10px;
-          padding-top:12px;padding-bottom:12px;flex-wrap:wrap;text-align:center}
-        .statbar b{color:#fff;font-weight:600;font-size:14px}
-        .statbar span{font-size:14px;color:#C3BDB1}
-        .statbar a{color:#fff;font-size:14px;text-decoration:none;
-          border-bottom:1px solid rgba(255,255,255,.4);padding-bottom:1px;white-space:nowrap;transition:border-color .2s}
+          padding-top:13px;padding-bottom:13px;flex-wrap:wrap;text-align:center}
+        .statbar b{font-weight:700;font-size:14px}
+        .statbar span{font-size:14px;color:#B8B2A6}
+        .statbar a{color:#fff;font-size:14px;font-weight:600;text-decoration:none;
+          border-bottom:1.5px solid rgba(255,255,255,.45);padding-bottom:1px;white-space:nowrap;
+          transition:border-color .2s}
         .statbar a:hover{border-color:#fff}
 
         /* ── nav ── */
         .nav{position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:26px;
-          padding:16px 32px;background:rgba(255,255,255,.94);backdrop-filter:blur(12px);
+          padding:15px 32px;background:var(--white);
           border-bottom:1px solid var(--rule)}
-        .brandmark{font-family:'Newsreader',serif;font-weight:500;font-size:25px;color:var(--ink);
-          text-decoration:none;letter-spacing:-.02em}
-        .brandsub{border-left:1px solid var(--rule2);padding-left:22px;color:var(--dim)}
+        .brandmark{font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:23px;
+          color:var(--ink);text-decoration:none;letter-spacing:-.04em}
+        .brandsub{border-left:1px solid var(--rule2);padding-left:20px;color:var(--dim);font-weight:600}
         .navspace{flex:1}
-        .navlinks{display:flex;gap:26px;align-items:center}
+        .navlinks{display:flex;gap:24px;align-items:center}
         .navlinks a.mono{color:var(--ink2);text-decoration:none;transition:color .18s}
-        .navlinks a.mono:hover{color:var(--kraft)}
-        .navcta{background:var(--ink);color:var(--paper)!important;padding:11px 20px;border-radius:100px;
-          text-decoration:none;display:inline-flex;align-items:center;gap:8px;transition:background .2s}
-        .navcta:hover{background:var(--kraft)}
+        .navlinks a.mono:hover{color:var(--brand)}
+        .navcta{background:var(--brand);color:#fff!important;padding:12px 22px;border-radius:100px;
+          text-decoration:none;display:inline-flex;align-items:center;gap:8px;
+          transition:background .2s,transform .2s;box-shadow:0 4px 14px rgba(196,98,46,.28)}
+        .navcta:hover{background:var(--brand-hi);transform:translateY(-1px)}
 
         /* ── hero ── */
-        .hero{padding:66px 0 78px;background:var(--paper2)}
-        .herogrid{display:grid;grid-template-columns:1.04fr .96fr;gap:58px;align-items:center}
-        .hero h1{font-size:clamp(33px,3.7vw,50px);margin-bottom:24px}
-        .lede{font-size:17px;color:var(--ink2);line-height:1.66;max-width:47ch}
+        .hero{padding:74px 0 88px;background:var(--paper);position:relative;overflow:hidden}
+        /* soft colour washes behind the hero, so it isn't a flat white box */
+        .hero::before{content:'';position:absolute;width:640px;height:640px;right:-170px;top:-230px;
+          background:radial-gradient(circle,rgba(217,154,60,.20) 0%,transparent 66%);pointer-events:none}
+        .hero::after{content:'';position:absolute;width:540px;height:540px;left:-210px;bottom:-250px;
+          background:radial-gradient(circle,rgba(94,148,100,.16) 0%,transparent 66%);pointer-events:none}
+        .herogrid{display:grid;grid-template-columns:1.02fr .98fr;gap:56px;align-items:center}
+        .hero h1{font-size:clamp(34px,3.9vw,53px);margin-bottom:24px}
+        .hero h1 span{color:var(--brand)}
+        .lede{font-size:17px;color:var(--ink2);line-height:1.68;max-width:47ch}
         .lede p+p{margin-top:14px}
-        .lede b{color:var(--ink);font-weight:500}
-        .routes{display:flex;gap:12px;flex-wrap:wrap;margin-top:32px}
-        .route{display:flex;flex-direction:column;gap:3px;text-decoration:none;
-          padding:13px 22px;border-radius:8px;transition:transform .2s,background .2s,border-color .2s}
-        .route .rk{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;opacity:.62}
-        .route .rt{font-size:15px;font-weight:500}
-        .route.dark{background:var(--ink);color:var(--paper)}
-        .route.dark:hover{background:var(--kraft);transform:translateY(-2px)}
-        .route.light{border:1px solid var(--rule2);color:var(--ink)}
-        .route.light:hover{border-color:var(--ink);transform:translateY(-2px)}
+        .lede b{color:var(--ink);font-weight:700}
 
-        /* ── HERO VISUAL — the interactive stack ── */
-        .herovis{position:relative;padding:34px 0 40px;cursor:default;
-          perspective:1400px}
-        .stackhint{position:absolute;top:-2px;left:50%;transform:translateX(-50%);
-          color:var(--dim);opacity:0;transition:opacity .35s ease;pointer-events:none;white-space:nowrap}
+        .routes{display:flex;gap:12px;flex-wrap:wrap;margin-top:34px}
+        .route{display:flex;flex-direction:column;gap:2px;text-decoration:none;
+          padding:14px 26px;border-radius:100px;transition:transform .2s,background .2s,border-color .2s,box-shadow .2s}
+        .route .rk{font-size:10.5px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;opacity:.72}
+        .route .rt{font-size:15.5px;font-weight:700}
+        .route.dark{background:var(--brand);color:#fff;box-shadow:0 6px 20px rgba(196,98,46,.3)}
+        .route.dark:hover{background:var(--brand-hi);transform:translateY(-3px);box-shadow:0 12px 28px rgba(196,98,46,.36)}
+        .route.light{border:2px solid var(--rule2);color:var(--ink)}
+        .route.light:hover{border-color:var(--ink);transform:translateY(-3px)}
+
+        /* ── hero visual ── */
+        .herovis{position:relative;padding:38px 0 44px;perspective:1400px}
+        .stackhint{position:absolute;top:4px;left:50%;transform:translateX(-50%);color:var(--dim);
+          opacity:0;transition:opacity .35s ease;pointer-events:none;white-space:nowrap}
         .herovis:hover .stackhint{opacity:1}
 
-        .mini{background:var(--paper2);border:1px solid var(--rule);border-radius:6px;
-          box-shadow:0 18px 40px rgba(20,19,15,.10);overflow:hidden;position:relative;z-index:5;
+        /* floating shapes — pure decoration, keeps it from feeling assembled */
+        .blob{position:absolute;border-radius:50%;pointer-events:none;z-index:1;
+          animation:float 7s ease-in-out infinite}
+        .b1{width:22px;height:22px;background:var(--coral);opacity:.5;top:6%;left:-6%}
+        .b2{width:13px;height:13px;background:var(--leaf);opacity:.55;bottom:16%;right:-3%;animation-delay:1.4s}
+        .b3{width:30px;height:30px;background:var(--amber);opacity:.35;bottom:2%;left:16%;animation-delay:2.6s}
+        .b4{width:9px;height:9px;background:var(--sky);opacity:.6;top:22%;right:6%;animation-delay:3.5s}
+        @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-13px)}}
+
+        .mini{background:var(--white);border:1px solid var(--rule);border-radius:20px;
+          box-shadow:0 20px 44px rgba(23,21,18,.11);overflow:hidden;position:relative;z-index:5;
           transform:rotate(-1.4deg);
           transition:transform .55s cubic-bezier(.2,.8,.25,1),box-shadow .55s ease;
           animation:drop .8s cubic-bezier(.2,.7,.3,1) both}
-        .herovis:hover .mini{transform:rotate(0deg) translateY(-8px) scale(1.018);
-          box-shadow:0 34px 68px rgba(20,19,15,.16)}
-        .mini-top{display:flex;align-items:center;justify-content:space-between;padding:13px 17px;
+        .herovis:hover .mini{transform:rotate(0deg) translateY(-9px) scale(1.02);
+          box-shadow:0 38px 74px rgba(23,21,18,.17)}
+        .mini-top{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;
           border-bottom:1px solid var(--rule);background:var(--tint)}
-        .mini-top .t{font-family:'Newsreader',serif;font-size:17px;color:var(--ink)}
+        .mini-top .t{font-family:'Newsreader',serif;font-size:19px;color:var(--ink);font-weight:500}
         .mini-top .mono{color:var(--dim)}
-        .mini-body{padding:15px 16px 17px;display:flex;flex-direction:column;gap:8px}
-        .mrow{border:1px solid var(--rule);border-radius:4px;padding:11px 13px;
-          transition:transform .5s cubic-bezier(.2,.8,.25,1),box-shadow .4s ease,border-color .4s ease}
-        .mrow .mono{font-size:9px;color:var(--dim);display:block;margin-bottom:5px}
-        .mrow .h{font-family:'Newsreader',serif;font-size:15.5px;color:var(--ink);line-height:1.26;display:block}
-        .mrow .v{font-size:11px;color:var(--dim);margin-top:4px;display:block}
-        .mrow.k{background:var(--kraftbg);border-color:#E0CFB4}
-        .mrow.k .mono{color:var(--kraft)}
+        .mini-body{padding:16px 17px 19px;display:flex;flex-direction:column;gap:9px}
+        .mrow{border:1.5px solid var(--rule);border-radius:13px;padding:12px 14px;
+          transition:transform .5s cubic-bezier(.2,.8,.25,1),box-shadow .4s ease}
+        .mrow .mono{font-size:9.5px;color:var(--dim);display:block;margin-bottom:5px}
+        .mrow .h{font-family:'Newsreader',serif;font-size:16.5px;color:var(--ink);line-height:1.26;
+          display:block;font-weight:500}
+        .mrow .v{font-size:11.5px;color:var(--dim);margin-top:5px;display:block;font-weight:600}
         .mrow.n{background:var(--tint)}
-        /* the picked rows push forward on hover — the personalisation, made physical */
-        .herovis:hover .mrow.k{transform:translateX(9px);
-          box-shadow:-4px 5px 16px rgba(138,106,69,.18);border-color:#CFB894}
-        .herovis:hover .mrow.k:nth-of-type(3){transition-delay:.06s}
+        .mrow.amber{background:var(--amber-bg);border-color:var(--amber-br)}
+        .mrow.amber .mono{color:var(--amber)}
+        .mrow.leaf{background:var(--leaf-bg);border-color:var(--leaf-br)}
+        .mrow.leaf .mono{color:var(--leaf)}
+        .herovis:hover .mrow.amber,.herovis:hover .mrow.leaf{transform:translateX(10px);
+          box-shadow:-5px 6px 18px rgba(23,21,18,.11)}
+        .herovis:hover .mrow.leaf{transition-delay:.07s}
 
-        .peek{position:absolute;background:var(--paper2);border:1px solid var(--rule);border-radius:4px;
-          padding:13px 14px;width:196px;box-shadow:0 12px 26px rgba(20,19,15,.09);
+        .peek{position:absolute;background:var(--white);border:1.5px solid var(--rule);border-radius:14px;
+          padding:14px 15px;width:198px;box-shadow:0 12px 26px rgba(23,21,18,.10);
           transition:transform .6s cubic-bezier(.2,.8,.25,1),box-shadow .5s ease;
           animation:drop .9s cubic-bezier(.2,.7,.3,1) both}
-        .peek .mono{color:var(--kraft);font-size:9px;display:block;margin-bottom:7px}
-        .peek .st{font-family:'Newsreader',serif;font-size:14.5px;color:var(--ink);line-height:1.24}
-        .p1{top:-16px;right:-18px;transform:rotate(6deg);z-index:3;animation-delay:.2s}
-        .p2{bottom:-8px;left:-26px;transform:rotate(-5deg);z-index:4;animation-delay:.34s}
-        .p3{top:44%;right:-34px;transform:rotate(-2deg) scale(.94);z-index:2;animation-delay:.46s;opacity:.9}
-        .herovis:hover .p1{transform:rotate(9.5deg) translate(26px,-24px);box-shadow:0 22px 40px rgba(20,19,15,.14)}
-        .herovis:hover .p2{transform:rotate(-9deg) translate(-30px,18px);box-shadow:0 22px 40px rgba(20,19,15,.14)}
-        .herovis:hover .p3{transform:rotate(2deg) translate(44px,10px) scale(.98);opacity:1}
+        .peek .mono{font-size:9.5px;display:block;margin-bottom:7px}
+        .peek .st{font-family:'Newsreader',serif;font-size:15px;color:var(--ink);line-height:1.26;font-weight:500}
+        .peek.plum{border-color:var(--plum-br);background:var(--plum-bg)}
+        .peek.plum .mono{color:var(--plum)}
+        .peek.sky{border-color:var(--sky-br);background:var(--sky-bg)}
+        .peek.sky .mono{color:var(--sky)}
+        .peek.coral{border-color:var(--coral-br);background:var(--coral-bg)}
+        .peek.coral .mono{color:var(--coral)}
+        .p1{top:-18px;right:-20px;transform:rotate(6deg);z-index:3;animation-delay:.2s}
+        .p2{bottom:-10px;left:-28px;transform:rotate(-5deg);z-index:4;animation-delay:.34s}
+        .p3{top:46%;right:-38px;transform:rotate(-2deg) scale(.93);z-index:2;animation-delay:.46s}
+        .herovis:hover .p1{transform:rotate(10deg) translate(28px,-26px);box-shadow:0 24px 42px rgba(23,21,18,.15)}
+        .herovis:hover .p2{transform:rotate(-9.5deg) translate(-32px,20px);box-shadow:0 24px 42px rgba(23,21,18,.15)}
+        .herovis:hover .p3{transform:rotate(2deg) translate(46px,12px) scale(.98)}
         @keyframes drop{from{opacity:0;transform:translateY(-20px)}}
-        @media(max-width:1080px){.peek{display:none}.stackhint{display:none}}
+        @media(max-width:1080px){.peek,.stackhint,.blob{display:none}}
 
         /* ── photo strip ── */
-        .pstrip{border-top:1px solid var(--rule);background:var(--tint);position:relative;z-index:2;
-          padding:34px 0 38px;overflow:hidden}
-        .pstrip .lab{display:flex;align-items:center;gap:16px;margin-bottom:22px}
-        .pstrip .lab .mono{color:var(--kraft)}
+        .pstrip{border-top:1px solid var(--rule);background:var(--white);position:relative;z-index:2;
+          padding:38px 0 42px}
+        .pstrip .lab{display:flex;align-items:center;gap:16px;margin-bottom:24px}
+        .pstrip .lab .mono{color:var(--brand)}
         .pstrip .lab i{flex:1;height:1px;background:var(--rule2)}
         .prow{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
         .pcell{position:relative;transition:transform .4s cubic-bezier(.2,.8,.25,1)}
-        .pcell:hover{transform:translateY(-6px)}
-        .pcell .ph{box-shadow:0 8px 22px rgba(20,19,15,.07);transition:box-shadow .4s ease}
-        .pcell:hover .ph{box-shadow:0 18px 40px rgba(20,19,15,.13)}
-        /* slow zoom on hover — keeps the photos from feeling pasted on */
+        .pcell:hover{transform:translateY(-7px)}
+        .pcell .ph{box-shadow:0 8px 22px rgba(23,21,18,.08);transition:box-shadow .4s ease}
+        .pcell:hover .ph{box-shadow:0 20px 42px rgba(23,21,18,.15)}
         .pcell .ph img{transition:transform .8s cubic-bezier(.2,.8,.25,1)}
-        .pcell:hover .ph img{transform:scale(1.05)}
-        .pcell .cap{margin-top:10px;font-size:12px;color:var(--dim);
-          font-family:'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
+        .pcell:hover .ph img{transform:scale(1.06)}
+        .pcell .cap{margin-top:11px;font-size:11.5px;color:var(--dim);font-weight:700;
+          letter-spacing:.11em;text-transform:uppercase}
         .pcell:nth-child(2){margin-top:26px}
 
         /* ── reassurance ── */
         .reassure{border-top:1px solid var(--rule);background:var(--paper);position:relative;z-index:2}
         .rgrid{display:grid;grid-template-columns:repeat(5,1fr)}
-        .rcell{padding:30px 26px 32px;border-right:1px solid var(--rule)}
+        .rcell{padding:32px 26px 34px;border-right:1px solid var(--rule)}
         .rcell:last-child{border-right:0}
-        .rcell h4{font-family:'Newsreader',serif;font-weight:500;font-size:18px;color:var(--ink);
-          margin-bottom:9px;line-height:1.22}
-        .rcell p{font-size:13.5px;color:var(--ink2);line-height:1.58}
+        .rcell .dot{width:32px;height:32px;border-radius:11px;margin-bottom:16px}
+        .rcell h4{font-size:16.5px;margin-bottom:9px;line-height:1.26;letter-spacing:-.02em}
+        .rcell p{font-size:13.5px;color:var(--ink2);line-height:1.6}
 
         /* ── dark claim ── */
-        .claim{background:var(--ink);color:var(--paper);position:relative;z-index:2}
-        .claim .wrap{padding-top:54px;padding-bottom:54px;display:grid;
+        .claim{background:var(--ink);color:#fff;position:relative;z-index:2;overflow:hidden}
+        .claim::before{content:'';position:absolute;width:460px;height:460px;right:-120px;top:-180px;
+          background:radial-gradient(circle,rgba(196,98,46,.28) 0%,transparent 68%)}
+        .claim .wrap{padding-top:58px;padding-bottom:58px;display:grid;
           grid-template-columns:1.15fr 1fr;gap:52px;align-items:center}
-        .claim .mono{color:var(--kraft);display:block;margin-bottom:16px}
-        .claim h2{font-family:'Newsreader',serif;font-size:clamp(26px,3.2vw,40px);
-          color:#fff;line-height:1.16;letter-spacing:-.015em}
-        .claim h2 em{font-style:italic;color:var(--kraft)}
-        .claim p{color:#C9C3B7;font-size:15.5px;line-height:1.68}
+        .claim .mono{color:var(--brand-hi);display:block;margin-bottom:16px}
+        .claim h2{font-size:clamp(27px,3.3vw,42px);color:#fff;line-height:1.16}
+        .claim h2 span{color:var(--brand-hi)}
+        .claim p{color:#BEB8AC;font-size:15.5px;line-height:1.7}
         .claim p+p{margin-top:14px}
 
         /* ── ticker ── */
-        .ticker{border-bottom:1px solid var(--rule);padding:15px 0;overflow:hidden;
+        .ticker{border-bottom:1px solid var(--rule);padding:16px 0;overflow:hidden;
           background:var(--tint);position:relative;z-index:2}
         .ticker-track{display:flex;width:max-content;animation:slide 46s linear infinite}
         .ticker:hover .ticker-track{animation-play-state:paused}
         @keyframes slide{to{transform:translateX(-50%)}}
         .tick{font-family:'Newsreader',serif;font-size:19px;color:var(--ink);padding:0 30px;
-          white-space:nowrap;display:flex;align-items:center;gap:30px}
-        .tick::after{content:'';width:5px;height:5px;border-radius:50%;background:var(--kraft);flex-shrink:0}
+          white-space:nowrap;display:flex;align-items:center;gap:30px;font-weight:500}
+        .tick::after{content:'';width:6px;height:6px;border-radius:50%;background:var(--brand);flex-shrink:0}
 
         /* ── sections ── */
-        .sec{padding:90px 0;border-top:1px solid var(--rule);position:relative;z-index:2}
+        .sec{padding:92px 0;border-top:1px solid var(--rule);position:relative;z-index:2}
         .sechead{display:flex;align-items:center;gap:18px;margin-bottom:36px;flex-wrap:wrap}
         .sechead .mono{color:var(--dim)}
-        .sechead .mono.k{color:var(--kraft)}
+        .sechead .mono.k{color:var(--brand)}
         .sechead i{flex:1;height:1px;background:var(--rule);min-width:20px}
-        .sec h2{font-size:clamp(29px,4.2vw,46px);max-width:20ch;margin-bottom:20px}
+        .sec h2{font-size:clamp(29px,4.1vw,46px);max-width:20ch;margin-bottom:20px}
         .note{color:var(--ink2);max-width:60ch;font-size:16.5px}
 
         .vs{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:34px}
-        .vscard{border:1px solid var(--rule);border-radius:4px;padding:28px 26px 30px;background:var(--paper2)}
-        .vscard.ours{background:var(--kraftbg);border-color:#E0CFB4}
+        .vscard{border:1.5px solid var(--rule);border-radius:20px;padding:30px 28px 32px;background:var(--white)}
+        .vscard.ours{background:var(--amber-bg);border-color:var(--amber-br)}
         .vscard .mono{color:var(--dim);display:block;margin-bottom:15px}
-        .vscard.ours .mono{color:var(--kraft)}
-        .vscard h3{font-family:'Newsreader',serif;font-weight:500;font-size:21px;color:var(--ink);margin-bottom:14px}
+        .vscard.ours .mono{color:var(--amber)}
+        .vscard h3{font-size:20px;margin-bottom:15px;letter-spacing:-.022em}
         .vslist{list-style:none;display:flex;flex-direction:column;gap:11px}
         .vslist li{font-size:14.5px;color:var(--ink2);display:flex;gap:11px;align-items:baseline}
-        .vslist li::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--rule2);flex-shrink:0;transform:translateY(-2px)}
-        .vscard.ours .vslist li::before{background:var(--kraft)}
+        .vslist li::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--rule2);flex-shrink:0;transform:translateY(-2px)}
+        .vscard.ours .vslist li::before{background:var(--amber)}
 
         .asks{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:34px}
-        .ask{border:1px solid var(--rule);border-radius:4px;overflow:hidden;background:var(--paper2);
+        .ask{border:1.5px solid var(--rule);border-radius:20px;overflow:hidden;background:var(--white);
           transition:transform .35s cubic-bezier(.2,.8,.25,1),box-shadow .35s}
-        .ask:hover{transform:translateY(-5px);box-shadow:0 16px 34px rgba(20,19,15,.09)}
-        .ask .ph{border:0;border-radius:0;border-bottom:1px solid var(--rule)}
-        .ask .inner{padding:22px 24px 26px}
-        .ask .mono{color:var(--kraft);display:block;margin-bottom:12px}
-        .ask h3{font-family:'Newsreader',serif;font-weight:500;font-size:20px;color:var(--ink);
-          margin-bottom:10px;line-height:1.24}
+        .ask:hover{transform:translateY(-6px);box-shadow:0 18px 38px rgba(23,21,18,.1)}
+        .ask .ph{border-radius:0}
+        .ask .inner{padding:24px 26px 28px}
+        .ask .mono{display:block;margin-bottom:12px}
+        .ask h3{font-size:19px;margin-bottom:10px;line-height:1.26;letter-spacing:-.022em}
         .ask p{font-size:14px;color:var(--ink2);line-height:1.6}
 
         .split{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:38px}
-        .inbox{background:var(--paper2);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
-        .inbox-top{display:flex;align-items:center;justify-content:space-between;padding:13px 17px;
+        .inbox{background:var(--white);border:1.5px solid var(--rule);border-radius:20px;overflow:hidden}
+        .inbox-top{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;
           border-bottom:1px solid var(--rule);background:var(--tint)}
-        .inbox-top .who{font-size:13px;color:var(--ink);font-weight:500}
+        .inbox-top .who{font-size:13.5px;color:var(--ink);font-weight:700}
         .inbox-top .mono{color:var(--dim)}
-        .inbox-body{padding:16px 17px 20px;min-height:392px}
-        .blk{border:1px solid var(--rule);border-radius:3px;padding:12px 14px;margin-bottom:9px;
+        .inbox-body{padding:16px 17px 20px;min-height:402px}
+        .blk{border:1.5px solid var(--rule);border-radius:13px;padding:13px 15px;margin-bottom:9px;
           position:relative;opacity:0;transform:translateY(10px) scale(.98);
           transition:opacity .45s ease,transform .45s cubic-bezier(.2,.7,.3,1),box-shadow .2s}
         .blk.in{opacity:1;transform:none}
-        .blk .mono{color:var(--dim);font-size:9px;display:block;margin-bottom:6px}
-        .blk .h{font-family:'Newsreader',serif;font-size:16px;color:var(--ink);line-height:1.26;display:block}
-        .blk .v{font-size:11.5px;color:var(--dim);margin-top:5px;display:block}
-        .blk.same{background:var(--tint)}
-        .blk.pers{background:var(--kraftbg);border-color:#E0CFB4}
-        .blk.pers .mono{color:var(--kraft)}
-        .blk.pers:hover{box-shadow:0 6px 18px rgba(20,19,15,.09)}
+        .blk .mono{font-size:9.5px;color:var(--dim);display:block;margin-bottom:6px}
+        .blk .h{font-family:'Newsreader',serif;font-size:16.5px;color:var(--ink);line-height:1.26;
+          display:block;font-weight:500}
+        .blk .v{font-size:11.5px;color:var(--dim);margin-top:5px;display:block;font-weight:600}
+        .blk.n{background:var(--tint)}
+        .blk.amber{background:var(--amber-bg);border-color:var(--amber-br)}
+        .blk.amber .mono{color:var(--amber)}
+        .blk.leaf{background:var(--leaf-bg);border-color:var(--leaf-br)}
+        .blk.leaf .mono{color:var(--leaf)}
+        .blk.plum{background:var(--plum-bg);border-color:var(--plum-br)}
+        .blk.plum .mono{color:var(--plum)}
+        .blk.own:hover{box-shadow:0 8px 20px rgba(23,21,18,.1)}
         .why{position:absolute;left:12px;right:12px;bottom:calc(100% + 7px);background:var(--ink);
-          color:var(--paper);padding:8px 11px;border-radius:4px;font-size:11.5px;line-height:1.4;
+          color:#fff;padding:9px 12px;border-radius:9px;font-size:11.5px;line-height:1.4;font-weight:600;
           opacity:0;transform:translateY(5px);transition:opacity .2s,transform .2s;pointer-events:none;z-index:5}
         .why::after{content:'';position:absolute;top:100%;left:22px;border:5px solid transparent;border-top-color:var(--ink)}
-        .blk.pers:hover .why{opacity:1;transform:none}
+        .blk.own:hover .why{opacity:1;transform:none}
         .legend{display:flex;gap:26px;flex-wrap:wrap;margin-top:24px;align-items:center}
-        .legend div{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink2)}
-        .sw{width:12px;height:12px;border-radius:2px;border:1px solid var(--rule2)}
-        .sw.k{background:var(--kraftbg);border-color:#E0CFB4}
+        .legend div{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink2);font-weight:600}
+        .sw{width:14px;height:14px;border-radius:5px;border:1.5px solid var(--rule2)}
+        .sw.k{background:var(--amber-bg);border-color:var(--amber-br)}
         .sw.n{background:var(--tint)}
-        .mockmark{margin-top:16px;color:var(--dim);font-size:12.5px;font-style:italic}
+        .mockmark{margin-top:16px;color:var(--dim);font-size:12.5px}
 
         .demo{display:grid;grid-template-columns:1.1fr .85fr;gap:24px;margin-top:36px}
-        .chatbox{background:var(--paper2);border:1px solid var(--rule);border-radius:4px;padding:20px;
-          min-height:400px;display:flex;flex-direction:column;gap:11px}
+        .chatbox{background:var(--white);border:1.5px solid var(--rule);border-radius:20px;padding:22px;
+          min-height:410px;display:flex;flex-direction:column;gap:11px}
         .chatbox .hd{display:flex;justify-content:space-between;align-items:center;
-          padding-bottom:14px;border-bottom:1px solid var(--rule);margin-bottom:4px}
+          padding-bottom:15px;border-bottom:1px solid var(--rule);margin-bottom:4px}
         .chatbox .hd .mono{color:var(--dim)}
-        .live{display:flex;align-items:center;gap:7px;color:var(--moss)}
-        .live i{width:6px;height:6px;border-radius:50%;background:var(--moss);animation:blip 1.6s ease infinite}
+        .live{display:flex;align-items:center;gap:7px;color:var(--leaf)}
+        .live i{width:7px;height:7px;border-radius:50%;background:var(--leaf);animation:blip 1.6s ease infinite}
         @keyframes blip{0%,100%{opacity:1}50%{opacity:.25}}
-        .bub{max-width:84%;padding:11px 14px;border-radius:12px;font-size:14.5px;line-height:1.5;
+        .bub{max-width:84%;padding:12px 15px;border-radius:16px;font-size:14.5px;line-height:1.52;
           animation:pop .4s cubic-bezier(.2,.7,.3,1) both}
         @keyframes pop{from{opacity:0;transform:translateY(8px)}}
-        .bub.agent{background:var(--tint);color:var(--ink2);border-bottom-left-radius:3px;align-self:flex-start}
-        .bub.maker{background:var(--kraftbg);color:var(--ink);border-bottom-right-radius:3px;align-self:flex-end}
-        .dots{display:flex;gap:4px;padding:13px 15px;background:var(--tint);border-radius:12px;
-          border-bottom-left-radius:3px;align-self:flex-start;width:fit-content}
-        .dots i{width:5px;height:5px;border-radius:50%;background:var(--dim);animation:bob 1.1s ease infinite}
+        .bub.agent{background:var(--tint);color:var(--ink2);border-bottom-left-radius:5px;align-self:flex-start}
+        .bub.maker{background:var(--amber-bg);color:var(--ink);border-bottom-right-radius:5px;align-self:flex-end}
+        .dots{display:flex;gap:4px;padding:14px 16px;background:var(--tint);border-radius:16px;
+          border-bottom-left-radius:5px;align-self:flex-start;width:fit-content}
+        .dots i{width:6px;height:6px;border-radius:50%;background:var(--dim);animation:bob 1.1s ease infinite}
         .dots i:nth-child(2){animation-delay:.16s}.dots i:nth-child(3){animation-delay:.32s}
         @keyframes bob{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
-        .harvest{background:var(--paper2);border:1px solid var(--rule);border-radius:4px;padding:22px 22px 24px}
-        .harvest .mono{color:var(--kraft);display:block;margin-bottom:16px}
-        .hrow{display:flex;gap:14px;padding:12px 0;border-bottom:1px solid var(--rule);
+        .harvest{background:var(--white);border:1.5px solid var(--rule);border-radius:20px;padding:24px}
+        .harvest .mono{color:var(--brand);display:block;margin-bottom:16px}
+        .hrow{display:flex;gap:14px;padding:13px 0;border-bottom:1px solid var(--rule);
           opacity:0;transform:translateX(-8px);transition:opacity .45s ease,transform .45s ease}
         .hrow.in{opacity:1;transform:none}
         .hrow:last-child{border-bottom:0}
-        .hrow .k{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;
-          text-transform:uppercase;color:var(--dim);min-width:52px;padding-top:3px}
+        .hrow .k{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+          color:var(--dim);min-width:52px;padding-top:3px}
         .hrow .v{font-size:14.5px;color:var(--ink);line-height:1.42}
-        .harvest .foot{margin-top:16px;padding-top:14px;border-top:1px solid var(--rule);font-size:12.5px;color:var(--dim)}
+        .harvest .foot{margin-top:16px;padding-top:15px;border-top:1px solid var(--rule);font-size:12.5px;color:var(--dim)}
 
-        .bounds{display:grid;grid-template-columns:repeat(3,1fr);gap:26px}
-        .bound{border-top:2px solid var(--kraft);padding-top:20px;transition:transform .3s}
-        .bound:hover{transform:translateY(-4px)}
-        .bound p{font-family:'Newsreader',serif;font-size:21px;color:var(--ink);line-height:1.28;margin-bottom:12px}
+        .bounds{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+        .bound{border-radius:20px;padding:28px 26px 30px;transition:transform .3s}
+        .bound:hover{transform:translateY(-5px)}
+        .bound:nth-child(1){background:var(--coral-bg)}
+        .bound:nth-child(2){background:var(--leaf-bg)}
+        .bound:nth-child(3){background:var(--sky-bg)}
+        .bound .dot{width:34px;height:34px;border-radius:12px;margin-bottom:18px}
+        .bound:nth-child(1) .dot{background:var(--coral)}
+        .bound:nth-child(2) .dot{background:var(--leaf)}
+        .bound:nth-child(3) .dot{background:var(--sky)}
+        .bound p{font-size:19px;color:var(--ink);line-height:1.3;margin-bottom:12px;
+          font-weight:800;letter-spacing:-.022em}
         .bound span{font-size:14.5px;color:var(--ink2)}
 
         .cols{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:34px}
-        .card{background:var(--paper2);border:1px solid var(--rule);border-radius:4px;
-          padding:32px 30px 34px;transition:transform .3s,box-shadow .3s}
-        .card:hover{transform:translateY(-4px);box-shadow:0 14px 32px rgba(20,19,15,.07)}
-        .card .mono{color:var(--kraft);display:block;margin-bottom:17px}
-        .card h3{font-family:'Newsreader',serif;font-weight:500;font-size:23px;color:var(--ink);margin-bottom:12px;line-height:1.2}
+        .card{background:var(--white);border:1.5px solid var(--rule);border-radius:20px;
+          padding:34px 32px 36px;transition:transform .3s,box-shadow .3s}
+        .card:hover{transform:translateY(-5px);box-shadow:0 18px 38px rgba(23,21,18,.09)}
+        .card .mono{color:var(--brand);display:block;margin-bottom:17px}
+        .card h3{font-size:22px;margin-bottom:12px;line-height:1.24;letter-spacing:-.024em}
         .card p{font-size:15px;color:var(--ink2);margin-bottom:18px}
         .facts{list-style:none;display:flex;flex-direction:column;gap:10px}
         .facts li{display:flex;gap:12px;font-size:14.5px;color:var(--ink);align-items:baseline}
-        .facts li::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--kraft);flex-shrink:0;transform:translateY(-2px)}
+        .facts li::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--brand);flex-shrink:0;transform:translateY(-2px)}
 
-        /* ── vision, with photos ── */
-        .vision{background:var(--ink);color:var(--paper);position:relative;z-index:2;overflow:hidden}
-        .vision .wrap{padding-top:82px;padding-bottom:86px}
+        .vision{background:var(--ink);color:#fff;position:relative;z-index:2;overflow:hidden}
+        .vision::before{content:'';position:absolute;width:500px;height:500px;left:-140px;bottom:-220px;
+          background:radial-gradient(circle,rgba(94,148,100,.22) 0%,transparent 68%)}
+        .vision .wrap{padding-top:86px;padding-bottom:90px}
         .visgrid{display:grid;grid-template-columns:.86fr 1.14fr;gap:56px;align-items:center}
-        .vision .mono{color:var(--kraft);display:block;margin-bottom:20px}
-        .vision h2{font-family:'Newsreader',serif;font-size:clamp(27px,3.5vw,42px);color:#fff;
-          line-height:1.2;letter-spacing:-.015em;margin-bottom:22px}
-        .vision h2 em{font-style:italic;color:var(--kraft)}
-        .vision p{color:#C9C3B7;font-size:16px;line-height:1.7}
+        .vision .mono{color:var(--brand-hi);display:block;margin-bottom:20px}
+        .vision h2{font-size:clamp(27px,3.4vw,42px);color:#fff;line-height:1.2;margin-bottom:22px}
+        .vision h2 span{color:var(--brand-hi)}
+        .vision p{color:#BEB8AC;font-size:16px;line-height:1.72}
         .vision p+p{margin-top:14px}
         .vispair{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-        .vispair .ph{border-color:rgba(255,255,255,.14)}
         .vispair .ph:first-child{margin-top:34px}
 
-        .close{padding:92px 0 104px;border-top:1px solid var(--rule);text-align:center;position:relative;z-index:2}
+        .close{padding:94px 0 106px;border-top:1px solid var(--rule);text-align:center;position:relative;z-index:2}
         .close h2{font-size:clamp(29px,4vw,44px);max-width:22ch;margin:0 auto 22px}
         .close p{color:var(--ink2);max-width:52ch;margin:0 auto 30px;font-size:16.5px}
         .close .routes{justify-content:center}
 
-        footer{border-top:1px solid var(--rule);padding:32px 32px 48px;position:relative;z-index:2}
+        footer{border-top:1px solid var(--rule);padding:34px 32px 50px;position:relative;z-index:2}
         .foot{max-width:1200px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
         .footlinks{display:flex;gap:24px;flex-wrap:wrap}
         .footlinks a{text-decoration:none;color:var(--dim);transition:color .18s}
@@ -504,10 +540,10 @@ export function Landing() {
           .navlinks a.mono:not(.navcta){display:none}
           .brandsub{display:none}
           .statbar span{display:none}
-          .sec{padding:64px 0}
+          .sec{padding:66px 0}
           .tick{font-size:16px;padding:0 20px}
           .routes{flex-direction:column}
-          .route{width:100%}
+          .route{width:100%;align-items:center}
         }
         @media(prefers-reduced-motion:reduce){
           *{animation:none!important;transition:none!important}
@@ -541,9 +577,9 @@ export function Landing() {
         <div className="wrap">
           <div className="herogrid">
             <div>
-              <h1 className="serif">
-                Some of your best customers will never join your mailing list.<br />
-                <em>They'll read this one.</em>
+              <h1>
+                Some of your best customers will never join your mailing list.{' '}
+                <span>They'll read this one.</span>
               </h1>
               <div className="lede">
                 <p>Brown Bag is a weekly newsletter about the shops and makers in one neighborhood.</p>
@@ -567,16 +603,18 @@ export function Landing() {
 
             <div className="herovis">
               <span className="mono stackhint">One issue · built for one reader</span>
+              <span className="blob b1" /><span className="blob b2" />
+              <span className="blob b3" /><span className="blob b4" />
 
-              <div className="peek p1">
+              <div className="peek p1 plum">
                 <span className="mono">Fiber &amp; Fawn</span>
                 <div className="st">Twelve years of the same Saturday</div>
               </div>
-              <div className="peek p2">
+              <div className="peek p2 sky">
                 <span className="mono">Pike Fish Co</span>
                 <div className="st">The neighbors knocked to ask what was burning</div>
               </div>
-              <div className="peek p3">
+              <div className="peek p3 coral">
                 <span className="mono">Marigold Flowers</span>
                 <div className="st">The dog got into the pumpkins again</div>
               </div>
@@ -591,12 +629,12 @@ export function Landing() {
                     <span className="mono">Everyone</span>
                     <span className="h">Week of August 12</span>
                   </div>
-                  <div className="mrow k">
+                  <div className="mrow amber">
                     <span className="mono">Picked for this reader</span>
                     <span className="h">She's not famous. She's out of chili oil.</span>
                     <span className="v">Cedar Bakery · Ballard</span>
                   </div>
-                  <div className="mrow k">
+                  <div className="mrow leaf">
                     <span className="mono">Picked for this reader</span>
                     <span className="h">A third of the tomatoes split. Now there's sauce.</span>
                     <span className="v">Hollow Ridge Farm · Ballard</span>
@@ -633,27 +671,19 @@ export function Landing() {
       {/* ── REASSURANCE ── */}
       <section className="reassure">
         <div className="rgrid">
-          <div className="rcell">
-            <h4>It's a different appetite</h4>
-            <p>Lots of people love your brand and will never sign up for your newsletter.
-              One email about the whole neighborhood? That they'll take.</p>
-          </div>
-          <div className="rcell">
-            <h4>Your list stays yours</h4>
-            <p>We don't see it. We don't import it. We don't email it.</p>
-          </div>
-          <div className="rcell">
-            <h4>Talk it out or write it up</h4>
-            <p>Whichever suits you. If you've got someone who writes well, even better.</p>
-          </div>
-          <div className="rcell">
-            <h4>Nothing goes out unread</h4>
-            <p>You see every story first. If something's wrong, you say so and we fix it.</p>
-          </div>
-          <div className="rcell">
-            <h4>Free, and staying free</h4>
-            <p>For you and for the people reading.</p>
-          </div>
+          {[
+            ['var(--amber)', "It's a different appetite", "Lots of people love your brand and will never sign up for your newsletter. One email about the whole neighborhood? That they'll take."],
+            ['var(--leaf)', 'Your list stays yours', "We don't see it. We don't import it. We don't email it."],
+            ['var(--coral)', 'Talk it out or write it up', "Whichever suits you. If you've got someone who writes well, even better."],
+            ['var(--sky)', 'Nothing goes out unread', "You see every story first. If something's wrong, you say so and we fix it."],
+            ['var(--plum)', 'Free, and staying free', 'For you and for the people reading.'],
+          ].map(([c, h, p], i) => (
+            <div className="rcell" key={i}>
+              <div className="dot" style={{ background: c as string }} />
+              <h4>{h}</h4>
+              <p>{p}</p>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -662,7 +692,7 @@ export function Landing() {
         <div className="wrap">
           <div>
             <span className="mono">The whole idea</span>
-            <h2>One issue goes out.<br /><em>No two people get the same email.</em></h2>
+            <h2>One issue goes out.<br /><span>No two people get the same email.</span></h2>
           </div>
           <div>
             <p>Every story is written once. Then it's matched, reader by reader, against the shops
@@ -686,7 +716,7 @@ export function Landing() {
             <span className="mono k">The question everyone asks</span>
             <span className="mono">Doesn't this compete with my own list?</span><i />
           </div>
-          <h2 className="serif">It's a different job, and a different reader.</h2>
+          <h2>It's a different job, and a different reader.</h2>
           <p className="note">
             Your newsletter is for people who already decided they want to hear from you.
             Brown Bag is for the ones who like you fine and are never going to make that decision.
@@ -723,7 +753,7 @@ export function Landing() {
             <span className="mono k">The part people worry about</span>
             <span className="mono">What would I even say?</span><i />
           </div>
-          <h2 className="serif">We ask about the week, not about the product.</h2>
+          <h2>We ask about the week, not about the product.</h2>
           <p className="note">
             Nobody has to come up with an idea. We ask, you answer, and it's usually more
             interesting than you think. Three of the questions we actually use:
@@ -731,10 +761,9 @@ export function Landing() {
           <div className="asks">
             {ASKS.map((a, i) => (
               <div className="ask" key={i}>
-                {/* src={`/photos/ask-${i + 1}.jpg`} */}
                 <Photo alt="" tone={a.tone} ratio="16 / 9" />
                 <div className="inner">
-                  <span className="mono">Question {i + 1}</span>
+                  <span className="mono" style={{ color: `var(--${a.tone})` }}>Question {i + 1}</span>
                   <h3>{a.q}</h3>
                   <p>{a.a}</p>
                 </div>
@@ -751,11 +780,11 @@ export function Landing() {
             <span className="mono k">Fig. 01</span>
             <span className="mono">One issue · Two readers</span><i />
           </div>
-          <h2 className="serif">The same week. Two different emails.</h2>
+          <h2>The same week. Two different emails.</h2>
           <p className="note">
             Sam scans the bakery's code most Saturdays. Jo scans the farm's. They both get
             Brown Bag No. 6, and what's inside is not the same.
-            <br /><span style={{ color: 'var(--dim)', fontSize: 14 }}>Hover a highlighted block to see why it was picked.</span>
+            <br /><span style={{ color: 'var(--dim)', fontSize: 14 }}>Hover a coloured block to see why it was picked.</span>
           </p>
           <div className="split">
             {[{ who: 'Sam · follows Cedar Bakery', rows: SAM, off: 0 },
@@ -767,7 +796,8 @@ export function Landing() {
                 </div>
                 <div className="inbox-body">
                   {box.rows.map((b, i) => (
-                    <div key={i} className={`blk ${b.own ? 'pers' : 'same'} ${dealt > i * 2 + box.off ? 'in' : ''}`}>
+                    <div key={i}
+                      className={`blk ${b.own ? `own ${b.tone}` : 'n'} ${dealt > i * 2 + box.off ? 'in' : ''}`}>
                       {b.why && <span className="why">{b.why}</span>}
                       <span className="mono">{b.slot}</span>
                       <span className="h">{b.head}</span>
@@ -793,7 +823,7 @@ export function Landing() {
             <span className="mono k">Fig. 02</span>
             <span className="mono">What a conversation looks like</span><i />
           </div>
-          <h2 className="serif">It remembers what you told it last time.</h2>
+          <h2>It remembers what you told it last time.</h2>
           <p className="note">
             That's the difference between a form and a conversation. "Anything new?" gets nothing.
             "Is the sourdough back?" gets a story.
@@ -831,23 +861,26 @@ export function Landing() {
             <span className="mono k">Fig. 03</span>
             <span className="mono">What the system will not do</span><i />
           </div>
-          <h2 className="serif">The rules matter more than the features.</h2>
+          <h2>The rules matter more than the features.</h2>
           <p className="note" style={{ marginBottom: 38 }}>
             Three things are fixed. They're why a business can hand us a story and a reader
             keeps opening the email.
           </p>
           <div className="bounds">
             <div className="bound">
+              <div className="dot" />
               <p>Nothing is published without a person reading it first.</p>
               <span>Every story, every sponsor, every line. An editor approves it or it doesn't run.
                 There is no automatic path to a reader's inbox.</span>
             </div>
             <div className="bound">
+              <div className="dot" />
               <p>We never write a fact you didn't tell us.</p>
               <span>Your words are kept exactly as you said them. Every published sentence traces
                 back to one of them, and you can correct it at any point.</span>
             </div>
             <div className="bound">
+              <div className="dot" />
               <p>We never tell a reader what we've worked out about them.</p>
               <span>Brown Bag says the cheese shop is back this week. It never says "because you
                 keep buying bread." The matching is invisible, and it stays that way.</span>
@@ -863,7 +896,7 @@ export function Landing() {
             <span className="mono k">Fig. 04</span>
             <span className="mono">Working with Marlo</span><i />
           </div>
-          <h2 className="serif">One neighborhood at a time, on purpose.</h2>
+          <h2>One neighborhood at a time, on purpose.</h2>
           <div className="cols">
             <div className="card">
               <span className="mono">For markets and platforms</span>
@@ -900,7 +933,7 @@ export function Landing() {
             <div>
               <span className="mono">Why we're doing this</span>
               <h2>Somebody made the thing you bought this week.<br />
-                <em>You'll probably never know who.</em></h2>
+                <span>You'll probably never know who.</span></h2>
               <p>
                 Buying used to come with a person attached. You knew who baked it, who grew it,
                 who stayed up late finishing it. Most of that has quietly gone.
@@ -911,10 +944,8 @@ export function Landing() {
               </p>
             </div>
             <div className="vispair">
-              {/* src="/photos/hero-a.jpg" */}
-              <Photo alt="Hands at work" tone="clay" ratio="3 / 4" />
-              {/* src="/photos/hero-b.jpg" */}
-              <Photo alt="A stall on a Saturday" tone="sage" ratio="3 / 4" />
+              <Photo alt="Hands at work" tone="coral" ratio="3 / 4" />
+              <Photo alt="A stall on a Saturday" tone="leaf" ratio="3 / 4" />
             </div>
           </div>
         </div>
@@ -923,7 +954,7 @@ export function Landing() {
       {/* ── CLOSE ── */}
       <section className="close rise">
         <div className="wrap">
-          <h2 className="serif">If you sell something near people, we'd like to hear from you.</h2>
+          <h2>If you sell something near people, we'd like to hear from you.</h2>
           <p>Brown Bag is starting in Seattle. We're looking for businesses who have something
             to say and nowhere good to say it.</p>
           <div className="routes">
@@ -941,7 +972,7 @@ export function Landing() {
 
       <footer>
         <div className="foot">
-          <a className="brandmark" href="/" style={{ fontSize: 21 }}>Marlo</a>
+          <a className="brandmark" href="/" style={{ fontSize: 20 }}>Marlo</a>
           <div className="footlinks">
             <a className="mono" href="/privacy">Privacy</a>
             <a className="mono" href="/terms">Terms</a>
