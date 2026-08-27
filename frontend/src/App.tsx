@@ -1,10 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Landing } from './pages/Landing'
-import { Signup } from './pages/Signup'
-import { Setup } from './pages/Setup'
-import { Help } from './pages/Help'
-import { Blog } from './pages/Blog'
-import { BlogPost_HowMarloThinks as HowMarloThinks } from './pages/BlogPost_HowMarloThinks'
+import { WhyLocal } from './pages/WhyLocal'
 import Privacy from './pages/Privacy'
 import Terms from './pages/Terms'
 
@@ -13,13 +9,21 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Landing />} />
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/setup" element={<Setup />} />
-        <Route path="/help" element={<Help />} />
-        <Route path="/blog" element={<Blog />} />
-        <Route path="/blog/how-marlo-thinks" element={<HowMarloThinks />} />
+        <Route path="/why-local" element={<WhyLocal />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
+
+        {/*
+          Removed — all describe the archived Instagram product:
+            /signup  /setup  /help  /blog  /blog/how-marlo-thinks
+          The page files are still in src/pages/ but no longer routed.
+          Delete them, or rebuild for Brown Bag.
+
+          Coming with the Brown Bag build:
+            /brownbag              reader-facing subscribe page
+            /v/:scanCode           QR scan landing
+            /unsubscribe           one-click, required by CAN-SPAM
+        */}
       </Routes>
     </BrowserRouter>
   )
