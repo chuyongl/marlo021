@@ -4,7 +4,7 @@ Interviewer agent — gathers 素材 (raw material) from a vendor in conversatio
 This is the most important piece of Brown Bag. The writer can only be as good
 as what the interviewer brings back.
 
-Pure logic: no database. Callers pass the vendor profile and the transcript,
+Pure logic: no database (async; see content/llm.py). Callers pass the vendor profile and the transcript,
 and get back the next move. The router stores messages and the conversation
 counters (gaps_remaining, stalled_turns).
 
@@ -24,23 +24,13 @@ most weeks will actually yield.
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass, field
 
-import anthropic
+from content import llm
 
-MODEL = os.getenv("INTERVIEWER_MODEL", "claude-sonnet-4-6")
+MODEL = os.getenv("INTERVIEWER_MODEL", llm.DEFAULT_MODEL)
 STALL_LIMIT = 2
-
-_client = None
-
-
-def client() -> anthropic.Anthropic:
-    global _client
-    if _client is None:
-        _client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-    return _client
 
 
 SYSTEM = """You interview a small local vendor (a market stall, a maker, a small shop) for Brown Bag, a weekly local newsletter. You are not the writer. Your job is to gather raw material in conversation so that a writer can later produce either a short story or a short update.
@@ -158,21 +148,16 @@ def _transcript_text(transcript: list[dict]) -> str:
     return "\n".join(out)
 
 
-def opening_question(vendor: dict, season_note: str = "") -> str:
+async def opening_question(vendor: dict, season_note: str = "") -> str:
     """The first question of the week. Chosen before the reminder is sent."""
     prompt = _profile_text(vendor)
     if season_note:
         prompt += f"\nThis week: {season_note}"
-    resp = client().messages.create(
-        model=MODEL,
-        max_tokens=200,
-        system=OPENING_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return resp.content[0].text.strip().strip('"')
+    out = await llm.text(OPENING_SYSTEM, prompt, max_tokens=200, model=MODEL)
+    return out.strip().strip('"')
 
 
-def next_turn(vendor: dict, transcript: list[dict], stalled_turns: int = 0) -> Turn:
+async def next_turn(vendor: dict, transcript: list[dict], stalled_turns: int = 0) -> Turn:
     """
     Decide the next move given the conversation so far.
 
@@ -186,15 +171,7 @@ def next_turn(vendor: dict, transcript: list[dict], stalled_turns: int = 0) -> T
         f"If this last answer also adds nothing and the count reaches {STALL_LIMIT}, you must finish "
         f"(story, update, or nothing_here) instead of asking."
     )
-    resp = client().messages.create(
-        model=MODEL,
-        max_tokens=1000,
-        system=SYSTEM,
-        tools=[TURN_TOOL],
-        tool_choice={"type": "tool", "name": "next_move"},
-        messages=[{"role": "user", "content": user}],
-    )
-    data = next(b.input for b in resp.content if b.type == "tool_use")
+    data = await llm.tool(SYSTEM, user, TURN_TOOL, max_tokens=1000, model=MODEL)
 
     stalled = 0 if data["last_answer_added_new"] else stalled_turns + 1
     move = data["move"]

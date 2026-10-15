@@ -158,10 +158,10 @@ export function WhyLocal() {
       `}</style>
 
       <nav className="nav">
-        <a className="brandmark" href="/">Marlo</a>
+        <a className="brandmark" href="/">Brown Bag</a>
         <span className="mono brandsub">The system behind Brown Bag</span>
         <span className="navspace" />
-        <a className="mono backlink" href="/">← Back to Marlo</a>
+        <a className="mono backlink" href="/">← Back to Brown Bag</a>
       </nav>
 
       <header className="top">
@@ -280,7 +280,7 @@ export function WhyLocal() {
 
       <footer>
         <div className="foot">
-          <a className="brandmark" href="/" style={{ fontSize: 21 }}>Marlo</a>
+          <a className="brandmark" href="/" style={{ fontSize: 21 }}>Brown Bag</a>
           <div className="footlinks">
             <a className="mono" href="/privacy">Privacy</a>
             <a className="mono" href="/terms">Terms</a>

@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import os
 
-from agent.interviewer import client, _profile_text, _transcript_text
+from content import llm
+from content.interviewer import _profile_text, _transcript_text
 
-WRITER_MODEL = os.getenv("WRITER_MODEL", "claude-sonnet-4-6")
-GUARD_MODEL = os.getenv("GUARD_MODEL", "claude-sonnet-4-6")
+WRITER_MODEL = os.getenv("WRITER_MODEL", llm.DEFAULT_MODEL)
+GUARD_MODEL = os.getenv("GUARD_MODEL", llm.DEFAULT_MODEL)
 
 
 STORY_SYSTEM = """You write short stories about local vendors for Brown Bag, a weekly local newsletter. The bar: is there a person, is something at stake for them, would a stranger want to know how it turned out? Aim for a good magazine piece: stakes, specificity, restraint. Not fancy prose.
@@ -74,44 +75,36 @@ def _split(text: str) -> tuple[str, str]:
     return head.strip().strip("#*\" ").strip(), body.strip()
 
 
-def write(kind: str, vendor: dict, transcript: list[dict]) -> dict:
+async def write(kind: str, vendor: dict, transcript: list[dict]) -> dict:
     """kind: 'story' or 'update'. Returns {kind, title, body, words}."""
     system = STORY_SYSTEM if kind == "story" else UPDATE_SYSTEM
-    resp = client().messages.create(
-        model=WRITER_MODEL,
+    out = await llm.text(
+        system,
+        f"{_profile_text(vendor)}\n\nTRANSCRIPT\n{_transcript_text(transcript)}",
         max_tokens=1200,
-        system=system,
-        messages=[{
-            "role": "user",
-            "content": f"{_profile_text(vendor)}\n\nTRANSCRIPT\n{_transcript_text(transcript)}",
-        }],
+        model=WRITER_MODEL,
     )
-    title, body = _split(resp.content[0].text)
+    title, body = _split(out)
     return {"kind": kind, "title": title, "body": body, "words": len(body.split())}
 
 
-def guard(draft: dict, transcript: list[dict]) -> dict:
-    resp = client().messages.create(
-        model=GUARD_MODEL,
+async def guard(draft: dict, transcript: list[dict]) -> dict:
+    return await llm.tool(
+        GUARD_SYSTEM,
+        (
+            f"KIND: {draft['kind']}\n\nTRANSCRIPT\n{_transcript_text(transcript)}\n\n"
+            f"DRAFT\n{draft['title']}\n\n{draft['body']}"
+        ),
+        GUARD_TOOL,
         max_tokens=800,
-        system=GUARD_SYSTEM,
-        tools=[GUARD_TOOL],
-        tool_choice={"type": "tool", "name": "verdict"},
-        messages=[{
-            "role": "user",
-            "content": (
-                f"KIND: {draft['kind']}\n\nTRANSCRIPT\n{_transcript_text(transcript)}\n\n"
-                f"DRAFT\n{draft['title']}\n\n{draft['body']}"
-            ),
-        }],
+        model=GUARD_MODEL,
     )
-    return next(b.input for b in resp.content if b.type == "tool_use")
 
 
-def write_checked(kind: str, vendor: dict, transcript: list[dict], retries: int = 1) -> dict:
+async def write_checked(kind: str, vendor: dict, transcript: list[dict], retries: int = 1) -> dict:
     """Write, guard, and retry once with the guard's notes if it fails."""
-    draft = write(kind, vendor, transcript)
-    verdict = guard(draft, transcript)
+    draft = await write(kind, vendor, transcript)
+    verdict = await guard(draft, transcript)
     attempt = 0
     while not verdict["pass"] and attempt < retries:
         attempt += 1
@@ -119,7 +112,7 @@ def write_checked(kind: str, vendor: dict, transcript: list[dict], retries: int 
         if verdict["invented_facts"]:
             fix += " Remove these unsupported claims: " + "; ".join(verdict["invented_facts"])
         transcript_note = transcript + [{"role": "agent", "content": f"[Editor note to writer, not part of the interview: {fix}]"}]
-        draft = write(kind, vendor, transcript_note)
-        verdict = guard(draft, transcript)
+        draft = await write(kind, vendor, transcript_note)
+        verdict = await guard(draft, transcript)
     draft["guard"] = verdict
     return draft

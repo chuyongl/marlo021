@@ -40,6 +40,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -98,6 +99,7 @@ class BlockClass:
     GREETING = "greeting"  # same for everyone (MVP)
     EVENTS = "events"      # filtered to the reader's follows
     STATIC = "static"      # referral, social, footer
+    UPDATE = "update"      # short vendor note: where they'll be, what's new, a recipe
 
 
 class SubscriberStatus:
@@ -280,6 +282,13 @@ class Vendor(Base):
     booth_location = Column(String, nullable=True)
     schedule_note = Column(String, nullable=True)
     photo_url = Column(String, nullable=True)     # optional at signup
+
+    # The physical place they sell (Pike Place, Ballard Farmers Market).
+    # One QR per venue lists every vendor there, so print runs stay shared.
+    venue_id = Column(UUID(as_uuid=True), ForeignKey("venues.id"), nullable=True)
+    instagram = Column(String, nullable=True)
+    website = Column(String, nullable=True)
+    is_sample = Column(Boolean, nullable=False, default=False)  # demo content
 
     # ~200 tokens of summary, not a growing transcript (ADR-010).
     # This is what lets the interviewer ask a SPECIFIC follow-up —
@@ -508,6 +517,13 @@ class Block(Base):
     reject_reason = Column(Text, nullable=True)
 
     times_used = Column(Integer, nullable=False, default=0)
+
+    # Public story page (/s/{slug}) once it has shipped or been approved.
+    # Vendors can hide any story; sensitive ones are email-only.
+    slug = Column(String, nullable=True, unique=True, index=True)
+    is_public = Column(Boolean, nullable=False, default=True)
+    guard_notes = Column(JSONB, nullable=True)     # style guard verdict
+    is_sample = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
 
     vendor = relationship("Vendor", back_populates="blocks")
@@ -576,9 +592,12 @@ class Subscriber(Base):
     __tablename__ = "subscribers"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
-    market_id = Column(UUID(as_uuid=True), ForeignKey("markets.id"), nullable=False)
 
-    email = Column(String, nullable=False, index=True)
+    # Subscribers belong to no market (Aug 27 decision). Follows decide what
+    # they get; home_market_id is a derived tiebreak for greeting and ads.
+    home_market_id = Column(UUID(as_uuid=True), ForeignKey("markets.id"), nullable=True)
+
+    email = Column(String, nullable=False, unique=True, index=True)
     auth_token = Column(String, nullable=False, unique=True, index=True)
     status = Column(String, nullable=False, default=SubscriberStatus.ACTIVE)
 
@@ -588,6 +607,11 @@ class Subscriber(Base):
 
     first_vendor_id = Column(UUID(as_uuid=True), ForeignKey("vendors.id"),
                              nullable=True)
+
+    # Which growth loop brought them: qr_vendor, qr_venue, story_page,
+    # shared_story, nomination, vendor_invite, website ...
+    signup_source = Column(String, nullable=True)
+    referred_by_id = Column(UUID(as_uuid=True), ForeignKey("subscribers.id"), nullable=True)
 
     # Derived from scan behavior, never a form field:
     #   {"bakery": 0.9, "produce": 0.6, "updated_at": "2026-08-12"}
@@ -605,8 +629,7 @@ class Subscriber(Base):
     unsubscribed_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
-        UniqueConstraint("market_id", "email", name="uq_subscriber_market_email"),
-        Index("ix_subscribers_active", "market_id", "status"),
+        Index("ix_subscribers_status", "status"),
     )
 
 
@@ -705,6 +728,11 @@ class Issue(Base):
     send_date = Column(Date, nullable=False)
     status = Column(String, nullable=False, default=IssueStatus.ASSEMBLING)
 
+    subject = Column(String, nullable=True)
+    greeting = Column(Text, nullable=True)        # written by the named editor
+    editor_name = Column(String, nullable=True)
+    last_error = Column(Text, nullable=True)      # why the last send attempt failed
+
     bank_size_at_assembly = Column(Integer, nullable=False, default=0)
     sent_count = Column(Integer, nullable=False, default=0)
 
@@ -792,3 +820,106 @@ class EmailLog(Base):
     __table_args__ = (
         Index("ix_email_logs_type", "email_type", "sent_at"),
     )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADDED OCT 2026 — venues, media, reader shares, clicks, growth intake
+# ─────────────────────────────────────────────────────────────────────────────
+
+class Venue(Base):
+    """
+    A physical place vendors sell: Pike Place Market, Ballard Farmers Market.
+
+    One shared QR per venue (/m/{slug}) lists the vendors there, so bags and
+    signs are printed once. The venue's organization gets a read-only report
+    at /report/{report_token}.
+    """
+    __tablename__ = "venues"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    market_id = Column(UUID(as_uuid=True), ForeignKey("markets.id"), nullable=False)
+    name = Column(String, nullable=False)
+    slug = Column(String, nullable=False, unique=True, index=True)
+    neighborhood = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    schedule_note = Column(String, nullable=True)
+    report_token = Column(String, nullable=False, unique=True, index=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class Media(Base):
+    """Uploaded photos, resized in the browser before upload. Served at /media/{id}."""
+    __tablename__ = "media"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    content_type = Column(String, nullable=False)
+    data = Column(LargeBinary, nullable=False)
+    size_bytes = Column(Integer, nullable=False, default=0)
+    uploaded_by = Column(String, nullable=True)   # "vendor:<id>" | "reader:<id>" | "editor:<id>"
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class ReaderShare(Base):
+    """
+    "I made this with what I bought." A reader's photo and a few lines.
+    Editors pick the best for the "Readers made this" section; the vendor
+    sees every one about them.
+    """
+    __tablename__ = "reader_shares"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    subscriber_id = Column(UUID(as_uuid=True), ForeignKey("subscribers.id"), nullable=True)
+    vendor_id = Column(UUID(as_uuid=True), ForeignKey("vendors.id"), nullable=True)
+    reader_name = Column(String, nullable=True)    # how they want to be credited
+    email = Column(String, nullable=True)
+    text = Column(Text, nullable=False)
+    image_url = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="pending")  # pending|approved|rejected
+    featured_count = Column(Integer, nullable=False, default=0)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class LinkClick(Base):
+    """A click from an issue or a public page. Clicks, not opens, are the signal."""
+    __tablename__ = "link_clicks"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    subscriber_id = Column(UUID(as_uuid=True), ForeignKey("subscribers.id"), nullable=True)
+    issue_id = Column(UUID(as_uuid=True), ForeignKey("issues.id"), nullable=True)
+    block_id = Column(UUID(as_uuid=True), ForeignKey("blocks.id"), nullable=True)
+    vendor_id = Column(UUID(as_uuid=True), ForeignKey("vendors.id"), nullable=True)
+    kind = Column(String, nullable=False, default="story")   # story|vendor|share|nominate|forward
+    clicked_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    __table_args__ = (
+        Index("ix_clicks_vendor", "vendor_id", "clicked_at"),
+    )
+
+
+class Nomination(Base):
+    """A reader nominating a shop. The nominator auto-follows if it joins."""
+    __tablename__ = "nominations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    shop_name = Column(String, nullable=False)
+    where = Column(String, nullable=True)
+    why = Column(Text, nullable=True)
+    nominator_email = Column(String, nullable=True)
+    subscriber_id = Column(UUID(as_uuid=True), ForeignKey("subscribers.id"), nullable=True)
+    status = Column(String, nullable=False, default="new")   # new|contacted|joined|declined
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class Lead(Base):
+    """An inquiry from a market organization or a vendor via the website."""
+    __tablename__ = "leads"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    kind = Column(String, nullable=False, default="market")   # market|vendor
+    name = Column(String, nullable=False)
+    organization = Column(String, nullable=True)
+    email = Column(String, nullable=False)
+    message = Column(Text, nullable=True)
+    status = Column(String, nullable=False, default="new")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)

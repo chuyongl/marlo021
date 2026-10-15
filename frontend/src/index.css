@@ -1,3 +1,57 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Brown Bag — site styles
+   Layout: one centered column for reading pages, wider grid for apps.
+   Type: Newsreader for anything that is the publication (stories, headlines),
+         Plus Jakarta Sans for the interface around it. */
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    @apply bg-paper text-ink font-sans antialiased;
+    font-size: 16px;
+  }
+  h1, h2, h3 { text-wrap: balance; }
+  a { @apply underline-offset-2; }
+  :focus-visible { outline: 2px solid #a86f37; outline-offset: 2px; border-radius: 4px; }
+  ::selection { background: #ecd6bb; }
+}
+
+@layer components {
+  .wrap { @apply mx-auto w-full max-w-6xl px-4 sm:px-6; }
+  .wrap-narrow { @apply mx-auto w-full max-w-2xl px-4 sm:px-6; }
+
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-[15px] font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed; }
+  .btn-primary { @apply btn bg-ink text-card hover:bg-black; }
+  .btn-kraft { @apply btn bg-kraft text-white hover:bg-kraftdeep; }
+  .btn-quiet { @apply btn border border-line bg-card text-ink hover:border-kraft; }
+  .btn-ghost { @apply btn text-soft hover:text-ink; }
+  .btn-danger { @apply btn border border-rust/40 bg-card text-rust hover:bg-rust hover:text-white; }
+  .btn-sm { @apply px-3 py-1.5 text-sm; }
+
+  .field { @apply block w-full rounded-lg border border-line bg-card px-3 py-2.5 text-[15px] text-ink placeholder:text-soft/70 focus:border-kraft focus:outline-none focus:ring-2 focus:ring-kraft/20; }
+  .label { @apply mb-1.5 block text-sm font-semibold text-ink; }
+  .hint { @apply mt-1 text-[13px] text-soft; }
+
+  .card { @apply rounded-xl border border-line bg-card; }
+  .eyebrow { @apply text-[12px] font-semibold uppercase tracking-[0.09em] text-kraft; }
+  .chip { @apply inline-flex items-center gap-1 rounded-full border border-line bg-card px-2.5 py-0.5 text-[12px] font-medium text-soft; }
+  .chip-good { @apply chip border-moss/30 bg-moss/10 text-moss; }
+  .chip-warn { @apply chip border-kraft/40 bg-kraft/10 text-kraftdeep; }
+  .chip-bad { @apply chip border-rust/30 bg-rust/10 text-rust; }
+  .chip-info { @apply chip border-sky/30 bg-sky/10 text-sky; }
+
+  .story-body p { @apply mb-4 font-serif text-[19px] leading-[1.65] text-ink; }
+  .num { font-variant-numeric: tabular-nums; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+}

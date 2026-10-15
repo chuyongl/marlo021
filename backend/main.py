@@ -6,9 +6,8 @@ Brown Bag API — FastAPI application entry point.
 Brown Bag is the publication. Marlo is the backend system (this repo, this
 API). No user-visible string should contain "Marlo".
 
-STATUS: Build in progress (Aug 2026).
-All v1 Instagram-era routers have been archived. The Brown Bag routers are
-being built and will be registered here as each lands. See docs/TASKS.md.
+STATUS: Pilot build (Oct 2026). Public site, vendor app, editor app and the
+weekly issue all run from this API. See docs/ARCHITECTURE.md.
 """
 
 from fastapi import FastAPI
@@ -37,7 +36,8 @@ sentry_sdk.init(
 
 limiter = Limiter(key_func=get_remote_address)
 
-app = FastAPI(title="Brown Bag API", version="0.3.0")
+VERSION = "0.4.0"
+app = FastAPI(title="Brown Bag API", version=VERSION)
 
 # Trust Railway's proxy headers so request.url uses https, not http
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
@@ -47,7 +47,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:3000")],
+    allow_origins=__import__("core.config", fromlist=["CORS_ORIGINS"]).CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,15 +65,26 @@ async def startup():
     try:
         from database.session import engine
         from database.models import Base
+        from database import migrate
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            await migrate.run(conn)
         logger.info(
             f"[Startup] Database ready — {len(Base.metadata.tables)} tables verified."
         )
     except Exception as e:
         logger.error(f"[Startup] DB check failed (non-fatal): {e}")
 
-    # 2. Background scheduler.
+    # 2. First-boot seed: Seattle market, venues, sample content.
+    try:
+        from database.session import AsyncSessionLocal
+        from database.seed import seed_if_empty
+        async with AsyncSessionLocal() as db:
+            await seed_if_empty(db)
+    except Exception as e:
+        logger.error(f"[Startup] Seed failed (non-fatal): {e}")
+
+    # 3. Background scheduler.
     #    Currently registers zero jobs — correct during the build, not a bug.
     try:
         from agent.scheduler import start_scheduler
@@ -91,7 +102,7 @@ async def favicon():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "version": "0.3.0"}
+    return {"status": "ok", "version": VERSION}
 
 
 @app.get("/health/detailed")
@@ -100,7 +111,7 @@ async def detailed_health():
 
     health = {
         "api": "ok",
-        "version": "0.3.0",
+        "version": VERSION,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -142,19 +153,10 @@ def include(module_path: str, attr: str = "router"):
         logger.error(f"[Routers] FAILED {module_path} — {type(e).__name__}: {e}")
 
 
-# --- Brown Bag routers. Uncomment as each is built (docs/TASKS.md) ---
-
-# P0
-# include("editors.router")          # login, review queue          — P0 #6
-# include("subscribers.router")      # unsubscribe                  — P0 #10
-
-# P1
-# include("vendors.router")          # code signup, magic link      — P1 #11-13
-# include("vendors.conversation")    # interviewer chat             — P1 #14
-
-# P2
-# include("subscribers.scan")        # GET /v/{scan_code}           — P2 #20
-# include("vendors.workspace")       # drafts, library, corrections — P2 #22-23
+# --- Brown Bag routers ---
+include("public.router")    # website, QR landings, follow, share, report, clicks, media
+include("vendors.router")   # vendor app: signup, magic link, interview, drafts, reach
+include("editors.router")   # editor app: queue, vendors, codes, venues, issue, settings
 
 
 # --- Archived. Do NOT re-add without a deliberate decision. ---

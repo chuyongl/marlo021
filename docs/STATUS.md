@@ -1,7 +1,6 @@
 # Brown Bag — Current Status
 
-*Last updated: August 27, 2026*
-*Location: `C:\Users\Octopus\Documents\marlo\docs\STATUS.md`*
+*Last updated: October 15, 2026*
 
 > **Doc rule:** REPLACED each session, never appended. One "Last updated" date only.
 
@@ -9,114 +8,62 @@
 
 ## Where Things Stand
 
-**Design settled. Foundation deployed. Marlo's landing page is finished.**
+**The whole pilot product is built and deployed on marlo021.ai** (API on api.marlo021.ai, version `0.4.0`): public website, vendor app, editor app, the weekly issue, and a live report for market organizers. Everything runs from one site; no extra hosting.
 
-**The pipeline is not built.** No seed data, no writer, no editor UI, no scan flow, no sending.
-
----
-
-## 🔴 FIRST THING NEXT SESSION
-
-### Apply the subscriber schema change, then seed
-
-We decided to **remove `market_id` from `subscribers`** (see below) but `models.py` still has the old shape. **This must land before the seed script**, or the seed writes rows against a schema we've already agreed is wrong.
-
-Three edits to `database/models.py`:
-1. Drop `market_id` from `Subscriber`
-2. `email` becomes globally unique — remove the `UniqueConstraint("market_id","email")`
-3. Add `home_market_id` (nullable, FK → markets) — derived, not chosen
-
-Then drop the stale column in Railway's SQL console. The table is empty, so this is clean:
-```sql
-ALTER TABLE subscribers DROP COLUMN IF EXISTS market_id;
-```
-
-Then P0 #3, seed data.
+The site starts with **five sample vendors** (marked "Sample") and their stories so every page has something to show. Remove them in Editor → Settings before real readers arrive.
 
 ---
 
-## 📐 Decision: Subscribers Are Not Owned By A Market
+## Entry Points
 
-**The problem:** a traveler who scans in Seattle and New York became **two rows with the same email**. Two newsletters every week, two unsubscribe links, two interest vectors that never learn from each other. Silent — nothing errors.
-
-**The insight:** `market_id` on a subscriber was a fiction. Nobody chooses a market; they scan a stall. **The market is a property of the vendor.**
-
-**The change:** drop it. A person follows vendors; vendors belong to markets; what lands in the inbox is decided by follows. The traveler gets **one email**, mostly Seattle with one New York story — arguably the better product.
-
-**`home_market_id`** is a derived tiebreak, recomputed with the interest vector. It only decides which greeting and which ads a reader sees. Ties go to most recently scanned.
-
-**Location tracking is unchanged.** It always came from `inferred_neighborhood`, computed from followed vendors' neighborhoods. Two guards worth keeping in mind when we build scoring:
-- Weight by follow count and recency, so one trip doesn't flip someone's home neighborhood
-- **Proximity scores 0 across markets.** "Is Ballard near Williamsburg" has no answer; each market has its own map
-
-Full note in `SUBSCRIBER_MARKET_CHANGE.md` — fold into `DATA_MODEL.md` and delete when that file is next updated.
+| Who | Where | How they get in |
+|---|---|---|
+| Readers | `/` , `/stories`, `/s/{slug}` | No login |
+| Shoppers at a market (shared QR) | `/m/pike-place` | Tick vendors, enter email once |
+| Shoppers at a stall (vendor QR) | `/v/{scan_code}` | Enter email once |
+| Vendors | `/vendor` | Join at `/vendor/join` with a code (`PIKEPILOT`, `SEATTLE26`), then magic link |
+| Editors | `/editor` | First time: setup code (given to Anna in chat), then email + password |
+| Market organizers | `/report/{token}` | Private link from Editor → Markets & codes |
+| Pitch pages | `/for-markets`, `/for-vendors` | Contact forms land in Editor → Inbox |
 
 ---
 
-## ✅ Deployed and Verified
+## What Was Built (Oct 15)
 
-**Backend**
-- `database/models.py` — 19 tables live
-- `main.py` v`0.3.0` — v1 routers archived, router checklist ready to uncomment
-- `agent/scheduler.py` — framework running, zero jobs (correct for now)
+**Backend** (`backend/`)
+- `content/interviewer.py`, `content/writer.py` — interviewer (gap-driven, one question at a time, stall rule enforced in code, nothing-here exit, sensitive → human) and writer + style guard (fact check against the transcript, one retry)
+- `content/pipeline.py` — conversation → 素材 → draft (background) → vendor preview → editor
+- `vendors/router.py` — signup with code, magic link, weekly conversation, quick updates, drafts, corrections, hide/show, reach numbers, library, Instagram caption
+- `editors/router.py` — setup/login, overview with supply diagnosis, review queue (drafts, corrections, escalations, reader photos), vendors (add, login links, conversations, email this week's questions), codes, venues + report links, issue (greeting, preview, test, send), readers by source, inbox, settings, remove samples
+- `public/router.py` — home/stories/story/vendor/venue pages, follow (one email, many vendors, signup_source recorded), unfollow, unsubscribe, reader shares with photo upload, nominations, leads, media, click tracking (`/r/{token}`), market report
+- `newsletter/issue.py` — personalized selection (seen = permanent, quality ≥ 15, follow/complement/proximity/fatigue scoring), email render, send with seen_blocks + issue_renders
+- `database/migrate.py` — startup schema upkeep (adds missing columns generically, subscriber market_id decision applied); `database/seed.py` — first-boot Seattle market, 3 venues, codes, samples
+- New tables: venues, media, reader_shares, link_clicks, nominations, leads
 
-```
-https://api.marlo021.ai/health           → {"version": "0.3.0"}
-https://api.marlo021.ai/health/detailed  → tables_defined: 19
-```
+**Frontend** (`frontend/src/`)
+- New Brown Bag site replacing the Marlo landing: Home, Stories, Story, Vendor page, Market page (shared QR), Share, Nominate, Unsubscribe, For vendors, For markets, Report, Privacy and Terms (rewritten for Brown Bag), Why local (rebranded)
+- Vendor app (`/vendor`): This week (interview + quick update), Stories (check drafts, Instagram image + caption), Readers, Share (QR, printable table card, messages for regulars and neighbor vendors), Profile
+- Editor app (`/editor`): Overview, Review, This week's issue, Vendors, Markets & codes, Readers, Inbox, Settings
 
-**Frontend — Marlo landing page, done**
-- Business-focused copy: *"Some of your best customers will never join your mailing list. They'll read this one."*
-- Five information layers: stat bar → headline → mechanism → reassurance → routed CTAs
-- Three sections answering the real objections: *doesn't this compete with my list*, *what would I even say*, and the vision
-- `/why-local` — cited sources, the Apple MPP caveat, and what the numbers **don't** prove
-- Plus Jakarta Sans throughout; Newsreader reserved for mocked Brown Bag content only
-- Saturated vendor colour system (amber, leaf, coral, sky, plum)
-- Eight real photos wired in
-- Hero hover: the stack fans, picked blocks step forward
-- Live interview animation, dealing animation, headline ticker
+**Tested locally** against Postgres with a fake AI: full reader → vendor → editor → issue → report flow in a browser, plus a migration test on the old database shape.
 
 ---
 
-## 🔴 NEXT — P0 items 3–10
+## ⚠️ Deployed, Not Yet Verified Live
 
-| # | Task |
-|---|---|
-| 3 | **Seed data** — market, neighborhoods, category pairs, test vendors, editor, readers |
-| 4 + 5 | **Writer agent + style guard** — build together |
-| 6 | Editor login + review queue |
-| 7 | Personalizer |
-| 8 | Renderer |
-| 9 | Dispatcher |
-| 10 | Unsubscribe |
-
-**Done means:** paste in three submissions → writer drafts → approve → issue assembles and sends to three test addresses → **each gets a different selection.**
-
-**Seed should include awkward cases on purpose:** a silent vendor, an unapproved block, and a reader with zero follows. Otherwise it hides the bugs it exists to surface.
+- **Real AI calls.** Interviewer, writer and guard have only run with the fake AI locally. First real test: sign up as a vendor and answer the question.
+- **Email.** Sends use `FROM_EMAIL` (Railway) or the address in Editor → Settings. Must be a domain verified in Resend. If emails fail, every place that sends a link also shows a copyable link.
+- **Weekly send is manual.** Editor → This week's issue → Send. No scheduler job yet.
 
 ---
 
-## ⚠️ Deliberately Deferred: Prompt Quality
+## 🔴 Next
 
-v1 writer output will be publishable but unremarkable. **You can't tune a writing voice against invented material.** The craft pass happens after P1, when real 素材 exists.
-
----
-
-## 🧹 Known Stale
-
-**`Privacy.tsx` and `Terms.tsx` describe the Instagram product and Stripe billing.** They are legal documents currently making false statements. **Must be rewritten before any real reader subscribes.**
-
-Orphaned page files still in `src/pages/` but unrouted: `Signup`, `Setup`, `Help`, `Blog`, `BlogPost_HowMarloThinks`.
-
----
-
-## 🚧 Blocking Decisions
-
-| Question | Blocks |
-|---|---|
-| **Brown Bag sending domain** — can't be marlo021.ai | Any outbound email (P0 #9) |
-| One React app with role routing, or separate vendor / editor apps? | Editor UI (P0 #6) |
-| Physical QR format | Vendor rollout (P2) |
+1. Anna tries every entry point (see the guide given in chat)
+2. Run the interviewer on real vendors; tune question quality from transcripts (Editor → Vendors → Open → Recent conversations)
+3. Decide the sending domain and verify it in Resend
+4. Remove sample content before the first real issue
+5. Pike Place conversation using `/for-markets` and a report link
 
 ---
 
@@ -124,23 +71,7 @@ Orphaned page files still in `src/pages/` but unrouted: `Signup`, `Setup`, `Help
 
 | Item | Value |
 |---|---|
-| Publication | **Brown Bag** (provisional, in `markets.publication_name`) |
-| Backend system | Marlo — repo and API only, never user-facing |
-| API base | `https://api.marlo021.ai` |
-| Local repo | `C:\Users\Octopus\Documents\marlo\` |
-| Run frontend | `cd frontend` then `npm start` |
-| Logs | `railway logs --tail` |
-
----
-
-## Key Design Decisions (cold-start recall)
-
-- **Two agents:** interviewer gathers 素材, writer writes the story
-- **Everything publishable is a block** — one table, one approval lifecycle
-- **The bank is a query**, not a table: approved + not expired + no open corrections
-- **Seen is permanent** per reader; **fatigue** is a decaying penalty per vendor
-- **Subscribers belong to no market** — follows decide what they get
-- **Vendors see drafts before editors** and can flag corrections
-- **Issue ships every week** — never shrink, never skip, get more material
-- **Nothing ships without editor approval**
-- **Vendors sign up with invitation codes** — live immediately, no activation step
+| API | `https://api.marlo021.ai` (`/health` → 0.4.0) |
+| Site | `https://marlo021.ai` |
+| Deploy | push to `main` → Railway builds backend and frontend |
+| Interview test harness | `backend/tools/interview_harness.py` (needs `ANTHROPIC_API_KEY`) |

@@ -15,13 +15,13 @@ gets thin answers, a good one gets the story.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import pathlib
 import sys
 
-from agent import interviewer
-from agent.interviewer import client
-from agent.writer import write_checked
+from content import interviewer, llm
+from content.writer import write_checked
 
 MAX_TURNS = 14
 
@@ -118,40 +118,35 @@ SIM_SYSTEM = """You are role-playing a small local vendor being interviewed by t
 Return only your reply text."""
 
 
-def simulate_vendor(persona: dict, transcript: list[dict]) -> str:
+async def simulate_vendor(persona: dict, transcript: list[dict]) -> str:
     convo = "\n".join(
         ("Interviewer: " if m["role"] == "agent" else "You: ") + m["content"] for m in transcript
     )
-    resp = client().messages.create(
-        model="claude-sonnet-4-6",
+    return await llm.text(
+        SIM_SYSTEM,
+        (
+            f"Who you are: {persona['vendor']['name']} of {persona['vendor']['business']}.\n"
+            f"Your private facts: {persona['hidden']}\n"
+            f"How you talk: {persona['style']}\n\n"
+            f"Conversation so far:\n{convo}\n\nYour reply:"
+        ),
         max_tokens=300,
-        system=SIM_SYSTEM,
-        messages=[{
-            "role": "user",
-            "content": (
-                f"Who you are: {persona['vendor']['name']} of {persona['vendor']['business']}.\n"
-                f"Your private facts: {persona['hidden']}\n"
-                f"How you talk: {persona['style']}\n\n"
-                f"Conversation so far:\n{convo}\n\nYour reply:"
-            ),
-        }],
     )
-    return resp.content[0].text.strip()
 
 
-def run(key: str) -> str:
+async def run(key: str) -> str:
     persona = PERSONAS[key]
     vendor = persona["vendor"]
     lines = [f"## {vendor['name']} — {vendor['business']}", ""]
 
-    opening = interviewer.opening_question(vendor)
+    opening = await interviewer.opening_question(vendor)
     transcript = [{"role": "agent", "content": opening}]
     stalled = 0
     turn = None
 
     for _ in range(MAX_TURNS):
-        transcript.append({"role": "vendor", "content": simulate_vendor(persona, transcript)})
-        turn = interviewer.next_turn(vendor, transcript, stalled)
+        transcript.append({"role": "vendor", "content": await simulate_vendor(persona, transcript)})
+        turn = await interviewer.next_turn(vendor, transcript, stalled)
         stalled = turn.stalled_turns
         lines.append(
             f"<!-- target={turn.target_gap} added_new={turn.added_new} stalled={stalled} move={turn.move} :: {turn.reason} -->"
@@ -171,7 +166,7 @@ def run(key: str) -> str:
 
     kind = {"finish_story": "story", "finish_update": "update"}.get(turn.move)
     if kind:
-        draft = write_checked(kind, vendor, transcript)
+        draft = await write_checked(kind, vendor, transcript)
         g = draft["guard"]
         lines += [
             f"### Draft ({kind}, {draft['words']} words) — guard: {'PASS' if g['pass'] else 'FAIL'}",
@@ -196,7 +191,7 @@ def main(keys: list[str]) -> None:
     report = [f"# Interview harness run {stamp}", ""]
     for k in keys:
         print(f"running {k}...", flush=True)
-        report.append(run(k))
+        report.append(asyncio.run(run(k)))
     path = out_dir / f"run-{stamp}.md"
     path.write_text("\n".join(report), encoding="utf-8")
     print(path)
