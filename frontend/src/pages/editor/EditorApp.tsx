@@ -218,7 +218,7 @@ function DraftEditor({ d, onDone, correctionId }: { d: any; onDone: () => void; 
       </div>
       {d.corrections?.length > 0 && <div className="mb-3">{d.corrections.map((c: any) => <Notice key={c.id}>Vendor says: “{c.note}”</Notice>)}</div>}
       {g && !g.pass && <div className="mb-3"><Notice kind="bad">{g.notes}{g.invented_facts?.length ? ` Not in the conversation: ${g.invented_facts.join('; ')}` : ''}</Notice></div>}
-      <label className="label" htmlFor={`h-${d.id}`}>Headline <span className="font-normal text-soft">({headline.length}/50)</span></label>
+      <label className="label" htmlFor={`h-${d.id}`}>Headline <span className="font-normal text-soft">({headline.length}/60)</span></label>
       <input id={`h-${d.id}`} className="field font-serif text-[20px]" value={headline} onChange={(e) => setHeadline(e.target.value)} />
       <label className="label mt-4" htmlFor={`b-${d.id}`}>Text <span className="font-normal text-soft">({words} words)</span></label>
       <textarea id={`b-${d.id}`} className="field min-h-[220px] font-serif text-[17px] leading-relaxed" value={body} onChange={(e) => setBody(e.target.value)} />
@@ -232,7 +232,7 @@ function DraftEditor({ d, onDone, correctionId }: { d: any; onDone: () => void; 
         <div>
           <label className="label" htmlFor={`q-${d.id}`}>Quality: <span className="num">{q}</span>/40</label>
           <input id={`q-${d.id}`} type="range" min={0} max={40} value={q} onChange={(e) => setQ(+e.target.value)} className="w-full accent-[#a86f37]" />
-          <p className="hint">Below 15 never ships. 25 is a solid story; 35+ leads the issue.</p>
+          <p className="hint">Below 15 never ships. 25 is a solid story; 35+ leads the issue. The lead story runs in full; a second story shows its opening with a link.</p>
         </div>
         <label className="flex items-start gap-2 text-[14px]"><input type="checkbox" className="mt-1 h-4 w-4 accent-[#a86f37]" checked={pub} onChange={(e) => setPub(e.target.checked)} /><span>Show on the public website after approval. Turn off for anything personal.</span></label>
       </div>

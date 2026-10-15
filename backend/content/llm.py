@@ -64,7 +64,8 @@ def _fake_tool(name: str, user: str) -> dict:
                 "pass": True, "notes": "Fake guard: fine."}
     vendor_turns = user.count("\nVendor: ")
     done = vendor_turns >= 3 or "that's all" in user.lower()
-    have = {"person": "Mei", "stake": "sold out", "scene": "", "detail": "40 jars",
+    have = {"spark": "sold out", "origin": "started in July", "moment": "line before setup",
+            "people": "daughter", "turn": "made too few", "meaning": "", "details": "40 jars",
             "quote": "", "update": "Saturday at Ballard"}
     return {
         "have": have,

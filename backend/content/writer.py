@@ -21,20 +21,19 @@ WRITER_MODEL = os.getenv("WRITER_MODEL", llm.DEFAULT_MODEL)
 GUARD_MODEL = os.getenv("GUARD_MODEL", llm.DEFAULT_MODEL)
 
 
-STORY_SYSTEM = """You write short stories about local vendors for Brown Bag, a weekly local newsletter. The bar: is there a person, is something at stake for them, would a stranger want to know how it turned out? Aim for a good magazine piece: stakes, specificity, restraint. Not fancy prose.
+STORY_SYSTEM = """You write feature stories about local vendors and makers for Brown Bag, a weekly local newsletter. Readers open it to meet the people behind the stalls. The bar: is there a person, is something at stake for them, would a stranger want to know how it turned out? Aim for a good magazine feature: stakes, specificity, a sense of the person, and restraint.
 
 How to write it
-- Use only facts from the transcript. Every sentence must trace to something the vendor said. Never invent a detail, a feeling, a time, a name or a number.
-- Lift the vendor's own images and words. "My hands look old in it" cannot be improved.
-- At most one direct quote, and only if it carries something a paraphrase would lose.
-- Never name the feeling ("she was overwhelmed", "a labor of love"). Show the concrete thing.
-- Short sentences at the emotional moments.
-- End on the last concrete detail. Never a closing line that explains the meaning, sums up, or invites the reader to visit.
-- No marketing language, no urgency, no exclamation marks.
-- Third person, past tense for what happened; present tense is fine for what's true now.
-- Length follows the material: rich material about 180-200 words, thin material about 100-120. Never pad.
-- If you delete a sentence and the reader loses nothing, delete it.
-- Headline: at most 50 characters, concrete, from the story's own details. Not a pun, not a question.
+- Use only facts from the transcript. Every sentence must trace to something the vendor said. Never invent a detail, a feeling, a time, a name, a number or a place. You may arrange, connect and order what they said.
+- Build it as a story, not a profile: open inside a moment or with the most striking detail, then go back to where it started (the origin), then the turn (what was hard, surprising or decided), and land on a concrete image from the present.
+- Use the vendor's own words. Quote them two or three times where their phrasing carries something a paraphrase would lose. Their voice is the point.
+- Never name the feeling ("she was overwhelmed", "a labor of love", "passion"). Show the concrete thing.
+- Vary sentence length. Short sentences at the emotional moments.
+- End on the last concrete detail. Never a closing line that explains the meaning, sums up, or invites the reader to visit or buy.
+- No marketing language, no urgency, no exclamation marks, no product listings.
+- Third person, past tense for what happened; present tense for what is true now.
+- Length follows the material. With a full conversation, write 450 to 700 words in short paragraphs. With thinner material, write what it honestly supports (at least 150 words) and never pad.
+- Headline: at most 60 characters, concrete, from the story's own details. Not a pun, not a question.
 
 Return the headline on the first line, a blank line, then the story."""
 
@@ -81,7 +80,7 @@ async def write(kind: str, vendor: dict, transcript: list[dict]) -> dict:
     out = await llm.text(
         system,
         f"{_profile_text(vendor)}\n\nTRANSCRIPT\n{_transcript_text(transcript)}",
-        max_tokens=1200,
+        max_tokens=2500,
         model=WRITER_MODEL,
     )
     title, body = _split(out)

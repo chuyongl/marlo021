@@ -228,13 +228,13 @@ function Talk({ me, goStories }: { me: any; goStories: () => void }) {
         {!c.finished ? (
           <form onSubmit={send} className="mt-3 flex flex-col gap-2">
             <label htmlFor="talk-input" className="sr-only">Your answer</label>
-            <textarea id="talk-input" className="field min-h-[84px]" value={text} onChange={(e) => setText(e.target.value)} placeholder="Type your answer. A line or two is plenty."
+            <textarea id="talk-input" className="field min-h-[84px]" value={text} onChange={(e) => setText(e.target.value)} placeholder="Tell it the way you'd tell a friend. Longer is better."
               onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send() }} />
             <div className="flex flex-wrap items-center gap-2">
               <button className="btn-primary" disabled={sending || !text.trim()}>{sending ? 'Sending…' : 'Send'}</button>
               <button type="button" className="btn-ghost btn-sm" disabled={sending} onClick={() => { setText("That's all I've got this week."); }}>That's all for this week</button>
             </div>
-            <p className="hint">You can leave and come back: the conversation waits for you.</p>
+            <p className="hint">Tip: tap the microphone on your phone keyboard and just talk. You can leave and come back; the conversation waits for you.</p>
           </form>
         ) : (
           <div className="mt-4 flex flex-col gap-3">

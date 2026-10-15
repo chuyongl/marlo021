@@ -68,7 +68,7 @@ async def open_conversation(db, vendor: Vendor, force_new: bool = False) -> Conv
         logger.error(f"[Pipeline] opening question failed: {e}")
         question = "What's one thing that happened at your stall this week that surprised you?"
     conv = Conversation(vendor_id=vendor.id, cycle_start=week_start(), opening_question=question,
-                        gaps_remaining=["person", "stake", "scene", "detail"])
+                        gaps_remaining=["origin", "moment", "people", "turn", "meaning"])
     db.add(conv)
     await db.flush()
     db.add(Message(conversation_id=conv.id, role="agent", content=question))

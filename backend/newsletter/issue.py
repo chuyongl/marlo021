@@ -194,13 +194,18 @@ def render(market: Market, issue: Issue | None, sel: dict, subscriber: Subscribe
         link = track(subscriber, issue, f"/s/{b.slug}", "story", b)
         vlink = track(subscriber, issue, f"/v/{v.scan_code}", "vendor", vendor_id=v.id) if v else "#"
         label = "This week's story" if i == 0 else "One more"
+        if i == 0:
+            body_html = _paras(b.body)
+        else:
+            body_html = _paras(_lead(b.body)) + (
+                f'<p style="margin:0 0 14px;font-size:15px"><a href="{link}" style="color:{KRAFT}">Read the rest of the story</a></p>')
         parts.append(f'''
 <tr><td style="padding:28px 0 8px;border-top:1px solid #e3d8c8">
 <p style="margin:0 0 6px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:{KRAFT}">{label}</p>
 <h2 style="margin:0 0 6px;font-family:Georgia,serif;font-size:{26 if i == 0 else 21}px;line-height:1.25;color:{INK}">
 <a href="{link}" style="color:{INK};text-decoration:none">{_e(b.headline)}</a></h2>
 <p style="margin:0 0 16px;font-size:14px;color:{MUTED}"><a href="{vlink}" style="color:{MUTED}">{_e(v.name if v else "")}</a>{(" · " + _e(v.neighborhood)) if v and v.neighborhood else ""}</p>
-{_paras(b.body)}
+{body_html}
 </td></tr>''')
 
     if sel["updates"]:
@@ -257,6 +262,10 @@ def render(market: Market, issue: Issue | None, sel: dict, subscriber: Subscribe
 <tr><td style="padding:12px 0 8px"></td></tr>{"".join(p if p.lstrip().startswith("<tr") else f"<tr><td style='padding:8px 0'>{p}</td></tr>" for p in parts)}
 </table></td></tr></table></td></tr></table></body></html>'''
     return subject, doc, words
+
+
+def _lead(text: str, paras: int = 2) -> str:
+    return "\n".join([p for p in (text or "").split("\n") if p.strip()][:paras])
 
 
 def _abs(url: str) -> str:
