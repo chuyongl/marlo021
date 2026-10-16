@@ -6,12 +6,18 @@ conversation, drafts, quick updates, reach numbers and promotion material.
 import logging
 from datetime import timedelta
 
+from typing import Literal
+
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from content.pipeline import draft_submission, open_conversation, vendor_says
+from content import scout, storymap, writer
+from content.pipeline import (
+    draft_submission, open_conversation, pause_conversation, start_conversation, transcript_for_submission,
+    vendor_profile, vendor_says,
+)
 from core.auth import current_vendor, new_vendor_magic_link, redeem_magic_link
 from core.config import FRONTEND_URL
 from core.mail import send_email
@@ -221,11 +227,27 @@ async def photo(file: UploadFile = File(...), vendor: Vendor = Depends(current_v
 # ── The conversation ─────────────────────────────────────────────────────────
 
 def conv_out(conv, drafting: bool = False) -> dict:
+    m = conv.story_map or {}
+    is_open = conv.status == ConversationStatus.OPEN
+    choosing = is_open and not conv.messages
+    last_agent = max((i for i, x in enumerate(conv.messages) if x.role == "agent"), default=-1)
+    last_is_agent = bool(conv.messages) and conv.messages[-1].role == "agent"
+
+    def quick(i, x):
+        return (x.meta or {}).get("quick", []) if is_open and last_is_agent and i == last_agent and not conv.resume_at else []
+
     return {
         "id": str(conv.id), "status": conv.status, "opening_question": conv.opening_question,
-        "messages": [{"role": m.role, "content": m.content, "at": iso(m.created_at)} for m in conv.messages],
-        "finished": conv.status != ConversationStatus.OPEN, "escalated": bool(conv.escalated_at),
+        "choosing": choosing,
+        "hooks": [{"id": h["id"], "title": h["title"], "bait": h["bait"]} for h in (conv.hooks or [])] if choosing else [],
+        "menu": [{"id": x["id"], "title": x["title"]} for x in scout.MENU] if choosing else [],
+        "messages": [{"role": x.role, "content": x.content, "at": iso(x.created_at),
+                      "images": x.image_urls or [], "quick": quick(i, x)} for i, x in enumerate(conv.messages)],
+        "finished": not is_open, "escalated": bool(conv.escalated_at),
         "drafting": drafting,
+        "paused": bool(conv.resume_at), "resume_at": iso(conv.resume_at),
+        "progress": storymap.stage_of(m) if "scene" in m else "scene",
+        "hook": ((m.get("hook") or {}).get("title") if isinstance(m.get("hook"), dict) else None),
     }
 
 
@@ -237,6 +259,37 @@ async def get_conversation(vendor: Vendor = Depends(current_vendor), db: AsyncSe
         sub = (await db.execute(select(Submission).where(Submission.conversation_id == conv.id))).scalar_one_or_none()
         drafting = bool(sub and sub.status == "new" and not sub.sensitive)
     return conv_out(conv, drafting)
+
+
+class StartIn(BaseModel):
+    pick: str = Field(min_length=1, max_length=40)
+    text: str | None = Field(default=None, max_length=4000)
+    photo_url: str | None = None
+    caption: str | None = Field(default=None, max_length=1000)
+
+
+@router.post("/conversation/start")
+async def start(body: StartIn, bg: BackgroundTasks, vendor: Vendor = Depends(current_vendor), db: AsyncSession = Depends(get_db)):
+    """The vendor tapped a story on the menu."""
+    conv = await open_conversation(db, vendor)
+    if conv.status != ConversationStatus.OPEN:
+        conv = await open_conversation(db, vendor, force_new=True)
+    if conv.messages:
+        return conv_out(conv)
+    try:
+        conv = await start_conversation(db, vendor, conv, body.pick, text=body.text, photo_url=body.photo_url, caption=body.caption)
+        if body.text and body.text.strip() and body.pick != "photo":
+            result = await vendor_says(db, vendor, conv, body.text)
+            if result["submission_id"]:
+                bg.add_task(draft_submission, result["submission_id"])
+    except ValueError as e:
+        await db.rollback()
+        raise HTTPException(400, str(e))
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[Vendor] could not start conversation: {e}")
+        await db.rollback()
+        raise HTTPException(503, "The interviewer is having trouble right now. Please try again in a minute.")
+    return conv_out(conv)
 
 
 class MessageIn(BaseModel):
@@ -258,6 +311,21 @@ async def post_message(body: MessageIn, bg: BackgroundTasks, vendor: Vendor = De
     if result["submission_id"]:
         bg.add_task(draft_submission, result["submission_id"])
     return conv_out(conv, drafting=bool(result["submission_id"]))
+
+
+@router.post("/conversation/pause")
+async def pause(vendor: Vendor = Depends(current_vendor), db: AsyncSession = Depends(get_db)):
+    """'Yes, send me one quick question tomorrow.'"""
+    conv = await open_conversation(db, vendor)
+    if conv.status != ConversationStatus.OPEN or not conv.messages:
+        raise HTTPException(400, "There's nothing to pause right now.")
+    try:
+        conv = await pause_conversation(db, vendor, conv)
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[Vendor] pause failed: {e}")
+        await db.rollback()
+        raise HTTPException(503, "Couldn't set that up just now. Please try again.")
+    return conv_out(conv)
 
 
 @router.post("/conversation/new")
@@ -309,6 +377,9 @@ async def my_stories(vendor: Vendor = Depends(current_vendor), db: AsyncSession 
             "is_public": b.is_public, "reject_reason": b.reject_reason,
             "public_url": f"{FRONTEND_URL}/s/{b.slug}" if b.status == BlockStatus.APPROVED and b.is_public else None,
             "corrections": [{"note": c.note, "status": c.status, "at": iso(c.created_at)} for c in corr if c.block_id == b.id],
+            "claims": [{"id": c["id"], "text": c["text"], "kind": c["kind"], "unsupported": c["status"] == "unsupported"}
+                       for c in (b.claims or [])] if b.status == BlockStatus.VENDOR_PREVIEW else [],
+            "revisions": len(b.history or []),
             "instagram_caption": _caption(b, vendor) if b.status == BlockStatus.APPROVED else None,
         })
         out.append(item)
@@ -339,6 +410,83 @@ async def approve_draft(block_id: str, vendor: Vendor = Depends(current_vendor),
         b.vendor_viewed_at = utcnow()
     await db.commit()
     return {"status": b.status}
+
+
+class ClaimDecision(BaseModel):
+    id: str
+    action: Literal["ok", "fix", "remove"]
+    note: str | None = Field(default=None, max_length=500)
+
+
+class CheckIn(BaseModel):
+    decisions: list[ClaimDecision] = Field(default_factory=list, max_length=40)
+
+
+MAX_REVISIONS = 2
+
+
+@router.post("/stories/{block_id}/check")
+async def check_draft(block_id: str, body: CheckIn, vendor: Vendor = Depends(current_vendor), db: AsyncSession = Depends(get_db)):
+    """
+    The vendor went through the claims. Everything confirmed -> to the editor.
+    Fixes and removals are applied to the draft (their decisions are binding)
+    and they check the revised version.
+    """
+    b = await _own_block(db, vendor, block_id)
+    if b.status != BlockStatus.VENDOR_PREVIEW:
+        raise HTTPException(400, "This draft isn't waiting for you any more.")
+    claims = {c["id"]: c for c in (b.claims or [])}
+    changes = []
+    for d in body.decisions:
+        if d.id not in claims or d.action == "ok":
+            continue
+        if d.action == "fix" and not (d.note or "").strip():
+            raise HTTPException(400, "Tell us what it should say instead, or choose 'Remove'.")
+        changes.append({"claim": claims[d.id]["text"], "action": d.action, "note": (d.note or "").strip()})
+
+    if not changes:
+        b.status = BlockStatus.PENDING_REVIEW
+        b.vendor_viewed_at = utcnow()
+        b.guard_notes = {**(b.guard_notes or {}), "vendor_confirmed": len(claims)}
+        await db.commit()
+        return {"status": b.status, "revised": False}
+
+    def hand_to_editor(reason: str):
+        note = "; ".join(f'{c["action"].upper()}: {c["claim"]}' + (f' -> {c["note"]}' if c["note"] else "") for c in changes)
+        db.add(BlockCorrection(block_id=b.id, vendor_id=vendor.id, note=f"{reason} {note}"[:1000]))
+        b.status = BlockStatus.PENDING_REVIEW
+        b.vendor_viewed_at = utcnow()
+
+    if len(b.history or []) >= MAX_REVISIONS:
+        hand_to_editor("Vendor still has changes after two rounds.")
+        await db.commit()
+        return {"status": b.status, "revised": False, "handed_to_editor": True}
+
+    sub = await db.get(Submission, b.submission_id) if b.submission_id else None
+    try:
+        transcript, _ = await transcript_for_submission(db, sub) if sub else ([], None)
+        if not transcript:
+            raise ValueError("no transcript")
+        profile = await vendor_profile(db, vendor)
+        title, text, notes = await writer.revise(profile, transcript, b.headline or "", b.body or "", changes)
+        text = writer.snap_quotes(text, writer.vendor_texts(transcript))
+        new_claims = await writer.check(title, text, transcript)
+    except Exception as e:  # noqa: BLE001 - never lose the vendor's corrections
+        logger.error(f"[Vendor] revision failed for {b.id}: {e}")
+        await db.rollback()
+        b = await _own_block(db, vendor, block_id)
+        hand_to_editor("Automatic update failed; please apply.")
+        await db.commit()
+        return {"status": b.status, "revised": False, "handed_to_editor": True}
+
+    b.history = (b.history or []) + [{"at": iso(utcnow()), "headline": b.headline, "body": b.body, "decisions": changes}]
+    b.headline, b.body = title[:120], text
+    b.word_count = len(text.split())
+    b.claims = new_claims
+    brief = (b.guard_notes or {}).get("brief")
+    b.guard_notes = {**writer.make_guard(text, new_claims, brief), "revised_by_vendor": True, "revision_notes": notes}
+    await db.commit()
+    return {"status": b.status, "revised": True}
 
 
 class CorrectionIn(BaseModel):

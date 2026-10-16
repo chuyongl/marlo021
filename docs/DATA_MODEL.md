@@ -189,6 +189,10 @@ Magic link once, then a long session. **One click on first visit, then the site 
 | stalled_turns | int | Exchanges adding nothing — 2 means stop |
 | escalated_at | datetime | |
 | escalation_reason | string | `silent` / `sensitive` / `thin` |
+| **story_map** | JSONB | The interview's working state: scene details, people, want / obstacle / turn / after / meaning, the vendor's exact quotes, facts, mode (`normal` / `low_yield`), skills used. See `docs/STORY_ENGINE.md` |
+| **hooks** | JSONB | The story ideas offered at the start (from the scout) |
+| **resume_at** | datetime | When a "one quick question tomorrow" is due; null otherwise |
+| **nudge_count** | int | Follow-up questions already sent (max 3) |
 
 **messages**
 
@@ -199,7 +203,17 @@ Magic link once, then a long session. **One click on first visit, then the site 
 | role | string | `agent` / `vendor` |
 | content | text | |
 | image_urls | array | |
+| **meta** | JSONB | Agent messages: which skill wrote it, what it echoed, rule problems found, quick-reply buttons |
 | created_at | datetime | |
+
+**skill_overrides** (editor edits to interviewer/writer instructions)
+
+| Column | Type | Description |
+|---|---|---|
+| name | string | PK. Skill name, e.g. `scene-deepener` |
+| body | text | The edited instructions. Deleting the row restores the file default |
+| updated_by | string | Editor email |
+| updated_at | datetime | |
 
 ---
 
@@ -244,8 +258,13 @@ Magic link once, then a long session. **One click on first visit, then the site 
 | **vendor_viewed_at** | datetime | When the vendor saw the draft |
 | editor_id / reviewed_at | | |
 | reject_reason | string | |
+| **claims** | JSONB | Every checkable fact in the draft: `{id, text, kind, status: supported/inferred/unsupported, turns, evidence}`. The vendor confirms, fixes or removes these instead of proofreading |
+| **story_plan** | JSONB | The planner's shape, outline (each beat cites the vendor's turns) and headline options |
+| **history** | JSONB | Earlier versions after the vendor's changes (max 2 revisions, then it goes to an editor) |
 | times_used | int | |
 | created_at | datetime | |
+
+(`guard_notes` also holds the style flags, claim counts and the editor brief: rubric scores 1-4, verdict run / edit / hold.)
 
 **Lifecycle:**
 

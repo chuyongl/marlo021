@@ -141,18 +141,22 @@ Where difficulty becomes active crisis — mental health, anything where publish
 
 ## The Vendor Conversation
 
-**No turn limit.** An editor working with a writer doesn't get one exchange, and neither does this. Vendors will talk for twenty minutes about their own life if the questions are good.
+**The vendor chooses the story; the interviewer deepens it.** Each week the vendor sees a short menu: two to four ideas written for them (from their profile, the season, what they told us before) plus a fixed list (the first thing you sold, your hardest market day, a regular, a mistake that turned out well, what you'd grab in a fire, send a photo, something else). They tap one and the interviewer opens with a question about one small moment, not "tell me about your week".
 
-**What makes people quit isn't length — it's vagueness.** *"Tell me more." "Can you elaborate?" "Anything else?"* is homework. A specific question that shows you were listening is a conversation.
+**What makes people quit isn't length. It's vagueness and feeling interrogated.** *"Tell me more." "Can you elaborate?" "Why did you do that?"* is homework. A short echo of the vendor's own words, then one concrete question, is a conversation.
 
-**Rules for the interviewer:**
-- **Every question references something the vendor just said.** No generic prompts.
-- **Track what's missing** — a person? a stake? a concrete scene? — and ask toward the gap.
-- **If two exchanges in a row add nothing, stop** and take what's there.
-- **The vendor can end it anytime.** "That's all I've got" is a complete answer.
-- **Never fish for pain.**
+**Rules for the interviewer** (enforced in code, not just asked for):
+- **Echo, then one question.** Repeat a few of the vendor's own words, then ask a single question under 25 words.
+- **Stay inside one moment** until it could be filmed: who was there, where they stood, what was said, what the hands were doing.
+- **Never ask "why".** Ask what happened, what it looked like, what was said.
+- **No praise, no exclamation marks, no offering answers or feelings.**
+- **Short answers get easier questions, not more pressure.** A choice between two things, a finish-the-sentence, a tiny concrete question, a photo. After two more thin answers it offers to send **one quick question tomorrow** instead (a micro-session, by email).
+- **The vendor can end it anytime.** "That's all I've got" is a complete answer. At most ten answers in one sitting.
+- **Never fish for pain.** If the vendor raises something private, the interviewer asks only whether to keep it out or mention it generally; sensitive material is never drafted automatically and goes to an editor.
 
-**The conversation persists.** Vendors answer between customers. Three questions now, more after closing, finish tomorrow. **Nothing has to be completed in one sitting.**
+**Each skill is a short instruction file the editor can edit** (Editor → Skills). See `docs/STORY_ENGINE.md`.
+
+**The conversation persists.** Vendors answer between customers. Nothing has to be completed in one sitting.
 
 ### Stories don't run out
 

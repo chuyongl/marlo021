@@ -174,6 +174,7 @@ function Talk({ me, goStories }: { me: any; goStories: () => void }) {
   const conv = useLoad(() => api('/vendor/conversation', { as: 'vendor' }))
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
+  const [starting, setStarting] = useState<string | null>(null)
   const [err, setErr] = useState('')
   const [pending, setPending] = useState<string | null>(null)
   const [drafting, setDrafting] = useState(false)
@@ -193,9 +194,9 @@ function Talk({ me, goStories }: { me: any; goStories: () => void }) {
     return () => clearInterval(id)
   }, [drafting])
 
-  async function send(e?: React.FormEvent) {
+  async function send(override?: string, e?: React.FormEvent) {
     e?.preventDefault()
-    const t = text.trim()
+    const t = (override ?? text).trim()
     if (!t || sending) return
     setSending(true); setErr(''); setPending(t); setText('')
     try {
@@ -204,42 +205,77 @@ function Talk({ me, goStories }: { me: any; goStories: () => void }) {
       if (r.drafting) setDrafting(true)
     } catch (e: any) { setErr(e.message); setText(t) } finally { setSending(false); setPending(null) }
   }
+  async function start(body: { pick: string; text?: string; photo_url?: string; caption?: string }) {
+    setErr(''); setStarting(body.pick)
+    try {
+      const r = await api('/vendor/conversation/start', { as: 'vendor', body })
+      conv.setData(r)
+      if (r.drafting) setDrafting(true)
+    } catch (e: any) { setErr(e.message) } finally { setStarting(null) }
+  }
+  async function quick(q: { label: string; action: string }) {
+    if (q.action === 'pause') {
+      setSending(true); setErr('')
+      try { conv.setData(await api('/vendor/conversation/pause', { as: 'vendor', method: 'POST' })) } catch (e: any) { setErr(e.message) } finally { setSending(false) }
+    } else send("That's all I've got this week.")
+  }
   async function startNew() {
     setErr('')
     try { conv.setData(await api('/vendor/conversation/new', { as: 'vendor', method: 'POST' })) } catch (e: any) { setErr(e.message) }
   }
 
   if (conv.error) return <Notice kind="bad">{conv.error}</Notice>
-  if (!c) return <Spinner label="Getting this week's question" />
+  if (!c) return <Spinner label="Getting this week's stories ready" />
+
+  if (c.choosing) return (
+    <div className="flex flex-col gap-6">
+      <QuickUpdate />
+      <StoryMenu c={c} starting={starting} onStart={start} />
+      {err && <Notice kind="bad">{err}</Notice>}
+    </div>
+  )
+
+  const last = c.messages[c.messages.length - 1]
+  const quickReplies: { label: string; action: string }[] = last?.role === 'agent' && !c.finished ? last.quick || [] : []
 
   return (
     <div className="flex flex-col gap-6">
       <QuickUpdate />
       <section>
-        <p className="eyebrow mb-3">This week's conversation</p>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="eyebrow">{c.hook ? `Your story: ${c.hook}` : "This week's conversation"}</p>
+          {!c.finished && <Progress stage={c.progress} />}
+        </div>
         <div className="card flex flex-col gap-2 p-4" aria-live="polite">
           {c.messages.map((m: any, i: number) => (
-            <div key={i} className={`max-w-[88%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-[15px] leading-snug ${m.role === 'agent' ? 'self-start bg-paper' : 'self-end bg-ink text-card'}`}>{m.content}</div>
+            <div key={i} className={`max-w-[88%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-[15px] leading-snug ${m.role === 'agent' ? 'self-start bg-paper' : 'self-end bg-ink text-card'}`}>
+              {m.images?.map((u: string) => <img key={u} src={mediaUrl(u)} alt="Attached by you" className="mb-2 max-h-56 rounded-lg object-cover" />)}
+              {m.content}
+            </div>
           ))}
           {pending && <div className="max-w-[88%] self-end whitespace-pre-wrap rounded-2xl bg-ink/80 px-3.5 py-2.5 text-[15px] text-card">{pending}</div>}
           {sending && <div className="self-start rounded-2xl bg-paper px-3.5 py-2.5 text-[15px] text-soft"><span className="animate-pulse">Thinking…</span></div>}
+          {!sending && quickReplies.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-2">{quickReplies.map((q) => <button key={q.action} className="btn-quiet btn-sm" onClick={() => quick(q)}>{q.label}</button>)}</div>
+          )}
           <div ref={endRef} />
         </div>
+        {c.paused && !c.finished && <div className="mt-3"><Notice kind="good">I'll send you one question tomorrow morning. You can also just answer here whenever you like.</Notice></div>}
         {!c.finished ? (
-          <form onSubmit={send} className="mt-3 flex flex-col gap-2">
+          <form onSubmit={(e) => send(undefined, e)} className="mt-3 flex flex-col gap-2">
             <label htmlFor="talk-input" className="sr-only">Your answer</label>
             <textarea id="talk-input" className="field min-h-[84px]" value={text} onChange={(e) => setText(e.target.value)} placeholder="Tell it the way you'd tell a friend. Longer is better."
               onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send() }} />
             <div className="flex flex-wrap items-center gap-2">
               <button className="btn-primary" disabled={sending || !text.trim()}>{sending ? 'Sending…' : 'Send'}</button>
-              <button type="button" className="btn-ghost btn-sm" disabled={sending} onClick={() => { setText("That's all I've got this week."); }}>That's all for this week</button>
+              <button type="button" className="btn-ghost btn-sm" disabled={sending} onClick={() => send("That's all I've got this week.")}>That's all for this week</button>
             </div>
             <p className="hint">Tip: tap the microphone on your phone keyboard and just talk. You can leave and come back; the conversation waits for you.</p>
           </form>
         ) : (
           <div className="mt-4 flex flex-col gap-3">
             {c.escalated ? <Notice>Thank you for sharing this. An editor will read it personally before anything else happens.</Notice>
-              : drafting ? <Notice><span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-sky/30 border-t-sky" />Writing your draft. It usually takes about a minute, and you'll see it before anyone else.</span></Notice>
+              : drafting ? <Notice><span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-sky/30 border-t-sky" />Writing your draft. It usually takes a minute or two, and you'll see it before anyone else.</span></Notice>
               : c.status === 'submitted' ? <Notice kind="good">Your draft is ready. <button className="font-semibold underline" onClick={goStories}>Read it and check the facts</button>.</Notice>
               : <Notice>No story this week, and that's fine. Some weeks are like that.</Notice>}
             <button className="btn-quiet self-start" onClick={startNew}>Tell us something else</button>
@@ -248,6 +284,92 @@ function Talk({ me, goStories }: { me: any; goStories: () => void }) {
         {err && <div className="mt-3"><Notice kind="bad">{err}</Notice></div>}
       </section>
     </div>
+  )
+}
+
+function Progress({ stage }: { stage: string }) {
+  const steps: [string, string][] = [['scene', 'The moment'], ['stakes', 'What was at stake'], ['wrap', 'Wrapping up']]
+  const at = stage === 'done' ? 3 : Math.max(0, steps.findIndex(([k]) => k === stage))
+  return (
+    <ol className="flex items-center gap-1 text-[12px]" aria-label="Where you are in the conversation">
+      {steps.map(([k, label], i) => (
+        <li key={k} className={`flex items-center gap-1 ${i === at ? 'font-semibold text-kraftdeep' : i < at ? 'text-moss' : 'text-soft'}`} aria-current={i === at ? 'step' : undefined}>
+          {i > 0 && <span aria-hidden="true" className="text-line">›</span>}
+          <span>{i < at ? '✓ ' : ''}{label}</span>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+function StoryMenu({ c, starting, onStart }: { c: any; starting: string | null; onStart: (b: { pick: string; text?: string; photo_url?: string; caption?: string }) => void }) {
+  const [mode, setMode] = useState<'' | 'photo' | 'free'>('')
+  const [free, setFree] = useState('')
+  const [caption, setCaption] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [err, setErr] = useState('')
+  const busy = !!starting || uploading
+  const menu = c.menu as { id: string; title: string }[]
+
+  async function sendPhoto(file?: File) {
+    if (!file) return
+    setUploading(true); setErr('')
+    try {
+      const url = await uploadPhoto(file, 'vendor')
+      onStart({ pick: 'photo', photo_url: url, caption: caption.trim() || undefined })
+    } catch (e: any) { setErr(e.message) } finally { setUploading(false) }
+  }
+
+  return (
+    <section aria-busy={busy}>
+      <p className="eyebrow">This week</p>
+      <h2 className="mt-1 font-serif text-[26px] font-medium leading-tight">Which story is easiest to tell?</h2>
+      <p className="mt-1 text-[15px] text-soft">Pick one. There are no wrong answers, and it takes a few minutes. You'll see anything we write before anyone else does.</p>
+
+      {c.hooks.length > 0 && (
+        <div className="mt-4 flex flex-col gap-2">
+          <p className="text-[13px] font-semibold text-ink">Some ideas, just for you</p>
+          {c.hooks.map((h: any) => (
+            <button key={h.id} disabled={busy} onClick={() => onStart({ pick: h.id })}
+              className="card w-full p-4 text-left hover:border-kraft disabled:opacity-60" aria-label={`Tell this story: ${h.title}`}>
+              <span className="block font-serif text-[19px] leading-snug">{h.title}</span>
+              <span className="mt-1 block text-[14px] text-soft">{h.bait}</span>
+              {starting === h.id && <span className="mt-2 block text-[13px] text-kraftdeep">Getting your first question…</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-5 flex flex-col gap-2">
+        <p className="text-[13px] font-semibold text-ink">{c.hooks.length ? 'Or pick one of these' : 'Pick one'}</p>
+        <div className="flex flex-wrap gap-2">
+          {menu.filter((m) => m.id !== 'photo' && m.id !== 'free').map((m) => (
+            <button key={m.id} disabled={busy} onClick={() => onStart({ pick: m.id })} className="btn-quiet btn-sm text-left disabled:opacity-60">
+              {starting === m.id ? 'Getting your first question…' : m.title}
+            </button>
+          ))}
+          <button disabled={busy} onClick={() => setMode(mode === 'photo' ? '' : 'photo')} className="btn-quiet btn-sm text-left" aria-expanded={mode === 'photo'}>Send a photo and tell me what's happening in it</button>
+          <button disabled={busy} onClick={() => setMode(mode === 'free' ? '' : 'free')} className="btn-quiet btn-sm text-left" aria-expanded={mode === 'free'}>Something else is on my mind</button>
+        </div>
+      </div>
+
+      {mode === 'photo' && (
+        <div className="card mt-3 flex flex-col gap-2 p-4">
+          <label className="label" htmlFor="menu-caption">One line about it (optional)</label>
+          <input id="menu-caption" className="field" value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="5am, cutting dahlias" />
+          <label className="btn-primary cursor-pointer self-start">{uploading || starting === 'photo' ? 'Sending…' : 'Choose a photo'}<input type="file" accept="image/*" className="sr-only" disabled={busy} onChange={(e) => sendPhoto(e.target.files?.[0])} /></label>
+          <p className="hint">A table, a tool, a customer, a morning. Anything from your phone.</p>
+        </div>
+      )}
+      {mode === 'free' && (
+        <form className="card mt-3 flex flex-col gap-2 p-4" onSubmit={(e) => { e.preventDefault(); if (free.trim()) onStart({ pick: 'free', text: free.trim() }) }}>
+          <label className="label" htmlFor="menu-free">Start wherever you like</label>
+          <textarea id="menu-free" className="field min-h-[96px]" value={free} onChange={(e) => setFree(e.target.value)} placeholder="Tell it the way you'd tell a friend." />
+          <button className="btn-primary self-start" disabled={busy || !free.trim()}>{starting === 'free' ? 'Sending…' : 'Send'}</button>
+        </form>
+      )}
+      {err && <div className="mt-3"><Notice kind="bad">{err}</Notice></div>}
+    </section>
   )
 }
 
@@ -299,7 +421,7 @@ function Stories({ me }: { me: any }) {
       {waiting.length > 0 && (
         <section>
           <p className="eyebrow mb-3">Waiting for you to check</p>
-          <div className="flex flex-col gap-4">{waiting.map((s: any) => <DraftCheck key={s.id} s={s} onDone={reload} />)}</div>
+          <div className="flex flex-col gap-4">{waiting.map((s: any) => <DraftCheck key={`${s.id}:${s.revisions}`} s={s} onDone={reload} />)}</div>
         </section>
       )}
       <section>
@@ -312,38 +434,107 @@ function Stories({ me }: { me: any }) {
   )
 }
 
+type Claim = { id: string; text: string; kind: string; unsupported: boolean }
+type Choice = { action: 'ok' | 'fix' | 'remove'; note: string }
+
 function DraftCheck({ s, onDone }: { s: any; onDone: () => void }) {
+  const claims: Claim[] = s.claims || []
+  const [open, setOpen] = useState(false)
+  const [choices, setChoices] = useState<Record<string, Choice>>(() => Object.fromEntries(claims.map((c) => [c.id, { action: c.unsupported ? 'remove' : 'ok', note: '' } as Choice])))
   const [fixing, setFixing] = useState(false)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  async function ok() {
+  const [revised, setRevised] = useState(false)
+  const paras = (s.body || '').split('\n').filter((p: string) => p.trim())
+  const changed = claims.filter((c) => choices[c.id]?.action !== 'ok').length
+  const set = (id: string, patch: Partial<Choice>) => setChoices((x) => ({ ...x, [id]: { ...x[id], ...patch } }))
+
+  async function okPlain() {
     setBusy(true)
     try { await api(`/vendor/stories/${s.id}/approve`, { as: 'vendor', method: 'POST' }); onDone() } catch (e: any) { setErr(e.message) } finally { setBusy(false) }
+  }
+  async function submitClaims() {
+    setBusy(true); setErr('')
+    try {
+      const decisions = claims.map((c) => ({ id: c.id, action: choices[c.id].action, note: choices[c.id].note || undefined }))
+      const r = await api(`/vendor/stories/${s.id}/check`, { as: 'vendor', body: { decisions } })
+      if (r.revised) { setRevised(true); setOpen(false) }
+      onDone()
+    } catch (e: any) { setErr(e.message) } finally { setBusy(false) }
   }
   async function fix(e: React.FormEvent) {
     e.preventDefault(); setBusy(true)
     try { await api(`/vendor/stories/${s.id}/correction`, { as: 'vendor', body: { note } }); onDone() } catch (e: any) { setErr(e.message) } finally { setBusy(false) }
   }
+
   return (
     <article className="card border-kraft/50 p-5">
       <span className="chip-warn">{s.kind === 'update' ? 'Update' : 'Story'} · please check</span>
+      {(revised || s.revisions > 0) && <p className="mt-2 text-[13px] text-moss">We updated it with your changes. Please check this version.</p>}
       <h3 className="mt-3 font-serif text-[24px] font-medium leading-tight">{s.headline}</h3>
-      <div className="mt-3"><Paras text={s.body} className="story-body [&>p]:text-[17px]" /></div>
-      <p className="text-[14px] text-soft">Is everything here true? You're the only one who knows.</p>
-      {!fixing ? (
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button className="btn-primary" disabled={busy} onClick={ok}>Looks right</button>
-          <button className="btn-quiet" onClick={() => setFixing(true)}>Something's wrong</button>
+      <div className="mt-3 story-body [&>p]:text-[17px]">
+        {(open || claims.length === 0 ? paras : paras.slice(0, 1)).map((p: string, i: number) => <p key={i}>{p}</p>)}
+      </div>
+      {claims.length > 0 && paras.length > 1 && (
+        <button className="mt-1 text-[14px] font-semibold text-kraft" onClick={() => setOpen(!open)} aria-expanded={open}>{open ? 'Show less' : 'Read the whole story'}</button>
+      )}
+
+      {claims.length > 0 ? (
+        <div className="mt-5">
+          <p className="font-semibold">Is each of these right?</p>
+          <p className="text-[14px] text-soft">You don't have to proofread. Just check these. Everything else in the story comes from your own words.</p>
+          <ul className="mt-3 flex flex-col gap-2">
+            {claims.map((c) => {
+              const ch = choices[c.id]
+              return (
+                <li key={c.id} className={`rounded-lg border p-3 ${ch.action === 'ok' ? 'border-line bg-paper' : 'border-kraft/50 bg-kraft/5'}`}>
+                  <p className="text-[15px] leading-snug">{c.kind === 'quote' ? <>Your words: <span className="font-serif">“{c.text}”</span></> : c.text}</p>
+                  {c.unsupported && <p className="mt-1 text-[13px] text-rust">We couldn't find this in what you told us.</p>}
+                  <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label={`Is this right: ${c.text}`}>
+                    {([['ok', 'Right'], ['fix', 'Not quite'], ['remove', 'Leave it out']] as const).map(([a, label]) => (
+                      <button key={a} type="button" aria-pressed={ch.action === a} onClick={() => set(c.id, { action: a })}
+                        className={`rounded-full border px-3 py-1 text-[13px] font-medium ${ch.action === a ? (a === 'ok' ? 'border-moss bg-moss text-white' : 'border-kraft bg-kraft text-white') : 'border-line bg-card text-ink'}`}>{label}</button>
+                    ))}
+                  </div>
+                  {ch.action === 'fix' && (
+                    <div className="mt-2">
+                      <label className="sr-only" htmlFor={`fx-${c.id}`}>What should it say?</label>
+                      <input id={`fx-${c.id}`} className="field" value={ch.note} onChange={(e) => set(c.id, { note: e.target.value })} placeholder="What should it say instead?" />
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+          {err && <div className="mt-3"><Notice kind="bad">{err}</Notice></div>}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button className="btn-primary" disabled={busy || (changed > 0 && claims.some((c) => choices[c.id].action === 'fix' && !choices[c.id].note.trim()))} onClick={submitClaims}>
+              {busy ? 'Working…' : changed === 0 ? 'All of this is right' : `Update the story (${changed} change${changed > 1 ? 's' : ''})`}
+            </button>
+            <button className="btn-ghost btn-sm" onClick={() => setFixing(!fixing)}>Something else is wrong</button>
+          </div>
         </div>
       ) : (
+        <>
+          <p className="mt-3 text-[14px] text-soft">Is everything here true? You're the only one who knows.</p>
+          {!fixing && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button className="btn-primary" disabled={busy} onClick={okPlain}>Looks right</button>
+              <button className="btn-quiet" onClick={() => setFixing(true)}>Something's wrong</button>
+            </div>
+          )}
+          {err && <div className="mt-2"><Notice kind="bad">{err}</Notice></div>}
+        </>
+      )}
+
+      {fixing && (
         <form onSubmit={fix} className="mt-3 flex flex-col gap-2">
           <label className="label" htmlFor={`fix-${s.id}`}>What should it say instead?</label>
           <textarea id={`fix-${s.id}`} className="field min-h-[80px]" required value={note} onChange={(e) => setNote(e.target.value)} placeholder="It was the north arcade, not the south one." />
           <div className="flex gap-2"><button className="btn-primary btn-sm" disabled={busy}>Send to the editor</button><button type="button" className="btn-ghost btn-sm" onClick={() => setFixing(false)}>Cancel</button></div>
         </form>
       )}
-      {err && <div className="mt-2"><Notice kind="bad">{err}</Notice></div>}
     </article>
   )
 }

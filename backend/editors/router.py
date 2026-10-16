@@ -5,6 +5,7 @@ weekly issue, readers, inquiries and settings.
 
 import hashlib
 import logging
+import re
 import secrets
 from datetime import timedelta
 
@@ -14,7 +15,8 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from content.pipeline import draft_submission, open_conversation
+from content import interviewer, scout, skills, storymap
+from content.pipeline import draft_submission, open_conversation, scout_context, vendor_profile
 from core.auth import check_password, current_editor, editor_token, hash_password, new_vendor_magic_link
 from core.config import FRONTEND_URL, SETUP_CODE_SHA256
 from core.mail import send_email
@@ -22,7 +24,7 @@ from core.util import CATEGORIES, CATEGORY_PAIRS, as_uuid, iso, short_id, slugif
 from database.models import (
     Block, BlockClass, BlockCorrection, BlockStatus, Conversation, ConversationStatus, CorrectionStatus,
     Editor, InvitationCode, Issue, IssueRender, IssueStatus, Lead, LinkClick, Market, MAX_QUALITY_SCORE,
-    Message, Nomination, ReaderShare, ScanEvent, SeenBlock, Submission, Subscriber, SubscriberStatus,
+    Message, Nomination, ReaderShare, ScanEvent, SeenBlock, SkillOverride, Submission, Subscriber, SubscriberStatus,
     Vendor, VendorFollow, VendorSession, Venue, utcnow,
 )
 from database.session import AsyncSessionLocal, get_db
@@ -164,6 +166,9 @@ async def queue(ed: Editor = Depends(current_editor), db: AsyncSession = Depends
     def draft(b: Block) -> dict:
         d = block_out(b, vendors.get(b.vendor_id))
         d.update({"status": b.status, "quality_score": b.quality_score, "guard": b.guard_notes,
+                  "claims": [{"text": c["text"], "kind": c["kind"], "status": c["status"], "evidence": c.get("evidence", "")}
+                             for c in (b.claims or [])],
+                  "revisions": len(b.history or []),
                   "is_public": b.is_public,
                   "raw_text": subs[b.submission_id].raw_text if b.submission_id in subs else None,
                   "corrections": [{"id": str(c.id), "note": c.note} for c in corrections if c.block_id == b.id]})
@@ -416,9 +421,18 @@ async def vendor_conversations(vid: str, ed: Editor = Depends(current_editor), d
     out = []
     for c in convs:
         await db.refresh(c, ["messages"])
+        m = c.story_map or {}
         out.append({"id": str(c.id), "status": c.status, "week": c.cycle_start.isoformat(),
                     "escalated": bool(c.escalated_at), "turns": c.turns,
-                    "messages": [{"role": m.role, "content": m.content} for m in c.messages]})
+                    "hooks": [h.get("title") for h in (c.hooks or [])],
+                    "hook": (m.get("hook") or {}).get("title") if isinstance(m.get("hook"), dict) else None,
+                    "map": {"mode": m.get("mode"), "yield": m.get("yield_history"), "skills": m.get("skill_counts"),
+                            "ready": storymap.is_ready(m) if "scene" in m else False,
+                            "details": storymap.scene_details(m) if "scene" in m else 0,
+                            "want": m.get("want"), "turn": m.get("turn"), "quotes": [q["text"] for q in m.get("quotes", [])]},
+                    "messages": [{"role": x.role, "content": x.content, "skill": (x.meta or {}).get("skill"),
+                                  "target": (x.meta or {}).get("target"), "problems": (x.meta or {}).get("problems") or [],
+                                  "images": x.image_urls or []} for x in c.messages]})
     return out
 
 
@@ -447,14 +461,119 @@ async def _send_reminders(vendor_ids: list[str]) -> None:
                     continue
                 token = await new_vendor_magic_link(db, v)
                 await db.commit()
-                q = conv.opening_question or "What happened at your stall this week?"
+                q = conv.opening_question or "Which story is easiest to tell this week?"
                 await send_login_email(db, v, market, login_url(token), subject=f"{v.name}: {q}"[:140],
-                                       intro=f"This week's question: <b>{q}</b><br><br>Answer in a line or two, whenever you have a minute. We'll ask a follow-up or two and write it up; you'll see the draft before anything goes out.")
+                                       intro=f"A quick one for this week: <b>{q}</b><br><br>Tap the story that's easiest to tell and answer in a line or two, whenever you have a minute. Nothing gets written until you've seen it.")
                 if v.last_submitted_at is None or v.last_submitted_at < utcnow() - timedelta(days=7):
                     v.silent_cycles = (v.silent_cycles or 0) + 1
                 await db.commit()
             except Exception as e:  # noqa: BLE001
                 logger.error(f"[Remind] {vid}: {e}")
+
+
+# ── Skills (the instructions behind the interviewer and the writer) ──────────
+
+def _skill_out(sk) -> dict:
+    return {"name": sk.name, "description": sk.description, "stage": sk.stage, "body": sk.body,
+            "default_body": sk.default_body, "edited": sk.edited, "edited_by": sk.edited_by, "edited_at": sk.edited_at,
+            "extras": [{"name": k, "text": v} for k, v in sorted(sk.extras.items())]}
+
+
+@router.get("/skills")
+async def list_skills(ed: Editor = Depends(current_editor), db: AsyncSession = Depends(get_db)):
+    await skills.refresh(db, force=True)
+    order = {s: i for i, s in enumerate(skills.STAGES)}
+    return [_skill_out(sk) for sk in sorted(skills.all_skills(), key=lambda x: (order.get(x.stage, 9), x.name))]
+
+
+class SkillIn(BaseModel):
+    body: str = Field(min_length=20, max_length=20000)
+
+
+@router.put("/skills/{name}")
+async def save_skill(name: str, body: SkillIn, ed: Editor = Depends(current_editor), db: AsyncSession = Depends(get_db)):
+    if name not in skills.names():
+        raise HTTPException(404, "No such skill.")
+    row = await db.get(SkillOverride, name)
+    text_ = body.body.strip()
+    if row:
+        row.body, row.updated_by = text_, ed.email
+    else:
+        row = SkillOverride(name=name, body=text_, updated_by=ed.email)
+        db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    skills.set_override(name, row.body, row.updated_by, iso(row.updated_at))
+    return _skill_out(skills.get(name))
+
+
+@router.delete("/skills/{name}")
+async def reset_skill(name: str, ed: Editor = Depends(current_editor), db: AsyncSession = Depends(get_db)):
+    if name not in skills.names():
+        raise HTTPException(404, "No such skill.")
+    await db.execute(delete(SkillOverride).where(SkillOverride.name == name))
+    await db.commit()
+    skills.clear_override(name)
+    return _skill_out(skills.get(name))
+
+
+class TryIn(BaseModel):
+    vendor_id: str | None = None
+    question: str = Field(default="Tell me about the last Saturday you sold out. What time did the last jar go?", max_length=500)
+    answer: str = Field(default="", max_length=3000)
+
+
+def _pick_target(answer: str) -> str:
+    parts = [p.strip() for p in re.split(r"[.!?;\n]", answer) if len(p.split()) >= 3]
+    return " ".join((max(parts, key=len) if parts else answer).split()[:6])
+
+
+INTERVIEW_TRY = {"scene-deepener", "stakes-and-turn", "meaning-asker", "low-yield", "sensitive-guard", "wrap-up"}
+
+
+@router.post("/skills/{name}/try")
+async def try_skill(name: str, body: TryIn, ed: Editor = Depends(current_editor), db: AsyncSession = Depends(get_db)):
+    """Run one skill on a sample answer, with the live instructions, so you can see what it would say."""
+    if name not in skills.names():
+        raise HTTPException(404, "No such skill.")
+    await skills.refresh(db)
+    vendor = await db.get(Vendor, as_uuid(body.vendor_id)) if body.vendor_id and as_uuid(body.vendor_id) else None
+    if vendor is None:
+        vendor = (await db.execute(select(Vendor).where(Vendor.is_sample.is_(True)).limit(1))).scalar_one_or_none() \
+            or (await db.execute(select(Vendor).limit(1))).scalar_one_or_none()
+    if vendor is None:
+        raise HTTPException(400, "Add a vendor first so there is a profile to use.")
+    profile = await vendor_profile(db, vendor)
+    answer = body.answer.strip()
+    transcript = [{"role": "agent", "content": body.question}] + ([{"role": "vendor", "content": answer}] if answer else [])
+    try:
+        if name == "story-scout":
+            hooks = await scout.scout(profile, await scout_context(db, vendor))
+            return {"output": "\n".join(f"{h['title']}  /  {h['bait']}  ({h['why']})" for h in hooks) or "(no hooks)", "problems": []}
+        if name == "opener":
+            msg, problems = await interviewer.opening(profile, {"id": "try", "title": answer or "The last time you sold out", "hint": ""})
+            return {"output": msg, "problems": problems}
+        if name == "director":
+            if not answer:
+                raise HTTPException(400, "Type what a vendor said.")
+            m = storymap.new_map({"id": "try", "title": "try"})
+            obs = await interviewer.observe(profile, m, transcript, answer, 1)
+            storymap.apply_observation(m, obs, answer, 1)
+            d = storymap.choose(m, obs)
+            import json
+            return {"output": json.dumps({"observation": obs, "next": {"move": d.move, "skill": d.skill, "why": d.reason}}, indent=2, ensure_ascii=False), "problems": []}
+        if name in INTERVIEW_TRY:
+            m = storymap.new_map({"id": "try", "title": "try"})
+            target = _pick_target(answer)
+            extra = "SENSITIVE_TOPIC: something personal" if name == "sensitive-guard" else ""
+            msg, problems = await interviewer.speak(name, profile, m, transcript, target=target, missing=["sequence", "position"], extra=extra)
+            return {"output": msg, "problems": problems}
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[Editor] try skill {name}: {e}")
+        raise HTTPException(503, f"The model call failed: {e}")
+    raise HTTPException(400, "This one runs inside the writing chain. Use it from a real conversation, then read the draft in Review.")
 
 
 # ── Codes and venues ─────────────────────────────────────────────────────────

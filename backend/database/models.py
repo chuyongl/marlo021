@@ -367,7 +367,17 @@ class Conversation(Base):
     gaps_remaining = Column(JSONB, nullable=False, default=list)
 
     turns = Column(Integer, nullable=False, default=0)          # analytics only
-    stalled_turns = Column(Integer, nullable=False, default=0)  # 2 → stop
+    stalled_turns = Column(Integer, nullable=False, default=0)  # legacy; the story map now tracks yield
+
+    # The story engine's working state (content/storymap.py): the chosen hook,
+    # the one scene being told, what the vendor wanted, what changed, verbatim
+    # quotes, and which skills have been used. Small, explicit, inspectable.
+    story_map = Column(JSONB, nullable=False, default=dict)
+    # What the scout proposed when the conversation opened (2-4 hooks).
+    hooks = Column(JSONB, nullable=False, default=list)
+    # Micro-sessions: when the vendor asks for one quick question tomorrow.
+    resume_at = Column(DateTime(timezone=True), nullable=True)
+    nudge_count = Column(Integer, nullable=False, default=0)
 
     escalated_at = Column(DateTime(timezone=True), nullable=True)
     escalation_reason = Column(String, nullable=True)  # silent|sensitive|thin
@@ -394,6 +404,9 @@ class Message(Base):
     role = Column(String, nullable=False)          # "agent" | "vendor"
     content = Column(Text, nullable=False)
     image_urls = Column(JSONB, nullable=False, default=list)
+    # For interviewer messages: which skill wrote it, what it followed up on,
+    # quick-reply buttons. Editors see this; vendors only see the buttons.
+    meta = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
 
     conversation = relationship("Conversation", back_populates="messages")
@@ -522,7 +535,12 @@ class Block(Base):
     # Vendors can hide any story; sensitive ones are email-only.
     slug = Column(String, nullable=True, unique=True, index=True)
     is_public = Column(Boolean, nullable=False, default=True)
-    guard_notes = Column(JSONB, nullable=True)     # style guard verdict
+    guard_notes = Column(JSONB, nullable=True)     # fact/style verdict and the editor brief
+    # Checkable claims in the text, each tied to what the vendor said. The
+    # vendor confirms these (instead of proofreading) before the editor sees it.
+    claims = Column(JSONB, nullable=True)
+    story_plan = Column(JSONB, nullable=True)      # the planner's shape and outline
+    history = Column(JSONB, nullable=True)         # earlier versions after vendor fixes
     is_sample = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
 
@@ -923,3 +941,16 @@ class Lead(Base):
     message = Column(Text, nullable=True)
     status = Column(String, nullable=False, default="new")
     created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class SkillOverride(Base):
+    """
+    An editor's change to a skill's instructions (content/skills/<name>/SKILL.md).
+    The file in the code is the default; a row here replaces its body until reset.
+    """
+    __tablename__ = "skill_overrides"
+
+    name = Column(String, primary_key=True)
+    body = Column(Text, nullable=False)
+    updated_by = Column(String, nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)

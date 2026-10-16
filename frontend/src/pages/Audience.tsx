@@ -56,8 +56,8 @@ export function ForVendors() {
         <h2 className="font-serif text-[32px] font-medium">You talk. We write. You check it.</h2>
         <div className="mt-8 grid gap-8 md:grid-cols-3">
           {[
-            ['A question a week', 'We send one specific question to your phone. Answer between customers, in a line or two. The interviewer asks a follow-up only when there is something worth asking.'],
-            ['You see it first', 'A writer turns your answers into a short story or a quick note. You read it before anyone else and fix anything wrong. Then an editor approves it.'],
+            ['Pick a story, tell it', 'Each week you choose the story that is easiest to tell: your first sale, a regular, a bad day. A few short questions follow, one at a time. Answer in your own words, or talk into your phone. Short on time? Say so and we will send one question tomorrow.'],
+            ['You check the facts, not the writing', 'We turn your answers into a short story, using your own words. You read it first and check a short list of facts: right, not quite, or leave it out. Then an editor approves it.'],
             ['It reaches your people', 'Everyone who follows you gets it in their weekly email, along with where you will be. New readers discover you through stories they like.'],
           ].map(([h, p]) => (<div key={h}><h3 className="font-serif text-[23px] font-medium">{h}</h3><p className="mt-2 leading-relaxed text-soft">{p}</p></div>))}
         </div>

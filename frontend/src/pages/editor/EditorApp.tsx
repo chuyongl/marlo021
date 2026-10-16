@@ -3,10 +3,10 @@ import { Link } from 'react-router-dom'
 import { api, API, mediaUrl, store, timeAgo, CATEGORY_LABEL } from '../../lib/api'
 import { BagMark, CopyButton, CopyField, Notice, QR, SampleTag, Spinner, useLoad } from '../../ui/kit'
 
-type Tab = 'overview' | 'review' | 'issue' | 'vendors' | 'markets' | 'readers' | 'inbox' | 'settings'
+type Tab = 'overview' | 'review' | 'issue' | 'vendors' | 'markets' | 'readers' | 'inbox' | 'skills' | 'settings'
 const TABS: [Tab, string][] = [
   ['overview', 'Overview'], ['review', 'Review'], ['issue', 'This week’s issue'], ['vendors', 'Vendors'],
-  ['markets', 'Markets & codes'], ['readers', 'Readers'], ['inbox', 'Inbox'], ['settings', 'Settings'],
+  ['markets', 'Markets & codes'], ['readers', 'Readers'], ['inbox', 'Inbox'], ['skills', 'Skills'], ['settings', 'Settings'],
 ]
 
 export default function EditorHome() {
@@ -76,6 +76,7 @@ function EditorApp({ onSignOut }: { onSignOut: () => void }) {
           {tab === 'markets' && <Markets />}
           {tab === 'readers' && <Readers />}
           {tab === 'inbox' && <Inbox />}
+          {tab === 'skills' && <Skills />}
           {tab === 'settings' && <Settings />}
         </main>
       </div>
@@ -217,6 +218,7 @@ function DraftEditor({ d, onDone, correctionId }: { d: any; onDone: () => void; 
         <span className="text-soft">{timeAgo(d.created_at)}</span>
       </div>
       {d.corrections?.length > 0 && <div className="mb-3">{d.corrections.map((c: any) => <Notice key={c.id}>Vendor says: “{c.note}”</Notice>)}</div>}
+      <Brief d={d} />
       {g && !g.pass && <div className="mb-3"><Notice kind="bad">{g.notes}{g.invented_facts?.length ? ` Not in the conversation: ${g.invented_facts.join('; ')}` : ''}</Notice></div>}
       <label className="label" htmlFor={`h-${d.id}`}>Headline <span className="font-normal text-soft">({headline.length}/60)</span></label>
       <input id={`h-${d.id}`} className="field font-serif text-[20px]" value={headline} onChange={(e) => setHeadline(e.target.value)} />
@@ -251,6 +253,54 @@ function DraftEditor({ d, onDone, correctionId }: { d: any; onDone: () => void; 
         </div>
       )}
     </article>
+  )
+}
+
+const RUBRIC: [string, string][] = [
+  ['scene', 'Scene'], ['person', 'Person'], ['stakes', 'Stakes'], ['turn', 'Turn'], ['voice', 'Voice'],
+  ['place', 'Place'], ['truthfulness', 'Truthful'], ['plainness', 'Plain'], ['pull', 'Pull'],
+]
+
+function Brief({ d }: { d: any }) {
+  const g = d.guard || {}
+  const b = g.brief
+  const claims: any[] = d.claims || []
+  const bad = claims.filter((c) => c.status === 'unsupported')
+  if (!b && !claims.length && !d.revisions) return null
+  return (
+    <div className="mb-4 rounded-lg border border-line bg-paper p-4 text-[14px]">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold">Before you read</span>
+        {b?.verdict && <span className={b.verdict === 'run' ? 'chip-good' : b.verdict === 'hold' ? 'chip-bad' : 'chip-warn'}>{b.verdict === 'run' ? 'Ready to run' : b.verdict === 'hold' ? 'Hold: thin material' : 'Needs a light edit'}</span>}
+        {b?.lead_worthy && <span className="chip-good">Could lead the issue</span>}
+        {g.claims_total > 0 && <span className="chip">{g.claims_supported}/{g.claims_total} claims trace to the vendor’s words</span>}
+        {g.vendor_confirmed > 0 && <span className="chip-good">Vendor confirmed {g.vendor_confirmed} claims</span>}
+        {d.revisions > 0 && <span className="chip">Revised {d.revisions}× after the vendor’s changes</span>}
+      </div>
+      {b?.scores && (
+        <dl className="mt-3 grid grid-cols-3 gap-x-4 gap-y-1 sm:grid-cols-5" aria-label="Rubric scores out of 4">
+          {RUBRIC.map(([k, label]) => (
+            <div key={k} className="flex items-baseline justify-between gap-2"><dt className="text-soft">{label}</dt><dd className={`num font-semibold ${b.scores[k] <= 2 ? 'text-rust' : ''}`}>{b.scores[k] ?? '–'}<span className="font-normal text-soft">/4</span></dd></div>
+          ))}
+        </dl>
+      )}
+      {b?.whats_missing && <p className="mt-3"><b>Missing:</b> {b.whats_missing}</p>}
+      {b?.strongest_quotes?.length > 0 && <p className="mt-1"><b>Best lines:</b> {b.strongest_quotes.map((q: string) => `“${q}”`).join('  ')}</p>}
+      {bad.length > 0 && <p className="mt-2 text-rust"><b>Not found in the conversation:</b> {bad.map((c) => c.text).join('; ')}</p>}
+      {claims.length > 0 && (
+        <details className="mt-2">
+          <summary className="cursor-pointer font-semibold text-kraft">Claim by claim</summary>
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {claims.map((c, i) => (
+              <li key={i} className="text-[13px] leading-snug">
+                <span className={c.status === 'unsupported' ? 'chip-bad' : c.status === 'inferred' ? 'chip-warn' : 'chip-good'}>{c.status}</span>{' '}
+                {c.text}{c.evidence ? <span className="text-soft"> — “{c.evidence}”</span> : null}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
   )
 }
 
@@ -409,6 +459,36 @@ function Vendors() {
   )
 }
 
+function ConversationView({ c, vendorName }: { c: any; vendorName: string }) {
+  const skills = Object.entries(c.map?.skills || {}) as [string, number][]
+  return (
+    <details className="mb-2 rounded-lg border border-line bg-card p-3">
+      <summary className="cursor-pointer text-[14px]">
+        Week of {c.week} · {c.status}{c.escalated ? ' · escalated' : ''} · {c.messages.length} messages
+        {c.hook ? <span className="text-soft"> · “{c.hook}”</span> : null}
+        {c.map?.ready ? <span className="chip-good ml-1">story-ready</span> : null}
+        {c.map?.mode === 'low_yield' ? <span className="chip-warn ml-1">short answers</span> : null}
+      </summary>
+      {skills.length > 0 && (
+        <p className="mt-2 flex flex-wrap items-center gap-1 text-[12px] text-soft">Skills used: {skills.map(([k, n]) => <span key={k} className="chip">{k} ×{n}</span>)}</p>
+      )}
+      {c.map?.quotes?.length > 0 && <p className="mt-2 text-[13px]"><b>Vendor’s own lines:</b> {c.map.quotes.map((q: string) => `“${q}”`).join('  ')}</p>}
+      {c.map?.want && <p className="text-[13px]"><b>What they wanted:</b> {c.map.want}</p>}
+      {c.map?.turn && <p className="text-[13px]"><b>The turn:</b> {c.map.turn}</p>}
+      <div className="mt-2 flex flex-col gap-1.5 text-[13px]">
+        {c.messages.map((m: any, i: number) => (
+          <p key={i}>
+            <b className={m.role === 'agent' ? 'text-kraftdeep' : ''}>{m.role === 'agent' ? 'Interviewer' : vendorName}:</b> {m.content}
+            {m.role === 'agent' && m.skill && <span className="chip ml-1">{m.skill}</span>}
+            {m.problems?.length > 0 && <span className="chip-bad ml-1" title={m.problems.join('; ')}>rule flagged</span>}
+            {m.images?.map((u: string) => <img key={u} src={mediaUrl(u)} alt="Attached by the vendor" className="mt-1 max-h-32 rounded" />)}
+          </p>
+        ))}
+      </div>
+    </details>
+  )
+}
+
 function VendorRow({ v, open, toggle, reload }: { v: any; open: boolean; toggle: () => void; reload: () => void }) {
   const [link, setLink] = useState('')
   const [note, setNote] = useState('')
@@ -444,12 +524,7 @@ function VendorRow({ v, open, toggle, reload }: { v: any; open: boolean; toggle:
             </div>
             <div>
               <p className="mb-2 text-[13px] font-semibold">Recent conversations</p>
-              {!convs.data ? <Spinner /> : !convs.data.length ? <p className="text-[14px] text-soft">No conversations yet.</p> : convs.data.map((c: any) => (
-                <details key={c.id} className="mb-2 rounded-lg border border-line bg-card p-3">
-                  <summary className="cursor-pointer text-[14px]">Week of {c.week} · {c.status}{c.escalated ? ' · escalated' : ''} · {c.messages.length} messages</summary>
-                  <div className="mt-2 flex flex-col gap-1.5 text-[13px]">{c.messages.map((m: any, i: number) => <p key={i}><b className={m.role === 'agent' ? 'text-kraftdeep' : ''}>{m.role === 'agent' ? 'Interviewer' : v.name}:</b> {m.content}</p>)}</div>
-                </details>
-              ))}
+              {!convs.data ? <Spinner /> : !convs.data.length ? <p className="text-[14px] text-soft">No conversations yet.</p> : convs.data.map((c: any) => <ConversationView key={c.id} c={c} vendorName={v.name} />)}
             </div>
           </div>
         </td></tr>
@@ -615,6 +690,130 @@ function Inbox() {
           </div>
         ))}</div>
       </section>
+    </div>
+  )
+}
+
+// ── Skills: the instructions behind the interviewer and the writer ───────────
+
+const STAGE_LABEL: Record<string, string> = {
+  scout: 'Finding a story to ask about', interview: 'Interviewing', director: 'Reading the answers',
+  write: 'Writing and checking', eval: 'Testing only',
+}
+const CAN_TRY = new Set(['story-scout', 'opener', 'director', 'scene-deepener', 'stakes-and-turn', 'meaning-asker', 'low-yield', 'sensitive-guard', 'wrap-up'])
+
+function Skills() {
+  const { data, error, setData } = useLoad(() => api('/editor/skills', { as: 'editor' }))
+  const [sel, setSel] = useState('')
+  if (error) return <Notice kind="bad">{error}</Notice>
+  if (!data) return <Spinner />
+  const cur = data.find((s: any) => s.name === sel) || data[0]
+  const stages = Object.keys(STAGE_LABEL).filter((st) => data.some((s: any) => s.stage === st))
+  return (
+    <div>
+      <H title="Skills" sub="Each skill is a short set of instructions the interviewer or writer follows. Edit the words and the next conversation uses them. Nothing here needs code." />
+      <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
+        <nav aria-label="Skills" className="flex flex-col gap-4">
+          {stages.map((st) => (
+            <div key={st}>
+              <p className="eyebrow mb-1">{STAGE_LABEL[st]}</p>
+              <ul className="flex flex-col gap-0.5">
+                {data.filter((s: any) => s.stage === st).map((s: any) => (
+                  <li key={s.name}>
+                    <button onClick={() => setSel(s.name)} aria-current={cur.name === s.name ? 'true' : undefined}
+                      className={`flex w-full items-center justify-between rounded-md px-3 py-1.5 text-left text-[14px] ${cur.name === s.name ? 'bg-ink text-card' : 'text-ink hover:bg-card'}`}>
+                      <span>{s.name}</span>{s.edited && <span className={`text-[11px] ${cur.name === s.name ? 'text-card/80' : 'text-kraftdeep'}`}>edited</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </nav>
+        <SkillEditor key={cur.name} sk={cur} onSaved={(sk: any) => setData(data.map((x: any) => (x.name === sk.name ? sk : x)))} />
+      </div>
+    </div>
+  )
+}
+
+function SkillEditor({ sk, onSaved }: { sk: any; onSaved: (sk: any) => void }) {
+  const [body, setBody] = useState<string>(sk.body)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ kind: 'good' | 'bad'; text: string } | null>(null)
+  const [question, setQuestion] = useState('Tell me about the last Saturday you sold out. What time did the last jar go?')
+  const [answer, setAnswer] = useState('')
+  const [trying, setTrying] = useState(false)
+  const [out, setOut] = useState<{ output: string; problems: string[] } | null>(null)
+  const [tryErr, setTryErr] = useState('')
+  const dirty = body.trim() !== sk.body.trim()
+
+  async function save() {
+    setBusy(true); setMsg(null)
+    try { const r = await api(`/editor/skills/${sk.name}`, { as: 'editor', method: 'PUT', body: { body } }); onSaved(r); setBody(r.body); setMsg({ kind: 'good', text: 'Saved. The next conversation uses this.' }) }
+    catch (e: any) { setMsg({ kind: 'bad', text: e.message }) } finally { setBusy(false) }
+  }
+  async function reset() {
+    if (!window.confirm('Go back to the original wording for this skill? Your edits will be lost.')) return
+    setBusy(true); setMsg(null)
+    try { const r = await api(`/editor/skills/${sk.name}`, { as: 'editor', method: 'DELETE' }); onSaved(r); setBody(r.body); setMsg({ kind: 'good', text: 'Back to the original.' }) }
+    catch (e: any) { setMsg({ kind: 'bad', text: e.message }) } finally { setBusy(false) }
+  }
+  async function tryIt() {
+    setTrying(true); setTryErr(''); setOut(null)
+    try { setOut(await api(`/editor/skills/${sk.name}/try`, { as: 'editor', body: { question, answer } })) }
+    catch (e: any) { setTryErr(e.message) } finally { setTrying(false) }
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      <section className="card p-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="font-serif text-[22px] font-medium">{sk.name}</h2>
+          {sk.edited && <span className="chip-warn">edited{sk.edited_by ? ` by ${sk.edited_by}` : ''}{sk.edited_at ? ` · ${timeAgo(sk.edited_at)}` : ''}</span>}
+        </div>
+        <p className="mt-1 text-[14px] text-soft">{sk.description}</p>
+        <label className="label mt-4" htmlFor="skill-body">Instructions</label>
+        <textarea id="skill-body" className="field min-h-[320px] font-mono text-[13px] leading-relaxed" value={body} onChange={(e) => setBody(e.target.value)} spellCheck={false} />
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button className="btn-primary" disabled={busy || !dirty} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+          {dirty && <button className="btn-ghost" disabled={busy} onClick={() => setBody(sk.body)}>Discard changes</button>}
+          {sk.edited && <button className="btn-ghost" disabled={busy} onClick={reset}>Back to the original</button>}
+        </div>
+        {msg && <div className="mt-3"><Notice kind={msg.kind}>{msg.text}</Notice></div>}
+        {sk.extras?.length > 0 && (
+          <details className="mt-4">
+            <summary className="cursor-pointer text-[14px] font-semibold text-kraft">Examples this skill also reads ({sk.extras.length})</summary>
+            {sk.extras.map((x: any) => <pre key={x.name} className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-paper p-3 text-[12px] leading-relaxed"><b>{x.name}</b>{'\n\n'}{x.text}</pre>)}
+            <p className="hint mt-1">Examples are part of the skill's original files and can't be edited here. Put anything you want to change in the instructions above.</p>
+          </details>
+        )}
+      </section>
+
+      {CAN_TRY.has(sk.name) && (
+        <section className="card p-5">
+          <h3 className="font-semibold">Try it</h3>
+          <p className="text-[14px] text-soft">Runs the saved version of this skill on an answer you type. {dirty && <b>You have unsaved edits, so save first to try them.</b>}</p>
+          {sk.name !== 'story-scout' && sk.name !== 'opener' && (
+            <>
+              <label className="label mt-3" htmlFor="try-q">The interviewer asked</label>
+              <input id="try-q" className="field" value={question} onChange={(e) => setQuestion(e.target.value)} />
+            </>
+          )}
+          <label className="label mt-3" htmlFor="try-a">{sk.name === 'opener' ? 'Story the vendor picked' : sk.name === 'story-scout' ? 'Nothing to type for this one' : 'The vendor answered'}</label>
+          <textarea id="try-a" className="field min-h-[90px]" value={answer} onChange={(e) => setAnswer(e.target.value)} disabled={sk.name === 'story-scout'}
+            placeholder={sk.name === 'opener' ? 'The regular who always asks for one thing' : 'We sold out around two. It was a woman with a stroller who bought the last ones, she said her kid wouldn’t eat anything else.'} />
+          <button className="btn-quiet mt-3" disabled={trying || dirty} onClick={tryIt}>{trying ? 'Running…' : 'Run'}</button>
+          {tryErr && <div className="mt-3"><Notice kind="bad">{tryErr}</Notice></div>}
+          {out && (
+            <div className="mt-3">
+              <p className="label">Result</p>
+              <pre className="whitespace-pre-wrap rounded-lg bg-paper p-3 text-[14px] leading-relaxed">{out.output}</pre>
+              {out.problems?.length > 0 && <p className="mt-2 text-[13px] text-rust">Rule check flagged: {out.problems.join('; ')}</p>}
+              {out.problems?.length === 0 && <p className="mt-2 text-[13px] text-moss">Passes the rule check (one question, no “why”, no praise).</p>}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   )
 }

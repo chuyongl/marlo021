@@ -127,6 +127,19 @@ def is_send_window(market, utc_now: datetime = None) -> bool:
     )
 
 
+# ─── JOBS ─────────────────────────────────────────────────────────────────────
+
+async def _micro_session_nudges():
+    """Every 30 minutes: deliver follow-up questions vendors asked for."""
+    try:
+        from content.nudges import send_due_nudges
+        sent = await send_due_nudges()
+        if sent:
+            logger.info(f"[Scheduler] micro-session nudges sent: {sent}")
+    except Exception as e:  # noqa: BLE001
+        log_error("micro_session_nudges", e)
+
+
 # ─── JOB REGISTRATION ─────────────────────────────────────────────────────────
 
 def start_scheduler():
@@ -153,6 +166,16 @@ def start_scheduler():
       - Wrap the body in try/except and route errors through log_error().
       - Use datetime.now(timezone.utc). Never datetime.utcnow() (ADR-005).
     """
+    from apscheduler.triggers.interval import IntervalTrigger
+
+    scheduler.add_job(
+        _micro_session_nudges,
+        IntervalTrigger(minutes=30),
+        id="micro_session_nudges",
+        name="Send due follow-up questions (micro-sessions)",
+        replace_existing=True,
+        misfire_grace_time=600,
+    )
     scheduler.start()
 
     jobs = scheduler.get_jobs()
