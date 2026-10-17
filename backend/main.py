@@ -36,7 +36,7 @@ sentry_sdk.init(
 
 limiter = Limiter(key_func=get_remote_address)
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 app = FastAPI(title="Brown Bag API", version=VERSION)
 
 # Trust Railway's proxy headers so request.url uses https, not http

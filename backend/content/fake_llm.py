@@ -175,7 +175,7 @@ def text(tag: str, system: str, user: str) -> str:
     t = _target(user)
     lead = [f"{t[:1].upper()}{t[1:]}.", f"Got it, {t}.", f"{t[:1].upper()}{t[1:]}, okay.", f"So, {t}."][n % 4]
     if tag == "opener":
-        return "Tell me about the last time something surprised you at the stall. What happened?"
+        return "Think of the last time something surprised you at the stall. Tell me about it from the start, whatever you remember. As long as you like, or just talk into your phone."
     if tag == "scene-deepener":
         qs = ["What happened right after that?", "Where were you standing when that happened?", "What did they actually say?",
               "What could you hear around you?", "What were your hands doing?"]

@@ -150,8 +150,8 @@ Where difficulty becomes active crisis — mental health, anything where publish
 - **Stay inside one moment** until it could be filmed: who was there, where they stood, what was said, what the hands were doing.
 - **Never ask "why".** Ask what happened, what it looked like, what was said.
 - **No praise, no exclamation marks, no offering answers or feelings.**
-- **Short answers get easier questions, not more pressure.** A choice between two things, a finish-the-sentence, a tiny concrete question, a photo. After two more thin answers it offers to send **one quick question tomorrow** instead (a micro-session, by email).
-- **The vendor can end it anytime.** "That's all I've got" is a complete answer. At most ten answers in one sitting.
+- **Short answers get easier questions, not more pressure.** A choice between two things, a finish-the-sentence, a tiny concrete question, a photo. After two more thin answers it offers to send **one quick question tomorrow** instead (a micro-session, by email, one reminder at most).
+- **The vendor can end it anytime.** "That's all I've got" is a complete answer. At most eight answers in one sitting. The first message invites a long telling (typed or by voice memo) before any question.
 - **Never fish for pain.** If the vendor raises something private, the interviewer asks only whether to keep it out or mention it generally; sensitive material is never drafted automatically and goes to an editor.
 
 **Each skill is a short instruction file the editor can edit** (Editor → Skills). See `docs/STORY_ENGINE.md`.

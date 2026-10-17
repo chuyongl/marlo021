@@ -13,7 +13,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from content import scout, storymap, writer
+from content import scout, speech, storymap, writer
 from content.pipeline import (
     draft_submission, open_conversation, pause_conversation, start_conversation, transcript_for_submission,
     vendor_profile, vendor_says,
@@ -224,6 +224,39 @@ async def photo(file: UploadFile = File(...), vendor: Vendor = Depends(current_v
     return {"url": f"/media/{m.id}"}
 
 
+# ── Voice memos ──────────────────────────────────────────────────────────────
+
+VOICE_DAILY_LIMIT = 40
+_voice_counts: dict[tuple[str, str], int] = {}
+
+
+@router.post("/voice/transcribe")
+async def voice_transcribe(file: UploadFile = File(...), vendor: Vendor = Depends(current_vendor)):
+    """A short recording in, the words out. Nothing is stored; the vendor checks the text before sending it."""
+    if not speech.available():
+        raise HTTPException(503, "Voice isn't switched on yet. Please type for now.")
+    ctype = (file.content_type or "").split(";")[0].lower()
+    if not (ctype.startswith("audio/") or ctype in ("video/webm", "video/mp4")):
+        raise HTTPException(400, "That doesn't look like a recording. Please try again.")
+    data = await file.read(speech.MAX_AUDIO_BYTES + 1)
+    if len(data) > speech.MAX_AUDIO_BYTES:
+        raise HTTPException(400, "That recording is too long. Try a few minutes at a time.")
+    if len(data) < speech.MIN_AUDIO_BYTES:
+        raise HTTPException(400, "That was too short to hear anything. Hold the button and talk for a few seconds.")
+    day = utcnow().strftime("%Y-%m-%d")
+    key = (str(vendor.id), day)
+    for k in [k for k in _voice_counts if k[1] != day]:
+        _voice_counts.pop(k, None)
+    if _voice_counts.get(key, 0) >= VOICE_DAILY_LIMIT:
+        raise HTTPException(429, "That's a lot of recordings for one day. Please type the rest, or come back tomorrow.")
+    _voice_counts[key] = _voice_counts.get(key, 0) + 1
+    try:
+        text = await speech.transcribe(data, ctype)
+    except speech.SpeechError as e:
+        raise HTTPException(e.status, str(e))
+    return {"text": text}
+
+
 # ── The conversation ─────────────────────────────────────────────────────────
 
 def conv_out(conv, drafting: bool = False) -> dict:
@@ -244,7 +277,7 @@ def conv_out(conv, drafting: bool = False) -> dict:
         "messages": [{"role": x.role, "content": x.content, "at": iso(x.created_at),
                       "images": x.image_urls or [], "quick": quick(i, x)} for i, x in enumerate(conv.messages)],
         "finished": not is_open, "escalated": bool(conv.escalated_at),
-        "drafting": drafting,
+        "drafting": drafting, "voice": speech.available(),
         "paused": bool(conv.resume_at), "resume_at": iso(conv.resume_at),
         "progress": storymap.stage_of(m) if "scene" in m else "scene",
         "hook": ((m.get("hook") or {}).get("title") if isinstance(m.get("hook"), dict) else None),
@@ -266,6 +299,7 @@ class StartIn(BaseModel):
     text: str | None = Field(default=None, max_length=4000)
     photo_url: str | None = None
     caption: str | None = Field(default=None, max_length=1000)
+    voice: bool = False
 
 
 @router.post("/conversation/start")
@@ -279,7 +313,7 @@ async def start(body: StartIn, bg: BackgroundTasks, vendor: Vendor = Depends(cur
     try:
         conv = await start_conversation(db, vendor, conv, body.pick, text=body.text, photo_url=body.photo_url, caption=body.caption)
         if body.text and body.text.strip() and body.pick != "photo":
-            result = await vendor_says(db, vendor, conv, body.text)
+            result = await vendor_says(db, vendor, conv, body.text, voice=body.voice)
             if result["submission_id"]:
                 bg.add_task(draft_submission, result["submission_id"])
     except ValueError as e:
@@ -294,6 +328,7 @@ async def start(body: StartIn, bg: BackgroundTasks, vendor: Vendor = Depends(cur
 
 class MessageIn(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
+    voice: bool = False      # the words came from a voice memo (the vendor checked the transcript)
 
 
 @router.post("/conversation/message")
@@ -303,7 +338,7 @@ async def post_message(body: MessageIn, bg: BackgroundTasks, vendor: Vendor = De
     if conv.status != ConversationStatus.OPEN:
         conv = await open_conversation(db, vendor, force_new=True)
     try:
-        result = await vendor_says(db, vendor, conv, body.text)
+        result = await vendor_says(db, vendor, conv, body.text, voice=body.voice)
     except Exception as e:  # noqa: BLE001
         logger.error(f"[Vendor] interviewer failed: {e}")
         await db.rollback()
@@ -377,8 +412,10 @@ async def my_stories(vendor: Vendor = Depends(current_vendor), db: AsyncSession 
             "is_public": b.is_public, "reject_reason": b.reject_reason,
             "public_url": f"{FRONTEND_URL}/s/{b.slug}" if b.status == BlockStatus.APPROVED and b.is_public else None,
             "corrections": [{"note": c.note, "status": c.status, "at": iso(c.created_at)} for c in corr if c.block_id == b.id],
-            "claims": [{"id": c["id"], "text": c["text"], "kind": c["kind"], "unsupported": c["status"] == "unsupported"}
+            "claims": [{"id": c["id"], "text": c["text"], "kind": c["kind"], "unsupported": c["status"] == "unsupported",
+                        "inferred": c["status"] == "inferred"}
                        for c in (b.claims or [])] if b.status == BlockStatus.VENDOR_PREVIEW else [],
+            "editor_note": b.editor_note,
             "revisions": len(b.history or []),
             "instagram_caption": _caption(b, vendor) if b.status == BlockStatus.APPROVED else None,
         })
@@ -420,6 +457,8 @@ class ClaimDecision(BaseModel):
 
 class CheckIn(BaseModel):
     decisions: list[ClaimDecision] = Field(default_factory=list, max_length=40)
+    seconds: int | None = Field(default=None, ge=0, le=86400)     # how long the vendor spent on the checklist
+    read_full: bool = False                                        # they opened the whole story first
 
 
 MAX_REVISIONS = 2
@@ -444,10 +483,12 @@ async def check_draft(block_id: str, body: CheckIn, vendor: Vendor = Depends(cur
             raise HTTPException(400, "Tell us what it should say instead, or choose 'Remove'.")
         changes.append({"claim": claims[d.id]["text"], "action": d.action, "note": (d.note or "").strip()})
 
+    check = {"seconds": body.seconds, "read_full": body.read_full, "claims": len(claims), "changes": len(changes)}
+
     if not changes:
         b.status = BlockStatus.PENDING_REVIEW
         b.vendor_viewed_at = utcnow()
-        b.guard_notes = {**(b.guard_notes or {}), "vendor_confirmed": len(claims)}
+        b.guard_notes = {**(b.guard_notes or {}), "vendor_confirmed": len(claims), "vendor_check": check}
         await db.commit()
         return {"status": b.status, "revised": False}
 
@@ -484,7 +525,8 @@ async def check_draft(block_id: str, body: CheckIn, vendor: Vendor = Depends(cur
     b.word_count = len(text.split())
     b.claims = new_claims
     brief = (b.guard_notes or {}).get("brief")
-    b.guard_notes = {**writer.make_guard(text, new_claims, brief), "revised_by_vendor": True, "revision_notes": notes}
+    b.guard_notes = {**writer.make_guard(text, new_claims, brief), "revised_by_vendor": True, "revision_notes": notes,
+                     "vendor_check": check}
     await db.commit()
     return {"status": b.status, "revised": True}
 

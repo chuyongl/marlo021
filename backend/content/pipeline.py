@@ -174,10 +174,10 @@ def _media_id(url: str | None):
 
 # ── The turns ────────────────────────────────────────────────────────────────
 
-async def vendor_says(db, vendor: Vendor, conv: Conversation, text: str) -> dict:
-    """One vendor message in, one interviewer move out."""
+async def vendor_says(db, vendor: Vendor, conv: Conversation, text: str, voice: bool = False) -> dict:
+    """One vendor message in, one interviewer move out. `voice`: the words came from a voice memo."""
     await skills.refresh(db)
-    db.add(Message(conversation_id=conv.id, role="vendor", content=text.strip()))
+    db.add(Message(conversation_id=conv.id, role="vendor", content=text.strip(), meta={"voice": True} if voice else None))
     await db.flush()
     await db.refresh(conv, ["messages"])
     transcript = transcript_of(conv)

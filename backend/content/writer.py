@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 WRITER_MODEL = os.getenv("WRITER_MODEL", llm.DEFAULT_MODEL)
 ANCHOR_MODEL = os.getenv("GUARD_MODEL", llm.DEFAULT_MODEL)
 JUDGE_MODEL = os.getenv("JUDGE_MODEL", llm.DEFAULT_MODEL)
-MAX_CLAIMS_SHOWN = 12
+MAX_CLAIMS_SHOWN = 14
 MAX_QUOTES_SHOWN = 4
 MAX_FIX_PASSES = 2
 
@@ -69,7 +69,7 @@ ANCHOR_TOOL = {
         "properties": {
             "claims": {"type": "array", "items": {"type": "object", "properties": {
                 "text": {"type": "string"},
-                "kind": {"type": "string", "enum": ["number", "name", "place", "time", "person", "event", "other"]},
+                "kind": {"type": "string", "enum": ["number", "name", "place", "time", "person", "event", "tone", "translation", "other"]},
                 "status": {"type": "string", "enum": ["supported", "inferred", "unsupported"]},
                 "turns": {"type": "array", "items": {"type": "integer"}},
                 "evidence": {"type": "string"},
@@ -216,9 +216,11 @@ def verified_quotes(story_map: dict | None, vtexts: list[str]) -> list[str]:
     return out
 
 
+_KIND_ORDER = ("translation", "number", "name", "place", "time", "person", "tone", "event", "other")
+
+
 def _priority(kind: str) -> int:
-    return ["number", "name", "place", "time", "person", "event", "other"].index(kind) if kind in (
-        "number", "name", "place", "time", "person", "event", "other") else 6
+    return _KIND_ORDER.index(kind) if kind in _KIND_ORDER else len(_KIND_ORDER)
 
 
 def build_claims(body: str, transcript: list[dict], anchor: dict) -> list[dict]:
@@ -232,9 +234,12 @@ def build_claims(body: str, transcript: list[dict], anchor: dict) -> list[dict]:
             continue
         facts.append({"text": text, "kind": c.get("kind", "other"), "status": c.get("status", "unsupported"),
                       "turns": c.get("turns") or [], "evidence": (c.get("evidence") or "").strip()})
+    # What the vendor must see first: things we could not trace, then things we only worked out ("inferred"),
+    # then the rest by how embarrassing a wrong detail would be.
     unsupported = [f for f in facts if f["status"] == "unsupported"]
-    supported = sorted((f for f in facts if f["status"] != "unsupported"), key=lambda f: _priority(f["kind"]))
-    facts = unsupported + supported[: max(0, MAX_CLAIMS_SHOWN - len(unsupported))]
+    inferred = sorted((f for f in facts if f["status"] == "inferred"), key=lambda f: _priority(f["kind"]))
+    supported = sorted((f for f in facts if f["status"] == "supported"), key=lambda f: _priority(f["kind"]))
+    facts = (unsupported + inferred + supported)[:MAX_CLAIMS_SHOWN]
 
     quotes = []
     for q in quotes_in(body):
@@ -264,8 +269,15 @@ def _story_context(profile: dict, transcript: list[dict], story_map: dict | None
     private_block = ("\n\nPRIVATE (the vendor touched on these. Leave them out of the story unless the vendor clearly said "
                      "they may be included; if they asked for a general mention, keep it to a few plain words)\n"
                      + "\n".join(f"- {t}" for t in private)) if private else ""
+    lang = ((story_map or {}).get("language") or "en").lower()
+    lang_block = ""
+    if lang not in ("en", "en-us", ""):
+        lang_block = (f"\n\nLANGUAGE: the vendor spoke '{lang}', not English. The quotes above are in their own words. "
+                      "Put a short direct quote in quotation marks only in its ORIGINAL words, then give the English meaning "
+                      "right after it in parentheses WITHOUT quotation marks. Never put your own English translation inside "
+                      "quotation marks as if it were spoken.")
     return (f"{profile_text(profile)}\n\nTRANSCRIPT\n{transcript_text(transcript)}\n\n"
-            f"VERIFIED QUOTES (the vendor's exact words; copy exactly, never alter)\n{qlist}{private_block}")
+            f"VERIFIED QUOTES (the vendor's exact words; copy exactly, never alter)\n{qlist}{private_block}{lang_block}")
 
 
 async def plan_story(profile, transcript, story_map) -> dict:

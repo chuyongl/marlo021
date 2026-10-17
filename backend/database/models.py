@@ -528,6 +528,7 @@ class Block(Base):
     editor_id = Column(UUID(as_uuid=True), ForeignKey("editors.id"), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
     reject_reason = Column(Text, nullable=True)
+    editor_note = Column(Text, nullable=True)       # one line from the editor to the vendor, sent on approval
 
     times_used = Column(Integer, nullable=False, default=0)
 

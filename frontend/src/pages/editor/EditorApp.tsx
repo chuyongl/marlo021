@@ -194,6 +194,7 @@ function DraftEditor({ d, onDone, correctionId }: { d: any; onDone: () => void; 
   const [q, setQ] = useState<number>(d.quality_score || 25)
   const [pub, setPub] = useState<boolean>(d.is_public ?? true)
   const [reason, setReason] = useState('')
+  const [vendorLine, setVendorLine] = useState('')
   const [rejecting, setRejecting] = useState(false)
   const [showRaw, setShowRaw] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -202,7 +203,7 @@ function DraftEditor({ d, onDone, correctionId }: { d: any; onDone: () => void; 
   async function act(action: string) {
     setBusy(true); setErr('')
     try {
-      await api(`/editor/blocks/${d.id}`, { as: 'editor', method: 'PATCH', body: { headline, body, quality_score: q, is_public: pub, action, reject_reason: reason || undefined } })
+      await api(`/editor/blocks/${d.id}`, { as: 'editor', method: 'PATCH', body: { headline, body, quality_score: q, is_public: pub, action, reject_reason: reason || undefined, editor_note: action === 'approve' && vendorLine.trim() ? vendorLine.trim() : undefined } })
       if (correctionId && action === 'approve') await api(`/editor/corrections/${correctionId}`, { as: 'editor', body: { action: 'resolve' } })
       onDone()
     } catch (e: any) { setErr(e.message) } finally { setBusy(false) }
@@ -239,6 +240,13 @@ function DraftEditor({ d, onDone, correctionId }: { d: any; onDone: () => void; 
         <label className="flex items-start gap-2 text-[14px]"><input type="checkbox" className="mt-1 h-4 w-4 accent-[#a86f37]" checked={pub} onChange={(e) => setPub(e.target.checked)} /><span>Show on the public website after approval. Turn off for anything personal.</span></label>
       </div>
       {err && <div className="mt-3"><Notice kind="bad">{err}</Notice></div>}
+      {!rejecting && d.kind !== 'update' && !d.is_sample && (
+        <div className="mt-4">
+          <label className="label" htmlFor={`vl-${d.id}`}>A line for the vendor <span className="font-normal text-soft">(optional)</span></label>
+          <input id={`vl-${d.id}`} className="field" maxLength={300} value={vendorLine} onChange={(e) => setVendorLine(e.target.value)} placeholder="The line about the hand dryer is why this one works." />
+          <p className="hint">When you approve, they get an email saying it's running, with this line in it. Say something specific about their story.</p>
+        </div>
+      )}
       {!rejecting ? (
         <div className="mt-4 flex flex-wrap gap-2">
           <button className="btn-primary" disabled={busy} onClick={() => act('approve')}>{correctionId ? 'Fix and approve' : 'Approve'}</button>
@@ -266,6 +274,8 @@ function Brief({ d }: { d: any }) {
   const b = g.brief
   const claims: any[] = d.claims || []
   const bad = claims.filter((c) => c.status === 'unsupported')
+  const vc = g.vendor_check
+  const rushed = !!vc && vc.changes === 0 && typeof vc.seconds === 'number' && vc.seconds < 20 && !vc.read_full
   if (!b && !claims.length && !d.revisions) return null
   return (
     <div className="mb-4 rounded-lg border border-line bg-paper p-4 text-[14px]">
@@ -275,6 +285,8 @@ function Brief({ d }: { d: any }) {
         {b?.lead_worthy && <span className="chip-good">Could lead the issue</span>}
         {g.claims_total > 0 && <span className="chip">{g.claims_supported}/{g.claims_total} claims trace to the vendor’s words</span>}
         {g.vendor_confirmed > 0 && <span className="chip-good">Vendor confirmed {g.vendor_confirmed} claims</span>}
+        {vc?.read_full && <span className="chip-good">Vendor read or listened to the whole story</span>}
+        {rushed && <span className="chip-warn">Vendor confirmed everything in {vc.seconds}s without opening the story. Worth a closer look.</span>}
         {d.revisions > 0 && <span className="chip">Revised {d.revisions}× after the vendor’s changes</span>}
       </div>
       {b?.scores && (
@@ -479,6 +491,7 @@ function ConversationView({ c, vendorName }: { c: any; vendorName: string }) {
         {c.messages.map((m: any, i: number) => (
           <p key={i}>
             <b className={m.role === 'agent' ? 'text-kraftdeep' : ''}>{m.role === 'agent' ? 'Interviewer' : vendorName}:</b> {m.content}
+            {m.voice && <span className="chip ml-1" title="Spoken, then turned into words by speech-to-text and checked by the vendor">spoken</span>}
             {m.role === 'agent' && m.skill && <span className="chip ml-1">{m.skill}</span>}
             {m.problems?.length > 0 && <span className="chip-bad ml-1" title={m.problems.join('; ')}>rule flagged</span>}
             {m.images?.map((u: string) => <img key={u} src={mediaUrl(u)} alt="Attached by the vendor" className="mt-1 max-h-32 rounded" />)}

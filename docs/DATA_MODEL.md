@@ -203,7 +203,7 @@ Magic link once, then a long session. **One click on first visit, then the site 
 | role | string | `agent` / `vendor` |
 | content | text | |
 | image_urls | array | |
-| **meta** | JSONB | Agent messages: which skill wrote it, what it echoed, rule problems found, quick-reply buttons |
+| **meta** | JSONB | Agent messages: which skill wrote it, what it echoed, rule problems found, quick-reply buttons. Vendor messages: `{"voice": true}` when the words came from a voice memo (the recording itself is never stored) |
 | created_at | datetime | |
 
 **skill_overrides** (editor edits to interviewer/writer instructions)
@@ -258,13 +258,14 @@ Magic link once, then a long session. **One click on first visit, then the site 
 | **vendor_viewed_at** | datetime | When the vendor saw the draft |
 | editor_id / reviewed_at | | |
 | reject_reason | string | |
-| **claims** | JSONB | Every checkable fact in the draft: `{id, text, kind, status: supported/inferred/unsupported, turns, evidence}`. The vendor confirms, fixes or removes these instead of proofreading |
+| **claims** | JSONB | Every checkable fact in the draft: `{id, text, kind (number/name/place/time/person/event/tone/translation/other/quote), status: supported/inferred/unsupported, turns, evidence}`. The vendor confirms, fixes or removes these instead of proofreading |
+| **editor_note** | TEXT | One line from the editor to the vendor, emailed when the story is first approved and shown in the vendor app |
 | **story_plan** | JSONB | The planner's shape, outline (each beat cites the vendor's turns) and headline options |
 | **history** | JSONB | Earlier versions after the vendor's changes (max 2 revisions, then it goes to an editor) |
 | times_used | int | |
 | created_at | datetime | |
 
-(`guard_notes` also holds the style flags, claim counts and the editor brief: rubric scores 1-4, verdict run / edit / hold.)
+(`guard_notes` also holds the style flags, claim counts and the editor brief: rubric scores 1-4, verdict run / edit / hold, and `vendor_check`: `{seconds, read_full, claims, changes}`, how the vendor went through the fact check.)
 
 **Lifecycle:**
 

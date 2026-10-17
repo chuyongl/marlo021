@@ -194,13 +194,18 @@ class BlockEdit(BaseModel):
     is_public: bool | None = None
     action: str = "save"   # save | approve | reject
     reject_reason: str | None = None
+    editor_note: str | None = Field(default=None, max_length=400)   # one line to the vendor, emailed on approval
 
 
 @router.patch("/blocks/{block_id}")
-async def edit_block(block_id: str, body: BlockEdit, ed: Editor = Depends(current_editor), db: AsyncSession = Depends(get_db)):
+async def edit_block(block_id: str, body: BlockEdit, bg: BackgroundTasks, ed: Editor = Depends(current_editor),
+                     db: AsyncSession = Depends(get_db)):
     b = await db.get(Block, as_uuid(block_id)) if as_uuid(block_id) else None
     if not b:
         raise HTTPException(404, "Not found.")
+    first_approval = body.action == "approve" and b.status != BlockStatus.APPROVED and b.block_class == BlockClass.STORY
+    if body.editor_note is not None and body.editor_note.strip():
+        b.editor_note = body.editor_note.strip()
     if body.headline is not None:
         b.headline = body.headline.strip()
     if body.body is not None:
@@ -227,7 +232,35 @@ async def edit_block(block_id: str, body: BlockEdit, ed: Editor = Depends(curren
         b.editor_id = ed.id
         b.reviewed_at = utcnow()
     await db.commit()
+    if first_approval and b.status == BlockStatus.APPROVED:
+        bg.add_task(_tell_vendor_it_ran, str(b.id))
     return {"status": b.status}
+
+
+async def _tell_vendor_it_ran(block_id: str) -> None:
+    """The feedback loop: when a story is approved the vendor hears about it, with the editor's own line if there is one."""
+    import html
+    async with AsyncSessionLocal() as db:
+        try:
+            b = await db.get(Block, as_uuid(block_id))
+            v = await db.get(Vendor, b.vendor_id)
+            if v.is_sample:
+                return
+            market = await db.get(Market, v.market_id)
+            link = f"{FRONTEND_URL}/s/{b.slug}" if b.is_public and b.slug else None
+            parts = [f"Your story <b>{html.escape(b.headline or '')}</b> was read by an editor and approved. "
+                     "It's now in the pool of stories for the weekly email to the people who follow you."]
+            if b.editor_note:
+                parts.append(f"From the editor: <i>&ldquo;{html.escape(b.editor_note)}&rdquo;</i>")
+            if link:
+                parts.append(f'You can read it on the site: <a href="{link}">{link}</a>')
+            token = await new_vendor_magic_link(db, v)
+            await db.commit()
+            await send_login_email(db, v, market, login_url(token), subject=f"Approved: {b.headline}"[:140],
+                                   intro="<br><br>".join(parts))
+            await db.commit()
+        except Exception as e:  # noqa: BLE001 - never fail the approval over an email
+            logger.error(f"[Editor] approval email for {block_id}: {e}")
 
 
 class BlockNew(BaseModel):
@@ -432,6 +465,7 @@ async def vendor_conversations(vid: str, ed: Editor = Depends(current_editor), d
                             "want": m.get("want"), "turn": m.get("turn"), "quotes": [q["text"] for q in m.get("quotes", [])]},
                     "messages": [{"role": x.role, "content": x.content, "skill": (x.meta or {}).get("skill"),
                                   "target": (x.meta or {}).get("target"), "problems": (x.meta or {}).get("problems") or [],
+                                  "voice": bool((x.meta or {}).get("voice")),
                                   "images": x.image_urls or []} for x in c.messages]})
     return out
 

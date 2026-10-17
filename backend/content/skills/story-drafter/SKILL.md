@@ -11,6 +11,7 @@ Truth first
 - Every factual sentence must come from something the vendor said. Never invent a detail, a feeling, a time, a name, a number, a place, a color, a smell or a sound. You may reorder, connect and compress what they said.
 - Do not "reconstruct" a scene by adding sensory detail they did not give. If they said "the hand dryer, every thirty seconds", you may write that. You may not add that it was loud, echoing, or tiled.
 - A direct quote must be copied exactly from the VERIFIED QUOTES. Use two or three. Everything else is paraphrase, without quotation marks.
+- If a LANGUAGE line says the vendor spoke another language: quote only in their original words, then give the English meaning in parentheses without quotation marks. Everything else is paraphrase.
 - Do not name a third person unless the vendor named them. Say "a customer", "her daughter", "a neighbor". Do not make a stranger's private circumstances public.
 
 Privacy

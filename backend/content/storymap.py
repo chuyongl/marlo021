@@ -6,9 +6,9 @@ Instead of one big prompt guessing what to do next, every vendor answer is
 turned into updates to this map (by the director, content/interviewer.py), and
 the NEXT SKILL is chosen here, in plain code, from the map:
 
-    scene still thin?          -> scene-deepener   (up to 5 turns)
+    scene still thin?          -> scene-deepener   (up to 4 turns)
     no want/obstacle or turn?  -> stakes-and-turn  (up to 2 turns)
-    quotes missing?            -> meaning-asker    (once, last)
+    no reflection yet?         -> meaning-asker    (once, last, also when the story is otherwise ready)
     enough for a story?        -> wrap-up
 
 Plus modes that override the path: low-yield (one-liners, "I have no story",
@@ -23,12 +23,12 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-MAX_VENDOR_TURNS = 10        # hard cap on a single sitting
-SCENE_MAX_TURNS = 5          # scene-deepener uses, in total
+MAX_VENDOR_TURNS = 8         # hard cap on a single sitting (aim for 6 to 8: a long free telling first, then a few sharp questions)
+SCENE_MAX_TURNS = 4          # scene-deepener uses, in total
 STAKES_MAX_TURNS = 2
 LOW_YIELD_STREAK = 2         # consecutive thin answers that switch to low-yield mode
 PAUSE_AFTER_LOW_TURNS = 2    # thin answers inside low-yield mode before offering a micro-session
-MAX_PAUSES = 2               # micro-sessions per conversation
+MAX_PAUSES = 1               # micro-sessions per conversation (one reminder, not a chase)
 
 MISSING_ORDER = ("sequence", "position", "sensory", "dialogue", "hands")
 
@@ -261,6 +261,9 @@ def choose(m: dict, obs: dict[str, Any]) -> Decision:
     if m.get("pending_sensitive"):
         return Decision("ask", "sensitive-guard", f"sensitive: {m['pending_sensitive']}")
     if is_ready(m):
+        if not m["meaning_asked"] and not m["meaning"]:
+            # A story is what happened plus what it turned out to mean. Ask for the second half once, then wrap up.
+            return Decision("ask", "meaning-asker", "story is ready; ask for the reflection once")
         return Decision("finish_story", "wrap-up", "story map is ready")
 
     if m["mode"] == "low_yield":

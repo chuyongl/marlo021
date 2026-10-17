@@ -7,7 +7,7 @@ These cannot judge writing quality: that needs the real model
 """
 import asyncio
 
-from content import interviewer, scout, skills, storymap, writer
+from content import interviewer, nudges, scout, skills, speech, storymap, writer
 from content.storymap import apply_observation, choose, new_map
 
 EXPECTED_SKILLS = {
@@ -106,10 +106,23 @@ RICH = dict(
 RICH_TEXT = "I moved the mirror to the front and a girl said these are louder than the dryer. Later: it's about where the table is."
 
 
-def test_a_rich_answer_finishes_a_story():
+def test_a_rich_answer_with_a_reflection_finishes_a_story():
+    m = new_map({"id": "h1", "title": "t"})
+    d = feed(m, RICH_TEXT, 1, meaning="it's about where the table is", **RICH)
+    assert storymap.is_ready(m) and d.move == "finish_story" and d.skill == "wrap-up"
+
+
+def test_a_ready_story_without_a_reflection_asks_for_it_once_and_then_wraps_up():
     m = new_map({"id": "h1", "title": "t"})
     d = feed(m, RICH_TEXT, 1, **RICH)
-    assert storymap.is_ready(m) and d.move == "finish_story" and d.skill == "wrap-up"
+    assert storymap.is_ready(m) and (d.move, d.skill) == ("ask", "meaning-asker")
+    storymap.record_skill(m, "meaning-asker")
+    d = feed(m, "I did not expect to learn anything from a bathroom", 2, new_details=1)
+    assert d.move == "finish_story"
+
+
+def test_a_sitting_is_capped_at_eight_answers():
+    assert storymap.MAX_VENDOR_TURNS == 8 and storymap.MAX_PAUSES == 1
 
 
 def test_quotes_must_be_exact_words_or_they_are_dropped():
@@ -136,11 +149,11 @@ def test_thin_scene_goes_to_scene_deepener_then_stakes_then_meaning():
 
 def test_scene_deepener_is_capped():
     m = new_map()
-    for i in range(1, 6):
+    for i in range(1, storymap.SCENE_MAX_TURNS + 1):
         d = feed(m, f"Another small thing happened here number {i} today", i, new_details=1, scene={**obs()["scene"], "where": f"place {i}"})
         assert d.skill == "scene-deepener"
         storymap.record_skill(m, "scene-deepener")
-    d = feed(m, "One more small thing happened right here today again", 6, new_details=1)
+    d = feed(m, "One more small thing happened right here today again", storymap.SCENE_MAX_TURNS + 1, new_details=1)
     assert d.skill != "scene-deepener"
 
 
@@ -271,6 +284,7 @@ def test_full_interview_with_the_fake_model_reaches_a_story_and_every_message_is
         "They put me by the bathrooms and I sold like two pairs. The hand dryer ran every 30 seconds.",
         "I moved my mirror to the front so people could try earrings. A girl said these are louder than the dryer.",
         "Rent was riding on that weekend. Now the mirror always goes in front.",
+        "I thought it was about the jewelry. It is about where the table is.",
     ]
     last = None
     for a in answers:
@@ -283,6 +297,7 @@ def test_full_interview_with_the_fake_model_reaches_a_story_and_every_message_is
             break
     assert last.finished and last.move == "finish_story"
     assert m["stage"] == "done" and m["skill_counts"]["wrap-up"] == 1
+    assert m["skill_counts"].get("meaning-asker") == 1      # the reflection is asked once before wrapping up
 
 
 def test_writing_chain_with_the_fake_model_returns_claims_and_a_guard():
@@ -342,3 +357,43 @@ def test_a_good_answer_after_a_pause_gets_fresh_chances():
     d = feed(m, "A woman with a stroller bought the last two at two o'clock", 5, new_details=2)
     assert m["low_turns_in_mode"] == 0
     assert d.move == "ask", d
+
+
+def test_the_opener_is_an_invitation_not_a_one_question_message():
+    invite = ("Think of the last time a regular came for their one thing. Tell me about it from the start, whatever you "
+              "remember. As long as you like, or just talk into your phone.")
+    assert interviewer.lint(invite, "opener") == []
+    assert "no question" in interviewer.lint(invite, "scene-deepener")        # every other skill still needs one question
+    assert "more than one question" in interviewer.lint("Tell me. Where? When?", "opener")
+    assert any("why" in p for p in interviewer.lint("Tell me about it from the start. Why did it happen?", "opener"))
+    long = " ".join(["word"] * 80)
+    assert any("longer than 70" in p for p in interviewer.lint(long, "opener"))
+    assert len(interviewer.repair(long + ".", "opener").split()) <= interviewer.MAX_INVITE_WORDS
+
+
+def test_claims_list_what_is_least_certain_first_and_keeps_the_new_kinds():
+    transcript = [{"role": "agent", "content": "q"}, {"role": "vendor", "content": "Forty jars, all gone by eleven. My daughter helped."}]
+    mk = lambda text, kind, status: {"text": text, "kind": kind, "status": status, "turns": [1] if status != "unsupported" else [], "evidence": ""}
+    anchor = {"claims": [mk("You made forty jars.", "number", "supported"),
+                         mk("You sold out.", "event", "inferred"),
+                         mk("Your daughter was proud.", "tone", "unsupported"),
+                         mk("Your daughter helped.", "person", "supported"),
+                         mk("It means 'good morning'.", "translation", "inferred")]}
+    claims = writer.build_claims("Body with no quotes.", transcript, anchor)
+    order = [c["status"] for c in claims]
+    assert order == sorted(order, key=["unsupported", "inferred", "supported"].index)
+    assert {c["kind"] for c in claims} >= {"tone", "translation", "person"}
+    many = {"claims": [mk(f"Fact {i}.", "other", "supported") for i in range(20)]}
+    assert len(writer.build_claims("x", transcript, many)) <= writer.MAX_CLAIMS_SHOWN
+
+
+def test_voice_memos_come_back_as_text_with_the_fake_model():
+    assert speech.available()
+    assert asyncio.run(speech.transcribe(b"x" * 3000, "audio/webm;codecs=opus")) == speech.FAKE_TRANSCRIPT
+    assert speech.filename_for("audio/mp4") == "memo.m4a"
+    assert speech.filename_for("audio/webm;codecs=opus") == "memo.webm"
+    assert speech.filename_for("") == "memo.webm"
+
+
+def test_a_vendor_who_goes_quiet_gets_one_reminder_not_three():
+    assert nudges.MAX_NUDGES == 1

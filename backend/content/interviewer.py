@@ -122,8 +122,10 @@ EMOJI = re.compile("[\U0001F300-\U0001FAFF☀-➿]")
 
 ECHO_SKILLS = {"scene-deepener", "stakes-and-turn", "meaning-asker"}
 NO_QUESTION_SKILLS = {"wrap-up"}
+INVITE_SKILLS = {"opener"}          # an invitation to tell it all: a request is fine, a question is optional
 MAX_QUESTION_WORDS = 25
 MAX_WORDS = 60
+MAX_INVITE_WORDS = 70
 
 
 def _sentences(t: str) -> list[str]:
@@ -145,7 +147,7 @@ def lint(msg: str, skill: str, last_vendor: str = "", prev_agent: str = "") -> l
     else:
         if qn > 1:
             problems.append("more than one question")
-        if qn == 0 and skill != "sensitive-guard":
+        if qn == 0 and skill not in INVITE_SKILLS and skill != "sensitive-guard":
             problems.append("no question")
         for s in sents:
             if "?" in s and len(s.split()) > MAX_QUESTION_WORDS:
@@ -162,8 +164,9 @@ def lint(msg: str, skill: str, last_vendor: str = "", prev_agent: str = "") -> l
         problems.append("exclamation mark")
     if EMOJI.search(t):
         problems.append("emoji")
-    if len(t.split()) > MAX_WORDS:
-        problems.append(f"longer than {MAX_WORDS} words")
+    limit = MAX_INVITE_WORDS if skill in INVITE_SKILLS else MAX_WORDS
+    if len(t.split()) > limit:
+        problems.append(f"longer than {limit} words")
     if skill in ECHO_SKILLS:
         before_q = [s for s in sents if "?" not in s]
         if not before_q or sents[0].endswith("?"):
@@ -200,7 +203,10 @@ def repair(msg: str, skill: str) -> str:
             break
     t = " ".join(out)
     words = t.split()
-    if len(words) > MAX_WORDS:
+    if skill in INVITE_SKILLS:
+        if len(words) > MAX_INVITE_WORDS:
+            t = " ".join(words[:MAX_INVITE_WORDS])
+    elif len(words) > MAX_WORDS:
         t = " ".join(words[-MAX_WORDS:])
     return t
 

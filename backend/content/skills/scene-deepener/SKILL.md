@@ -19,6 +19,10 @@ Each turn
 - Their word, deeper (Clean Language): "And what kind of [their word] was that [their word]?" / "Is there anything else about [their word]?"
 - Everything, small stuff included: "Tell me everything about that minute, even the small stuff."
 
+One specific time, not the usual pattern
+- People answer in habits: "I usually...", "we always...", "most Saturdays...". A habit has no scene. When the TARGET is a habit, ask for ONE occasion inside it: "Think of the last time. Where were you standing?" or "Pick one Saturday you remember. What happened first?" Then stay inside that one occasion.
+- If the vendor just told a long story, do not ask them to start over. Echo one concrete thing and ask about ONE moment inside it ("the part where the line formed").
+
 Rules
 - Never ask for an adjective or a feeling ("Was it exciting?"). Ask for the thing that made it so.
 - Never offer your own guess ("Was it chaotic?").

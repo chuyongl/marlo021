@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, mediaUrl, store, timeAgo, uploadPhoto, CATEGORY_LABEL } from '../../lib/api'
+import { VoiceButton } from '../../ui/VoiceButton'
 import { Avatar, BagMark, CopyButton, CopyField, Notice, Paras, QR, SampleTag, Spinner, useLoad } from '../../ui/kit'
 
 type Tab = 'talk' | 'stories' | 'reach' | 'share' | 'profile'
@@ -178,6 +179,7 @@ function Talk({ me, goStories }: { me: any; goStories: () => void }) {
   const [err, setErr] = useState('')
   const [pending, setPending] = useState<string | null>(null)
   const [drafting, setDrafting] = useState(false)
+  const [spoken, setSpoken] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
   const c = conv.data
 
@@ -198,14 +200,15 @@ function Talk({ me, goStories }: { me: any; goStories: () => void }) {
     e?.preventDefault()
     const t = (override ?? text).trim()
     if (!t || sending) return
-    setSending(true); setErr(''); setPending(t); setText('')
+    const voice = spoken && override === undefined
+    setSending(true); setErr(''); setPending(t); setText(''); setSpoken(false)
     try {
-      const r = await api('/vendor/conversation/message', { as: 'vendor', body: { text: t } })
+      const r = await api('/vendor/conversation/message', { as: 'vendor', body: { text: t, voice } })
       conv.setData(r)
       if (r.drafting) setDrafting(true)
-    } catch (e: any) { setErr(e.message); setText(t) } finally { setSending(false); setPending(null) }
+    } catch (e: any) { setErr(e.message); setText(t); setSpoken(voice) } finally { setSending(false); setPending(null) }
   }
-  async function start(body: { pick: string; text?: string; photo_url?: string; caption?: string }) {
+  async function start(body: { pick: string; text?: string; photo_url?: string; caption?: string; voice?: boolean }) {
     setErr(''); setStarting(body.pick)
     try {
       const r = await api('/vendor/conversation/start', { as: 'vendor', body })
@@ -266,11 +269,13 @@ function Talk({ me, goStories }: { me: any; goStories: () => void }) {
             <label htmlFor="talk-input" className="sr-only">Your answer</label>
             <textarea id="talk-input" className="field min-h-[84px]" value={text} onChange={(e) => setText(e.target.value)} placeholder="Tell it the way you'd tell a friend. Longer is better."
               onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send() }} />
+            {spoken && text.trim() && <Notice kind="good">Here's what we heard. Fix any words that are wrong, then send.</Notice>}
+            {c.voice && <VoiceButton disabled={sending} onText={(t) => { setText((prev) => (prev.trim() ? prev.trim() + ' ' : '') + t); setSpoken(true) }} />}
             <div className="flex flex-wrap items-center gap-2">
               <button className="btn-primary" disabled={sending || !text.trim()}>{sending ? 'Sending…' : 'Send'}</button>
               <button type="button" className="btn-ghost btn-sm" disabled={sending} onClick={() => send("That's all I've got this week.")}>That's all for this week</button>
             </div>
-            <p className="hint">Tip: tap the microphone on your phone keyboard and just talk. You can leave and come back; the conversation waits for you.</p>
+            <p className="hint">{c.voice ? 'You can leave and come back; the conversation waits for you.' : 'Tip: tap the microphone on your phone keyboard and just talk. You can leave and come back; the conversation waits for you.'}</p>
           </form>
         ) : (
           <div className="mt-4 flex flex-col gap-3">
@@ -302,9 +307,10 @@ function Progress({ stage }: { stage: string }) {
   )
 }
 
-function StoryMenu({ c, starting, onStart }: { c: any; starting: string | null; onStart: (b: { pick: string; text?: string; photo_url?: string; caption?: string }) => void }) {
+function StoryMenu({ c, starting, onStart }: { c: any; starting: string | null; onStart: (b: { pick: string; text?: string; photo_url?: string; caption?: string; voice?: boolean }) => void }) {
   const [mode, setMode] = useState<'' | 'photo' | 'free'>('')
   const [free, setFree] = useState('')
+  const [freeSpoken, setFreeSpoken] = useState(false)
   const [caption, setCaption] = useState('')
   const [uploading, setUploading] = useState(false)
   const [err, setErr] = useState('')
@@ -362,9 +368,11 @@ function StoryMenu({ c, starting, onStart }: { c: any; starting: string | null; 
         </div>
       )}
       {mode === 'free' && (
-        <form className="card mt-3 flex flex-col gap-2 p-4" onSubmit={(e) => { e.preventDefault(); if (free.trim()) onStart({ pick: 'free', text: free.trim() }) }}>
+        <form className="card mt-3 flex flex-col gap-2 p-4" onSubmit={(e) => { e.preventDefault(); if (free.trim()) onStart({ pick: 'free', text: free.trim(), voice: freeSpoken }) }}>
           <label className="label" htmlFor="menu-free">Start wherever you like</label>
           <textarea id="menu-free" className="field min-h-[96px]" value={free} onChange={(e) => setFree(e.target.value)} placeholder="Tell it the way you'd tell a friend." />
+          {freeSpoken && free.trim() && <Notice kind="good">Here's what we heard. Fix any words that are wrong, then send.</Notice>}
+          {c.voice && <VoiceButton disabled={busy} onText={(t) => { setFree((prev) => (prev.trim() ? prev.trim() + ' ' : '') + t); setFreeSpoken(true) }} />}
           <button className="btn-primary self-start" disabled={busy || !free.trim()}>{starting === 'free' ? 'Sending…' : 'Send'}</button>
         </form>
       )}
@@ -434,7 +442,35 @@ function Stories({ me }: { me: any }) {
   )
 }
 
-type Claim = { id: string; text: string; kind: string; unsupported: boolean }
+type Claim = { id: string; text: string; kind: string; unsupported: boolean; inferred?: boolean }
+
+// A line under a claim that tells the vendor what kind of check this is.
+function claimHint(c: Claim): { text: string; tone: 'warn' | 'soft' } | null {
+  if (c.unsupported) return { text: "We couldn't find this in what you told us.", tone: 'warn' }
+  if (c.inferred) return { text: 'You didn\'t say this directly. We worked it out from what you told us. Is it true?', tone: 'soft' }
+  if (c.kind === 'tone') return { text: 'This describes a feeling or a manner. Did it really feel like that?', tone: 'soft' }
+  if (c.kind === 'translation') return { text: 'This is our English for what you said in your own language. Is it right?', tone: 'soft' }
+  if (c.kind === 'person') return { text: 'This is about someone else. Is it okay to include?', tone: 'soft' }
+  return null
+}
+
+function useListen(text: string) {
+  const [state, setState] = useState<'idle' | 'playing'>('idle')
+  const [heard, setHeard] = useState(false)
+  const ok = typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined'
+  useEffect(() => () => { try { if (ok) window.speechSynthesis.cancel() } catch { /* ignore */ } }, [ok])
+  function toggle() {
+    if (!ok) return
+    const synth = window.speechSynthesis
+    if (state === 'playing') { synth.cancel(); setState('idle'); return }
+    const u = new SpeechSynthesisUtterance(text)
+    u.rate = 0.95
+    u.onend = () => { setState('idle'); setHeard(true) }
+    u.onerror = () => setState('idle')
+    synth.cancel(); synth.speak(u); setState('playing')
+  }
+  return { ok, playing: state === 'playing', heard, toggle }
+}
 type Choice = { action: 'ok' | 'fix' | 'remove'; note: string }
 
 function DraftCheck({ s, onDone }: { s: any; onDone: () => void }) {
@@ -446,6 +482,9 @@ function DraftCheck({ s, onDone }: { s: any; onDone: () => void }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [revised, setRevised] = useState(false)
+  const opened = useRef(Date.now())
+  const everOpened = useRef(false)
+  const listen = useListen(`${s.headline}. ${s.body || ''}`)
   const paras = (s.body || '').split('\n').filter((p: string) => p.trim())
   const changed = claims.filter((c) => choices[c.id]?.action !== 'ok').length
   const set = (id: string, patch: Partial<Choice>) => setChoices((x) => ({ ...x, [id]: { ...x[id], ...patch } }))
@@ -458,7 +497,9 @@ function DraftCheck({ s, onDone }: { s: any; onDone: () => void }) {
     setBusy(true); setErr('')
     try {
       const decisions = claims.map((c) => ({ id: c.id, action: choices[c.id].action, note: choices[c.id].note || undefined }))
-      const r = await api(`/vendor/stories/${s.id}/check`, { as: 'vendor', body: { decisions } })
+      const seconds = Math.round((Date.now() - opened.current) / 1000)
+      const read_full = everOpened.current || listen.heard
+      const r = await api(`/vendor/stories/${s.id}/check`, { as: 'vendor', body: { decisions, seconds, read_full } })
       if (r.revised) { setRevised(true); setOpen(false) }
       onDone()
     } catch (e: any) { setErr(e.message) } finally { setBusy(false) }
@@ -476,21 +517,28 @@ function DraftCheck({ s, onDone }: { s: any; onDone: () => void }) {
       <div className="mt-3 story-body [&>p]:text-[17px]">
         {(open || claims.length === 0 ? paras : paras.slice(0, 1)).map((p: string, i: number) => <p key={i}>{p}</p>)}
       </div>
-      {claims.length > 0 && paras.length > 1 && (
-        <button className="mt-1 text-[14px] font-semibold text-kraft" onClick={() => setOpen(!open)} aria-expanded={open}>{open ? 'Show less' : 'Read the whole story'}</button>
+      {claims.length > 0 && (
+        <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+          {paras.length > 1 && (
+            <button className="text-[14px] font-semibold text-kraft" onClick={() => { everOpened.current = true; setOpen(!open) }} aria-expanded={open}>{open ? 'Show less' : 'Read the whole story'}</button>
+          )}
+          {listen.ok && (
+            <button className="text-[14px] font-semibold text-kraft" onClick={listen.toggle} aria-pressed={listen.playing}>{listen.playing ? 'Stop listening' : 'Listen to it'}</button>
+          )}
+        </div>
       )}
 
       {claims.length > 0 ? (
         <div className="mt-5">
           <p className="font-semibold">Is each of these right?</p>
-          <p className="text-[14px] text-soft">You don't have to proofread. Just check these. Everything else in the story comes from your own words.</p>
+          <p className="text-[14px] text-soft">Read the story or listen to it, then check these. The ones most likely to be wrong come first. Everything else comes from your own words.</p>
           <ul className="mt-3 flex flex-col gap-2">
             {claims.map((c) => {
               const ch = choices[c.id]
               return (
                 <li key={c.id} className={`rounded-lg border p-3 ${ch.action === 'ok' ? 'border-line bg-paper' : 'border-kraft/50 bg-kraft/5'}`}>
                   <p className="text-[15px] leading-snug">{c.kind === 'quote' ? <>Your words: <span className="font-serif">“{c.text}”</span></> : c.text}</p>
-                  {c.unsupported && <p className="mt-1 text-[13px] text-rust">We couldn't find this in what you told us.</p>}
+                  {(() => { const h = claimHint(c); return h && <p className={`mt-1 text-[13px] ${h.tone === 'warn' ? 'text-rust' : 'text-soft'}`}>{h.text}</p> })()}
                   <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label={`Is this right: ${c.text}`}>
                     {([['ok', 'Right'], ['fix', 'Not quite'], ['remove', 'Leave it out']] as const).map(([a, label]) => (
                       <button key={a} type="button" aria-pressed={ch.action === a} onClick={() => set(c.id, { action: a })}
@@ -565,6 +613,7 @@ function StoryRow({ s, me, onChange }: { s: any; me: any; onChange: () => void }
         <div className="mt-3 border-t border-line pt-3">
           <Paras text={s.body} className="story-body [&>p]:text-[16px]" />
           {s.reject_reason && <Notice>Editor's note: {s.reject_reason}</Notice>}
+          {s.status === 'approved' && s.editor_note && <Notice kind="good">A note from the editor: {s.editor_note}</Notice>}
           {s.corrections?.map((c: any, i: number) => <p key={i} className="text-[13px] text-soft">Your correction ({c.status}): {c.note}</p>)}
           {s.status === 'approved' && (
             <div className="mt-3 flex flex-col gap-3">

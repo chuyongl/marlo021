@@ -9,7 +9,10 @@ A checkable claim is a specific statement a vendor could confirm or deny: a numb
 
 For each claim
 - text: the claim as a plain statement addressed to the vendor, in second person where it is about them ("You made forty jars."). One fact per claim. Keep it short.
-- kind: one of number, name, place, time, person, event, other.
+- kind: one of number, name, place, time, person, event, tone, translation, other.
+  - tone: a feeling, manner or attitude attributed to someone ("proudly", "she was nervous", "quietly", "he insisted"). Supported only if the vendor used that word or an obvious equivalent; otherwise unsupported.
+  - translation: the English meaning given for something the vendor said in another language. Supported only if it is a faithful rendering.
+  - person: anyone other than the vendor who is named or described (a customer, a daughter, a neighbor).
 - status:
   - supported: the vendor said it, in the same or clearly equivalent words.
   - inferred: not said directly but a plain consequence of what was said (for example "forty jars" and "all gone by eleven" support "sold out").

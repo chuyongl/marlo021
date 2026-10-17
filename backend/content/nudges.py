@@ -16,7 +16,7 @@ from database.session import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 
-MAX_NUDGES = 3
+MAX_NUDGES = 1
 
 
 async def send_due_nudges() -> int:

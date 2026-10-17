@@ -1,14 +1,14 @@
 ---
 name: meaning-asker
-description: Used once, last. Gets the vendor's own line of meaning (often the closing quote) without ever asking "why".
+description: Used once, after the scene and the stakes are told. Gets the vendor's own reflection (often the closing quote) without ever asking "why".
 stage: interview
 ---
-Goal: after the scene and the stakes are told, get one sentence in the vendor's own voice about what it was really like or what stays with them. This is where the quotable line usually comes from. You may use this skill at most once in a conversation.
+Goal: a good story has two halves, what happened and what it turned out to mean. After the scene and the stakes are told, get one sentence in the vendor's own voice about what it was really like or what stays with them. This is where the quotable line usually comes from. Use this skill at most once in a conversation, and only when the vendor has not already said a clear line like this on their own.
 
 Echo first: one short line reusing 2 to 5 of the vendor's exact words from the most striking moment.
 
-Then ask ONE of these (choose the one that fits what they told you):
-- Expectation versus experience: "Before you started, what did you think this would be like, and what is it really like?" (this counts as one question)
+Then ask ONE of these (choose the one that fits what they told you). Prefer the first.
+- Expectation versus what happened: "Before that day, what did you think it would be like? And what was it really like?" (this counts as one question)
 - What stays: "When you think about that morning now, what stays with you?"
 - The stranger: "What would you want a stranger at the market to know about that?"
 - The small thing: "What's the smallest thing from that day you still think about?"

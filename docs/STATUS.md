@@ -1,6 +1,6 @@
 # Brown Bag — Current Status
 
-*Last updated: October 15, 2026*
+*Last updated: October 17, 2026*
 
 > **Doc rule:** REPLACED each session, never appended. One "Last updated" date only.
 
@@ -8,9 +8,11 @@
 
 ## Where Things Stand
 
-**The pilot product is deployed on marlo021.ai** (API on api.marlo021.ai, version `0.5.0`): public website, vendor app, editor app, the weekly issue, and a live report for market organizers.
+**The pilot product is deployed on marlo021.ai** (API on api.marlo021.ai, version `0.6.0`): public website, vendor app, editor app, the weekly issue, and a live report for market organizers.
 
 **v0.5.0 replaced the story engine** (details in `docs/STORY_ENGINE.md`): the vendor picks a story from a menu, an interviewer built from small editable skills deepens one moment at a time, the draft is written by a five-step chain, and the vendor checks a short list of facts instead of proofreading. Editors can edit every skill's wording in **Editor → Skills**.
+
+**v0.6.0 changed how the conversation starts and ends**: the first message is an invitation to tell it from the start (typed or by **voice memo**), the interview is capped at 8 answers and asks "what did you expect, and what was it really" once, the fact check lists the least certain claims first (with listen-aloud), and when an editor approves a story the vendor gets an email with the editor's own line.
 
 The site starts with **five sample vendors** (marked "Sample") and their stories so every page has something to show. Remove them in Editor → Settings before real readers arrive.
 
@@ -30,6 +32,14 @@ The site starts with **five sample vendors** (marked "Sample") and their stories
 
 ---
 
+## What Changed in v0.6.0
+
+- Voice memos: `content/speech.py`, `POST /vendor/voice/transcribe`, `VoiceButton` in the vendor app. Needs `OPENAI_API_KEY` on the Railway backend; until then the button is hidden and typing works as before. About $0.006 per audio minute.
+- Conversation: free-recall opener (an invitation, up to 70 words), 8-answer cap, scene-deepener max 4, one pause and one reminder per conversation, reflection asked once before wrap-up.
+- Fact check: inferred claims first, new kinds (tone, translation, person) with plain hints, "Listen to it", time spent and read-in-full recorded for the editor.
+- Feedback: `blocks.editor_note`; approval email "Approved: {headline}" once per story, not for sample vendors.
+- Tests: 38 unit tests; end-to-end checks of the voice endpoint (stand-in), claims timing and the approval email (mock Resend).
+
 ## What Changed in v0.5.0
 
 **Backend**
@@ -44,7 +54,7 @@ The site starts with **five sample vendors** (marked "Sample") and their stories
 - Vendor app: story menu (scout ideas + fixed list + photo + free text), progress hint, quick-reply buttons, "I'll send one question tomorrow" state, claims checklist (Right / Not quite / Leave it out)
 - Editor app: **Skills** tab, richer conversation view (skills used, rule flags), "Before you read" brief and claim table on each draft
 
-**Tested locally** (fake AI, real Postgres, real browser): 32 unit tests; interview harness with 11 simulated vendors; full click-through (menu → conversation → claims fix → editor brief → skill edit/reset → conversation view); the morning-nudge job; legacy database migration.
+**Tested locally** (fake AI, real Postgres, real browser): 38 unit tests; interview harness with 11 simulated vendors; full click-through (menu → conversation → claims fix → editor brief → skill edit/reset → conversation view); the morning-nudge job; legacy database migration.
 
 ---
 
@@ -53,11 +63,13 @@ The site starts with **five sample vendors** (marked "Sample") and their stories
 - **Real question and story quality.** The sandbox had no API key, so every test used the stand-in model. The rules (one question, no "why", echo) are enforced in code, but whether the questions are *good* needs a real conversation. First step: Anna does one as a vendor and sends the transcript.
 - **Email.** Sends use `FROM_EMAIL` (Railway) or the address in Editor → Settings; must be a domain verified in Resend. Every place that sends a link also shows a copyable link.
 - **Weekly send is manual.** Editor → This week's issue → Send. The scheduler now has one job (morning follow-up questions).
+- **Voice with a real key.** Tested only with the stand-in transcript. First real recording will show accuracy on a noisy phone; Amharic is unverified.
 
 ---
 
 ## 🔴 Next
 
+0. Add `OPENAI_API_KEY` to the Railway backend variables (the record button appears after the next deploy restart)
 1. Anna runs one real conversation at `/vendor`, reads it in Editor → Vendors → Open → Recent conversations, and edits the skills that miss (Editor → Skills)
 2. Run `python -m tools.interview_harness` with the real key (needs `ANTHROPIC_API_KEY`) and read `backend/tools/harness_runs/`
 3. Decide the sending domain and verify it in Resend
@@ -70,7 +82,7 @@ The site starts with **five sample vendors** (marked "Sample") and their stories
 
 | Item | Value |
 |---|---|
-| API | `https://api.marlo021.ai` (`/health` → 0.5.0) |
+| API | `https://api.marlo021.ai` (`/health` → 0.6.0) |
 | Site | `https://marlo021.ai` |
 | Deploy | push to `main` → Railway builds backend and frontend |
 | Story engine design | `docs/STORY_ENGINE.md` |
